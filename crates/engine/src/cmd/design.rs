@@ -333,13 +333,16 @@ fn next_scheme(
     slots: Option<&[(deckcraft_color::SchemeSlot, deckcraft_color::Rgba)]>,
 ) -> Result<deckcraft_color::ColorScheme> {
     let mut next = current.clone();
-    if let Some(name) = given.map(crate::nexus::theme_alias) {
-        if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+    if let Some(name) = given {
+        // NexusOffices: upstream's theme name finds the Nexus scheme; a name saved with colours is
+        // the user's own and is kept as given.
+        let lookup = crate::nexus::theme_alias(name);
+        if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(lookup)) {
             next = builtin;
         } else if slots.is_none() {
             return Err(bad("design.colors", format!("no colour scheme `{name}`")));
         }
-        next.name = name.to_string();
+        next.name = if slots.is_some() { name } else { lookup }.to_string();
     }
     if let Some(changes) = slots {
         for (slot, rgb) in changes {

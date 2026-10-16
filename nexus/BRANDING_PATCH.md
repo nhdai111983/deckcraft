@@ -54,7 +54,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `crates/engine/src/cmd/file.rs` | Lỗi mở file (mật khẩu, không đọc được) nêu Nexus Slides; `theme_named` tra qua `nexus::theme_alias` | Có |
 | `crates/engine/src/cmd/format.rs` | Lỗi `font.add` nêu Nexus Slides | Có |
 | `crates/engine/src/cmd/insert.rs` | Theme mặc định của Photo Album = `nexus::THEME_NAME`; tra theme qua `nexus::theme_alias`; 2 assert test theo tên mới | Có |
-| `crates/engine/src/cmd/design.rs` | `design.theme`/`design.colors`/`design.effects` tra tên qua `nexus::theme_alias`; test: tên theme/effect scheme `Nexus` | Đi cùng `theme.rs` |
+| `crates/engine/src/cmd/design.rs` | `design.theme`/`design.colors`/`design.effects` tra tên qua `nexus::theme_alias` (design.colors kèm màu giữ nguyên tên người dùng đặt, kể cả "DeckCraft"); test: tên theme/effect scheme `Nexus` | Đi cùng `theme.rs` |
 | `crates/engine/src/templates.rs` | Starter template tra theme qua `nexus::theme_alias` (starter mới của upstream ghi "DeckCraft" vẫn chạy) | Đi cùng `theme.rs` |
 | `crates/engine/src/tests.rs` | Test caret dùng theme `Nexus` | Đi cùng `theme.rs` |
 | `crates/model/src/theme.rs` | Theme/colour/format scheme dựng sẵn đầu tiên tên `Nexus` (ghi vào file) | Có — tên theme qua biến build |

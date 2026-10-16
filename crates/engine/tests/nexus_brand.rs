@@ -109,6 +109,8 @@ fn master_theme(s: &Session) -> String {
 #[test]
 fn upstream_theme_name_finds_the_nexus_theme() {
     let mut s = Session::new();
+    // file.new falls back to the first theme (Nexus) for any unknown name, so this holds even
+    // without the alias; it is applied there anyway for consistency.
     s.execute("file.new", &json!({"theme": "DeckCraft"})).unwrap();
     assert_eq!(master_theme(&s), "Nexus");
 
@@ -187,4 +189,15 @@ fn own_table_styles_are_named_nexus() {
     let styles = part(&parts, "ppt/tableStyles.xml");
     assert!(styles.contains("\"Nexus Light Style 1 - Accent 2\""), "{styles}");
     no_upstream_name(&parts);
+}
+
+/// The alias is for the lookup only: a custom colour scheme someone names "DeckCraft" (or an
+/// upstream deck's scheme they customise) keeps that name when colours are saved with it.
+#[test]
+fn a_custom_colour_scheme_keeps_its_name() {
+    let mut s = Session::with_new();
+    s.execute("design.colors", &json!({"name": "DeckCraft", "colors": {"accent1": "#11AA22"}})).unwrap();
+    let scheme = s.doc().unwrap().doc.masters[0].theme.colors.clone();
+    assert_eq!(scheme.name, "DeckCraft");
+    assert_eq!(scheme.get(deckcraft_color::SchemeSlot::Accent1).hex(), "11AA22");
 }
