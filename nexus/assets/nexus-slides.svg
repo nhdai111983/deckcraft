@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Nexus Slides placeholder icon. Original work by Sonnytech, CC0-1.0. Not derived from any vendor's artwork. -->
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="#C2410C"/>
+  <rect x="80" y="120" width="352" height="232" rx="24" ry="24" fill="#F8FAFC"/>
+  <rect x="240" y="352" width="32" height="48" fill="#F8FAFC"/>
+  <rect x="176" y="392" width="160" height="24" rx="12" ry="12" fill="#F8FAFC"/>
+  <path d="M192 304 V168 L320 304 V168" fill="none" stroke="#C2410C" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="320" cy="168" r="26" fill="#F59E0B"/>
+  <circle cx="192" cy="304" r="26" fill="#F59E0B"/>
+</svg>

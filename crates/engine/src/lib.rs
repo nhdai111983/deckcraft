@@ -21,6 +21,7 @@ pub mod io;
 pub mod keys;
 pub mod links;
 pub mod media_refs;
+pub mod nexus;
 pub mod recovery;
 pub mod sample;
 pub mod sounds;
@@ -356,7 +357,7 @@ impl Default for Prefs {
             ac_fractions: true,
             ac_entries: Vec::new(),
             ac_removed: Vec::new(),
-            author: "Presenter".into(),
+            author: nexus::DEFAULT_AUTHOR.into(),
             undo_limit: 500,
             recovery_minutes: 1.0,
         }

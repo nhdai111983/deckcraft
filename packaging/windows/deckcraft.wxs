@@ -1,79 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  DeckCraft MSI (WiX Toolset v5: `dotnet tool install -g wix`). Built by package.ps1:
+  Nexus Slides MSI (NexusOffices, by Sonnytech; based on DeckCraft). WiX Toolset v5:
+  `dotnet tool install -g wix`. Built by package.ps1:
 
     wix build deckcraft.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
 
-  Per-machine install into Program Files, a Start Menu shortcut, `.deckcraft` owned by
-  DeckCraft, and DeckCraft offered under "Open with" for .pptx/.potx/.ppsx (without taking over
-  the user's default app for them).
+  Per-machine install into Program Files\Nexus Slides, a Start Menu shortcut, `.deckcraft`
+  owned by Nexus Slides, and Nexus Slides offered under "Open with" for .pptx/.potx/.ppsx
+  (without taking over the user's default app for them).
 
-  UpgradeCode is fixed for DeckCraft forever (playbook §6); never change it.
+  UpgradeCode and the component GUID below belong to Nexus Slides alone (generated 2026-10-17;
+  never change them, or upgrades install side by side). Never copy them from (or into) upstream
+  or a sibling app: Windows Installer treats every package sharing an UpgradeCode as one product
+  and would remove the other app. Registry keys, ProgIds and the install folder are Nexus Slides'
+  own too, so it installs and uninstalls next to upstream's app without touching it.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-      Name="DeckCraft"
-      Manufacturer="Learning Machines LLC"
+      Name="Nexus Slides"
+      Manufacturer="Sonnytech"
       Version="$(var.Version)"
-      UpgradeCode="6F9C69E7-7825-40D2-BF26-C274DA676425"
+      UpgradeCode="96D068F9-30CC-4E22-808D-242613C1E158"
       Scope="perMachine"
       Compressed="yes"
       Language="1033">
-    <SummaryInformation Description="DeckCraft presentations and slide shows" Manufacturer="Learning Machines LLC" />
+    <SummaryInformation Description="Nexus Slides presentations and slide shows" Manufacturer="Sonnytech" />
     <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other
          (MSI versions are numeric, so 1.2.3-rc.1 and 1.2.3-rc.2 are both 1.2.3). -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
-        DowngradeErrorMessage="A newer version of DeckCraft is already installed." />
+        DowngradeErrorMessage="A newer version of Nexus Slides is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="DeckcraftIcon.ico" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="DeckcraftIcon.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/deckcraft" />
-    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/deckcraft" />
-    <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/nhdai111983/deckcraft" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="DeckCraft" />
+      <Directory Id="INSTALLFOLDER" Name="Nexus Slides" />
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <Feature Id="Main" Title="DeckCraft" Level="1">
+    <Feature Id="Main" Title="Nexus Slides" Level="1">
       <ComponentGroupRef Id="DeckcraftFiles" />
     </Feature>
   </Package>
 
   <Fragment>
     <ComponentGroup Id="DeckcraftFiles" Directory="INSTALLFOLDER">
-      <Component Id="DeckcraftApp" Guid="D87EA444-41A4-4C19-922E-66D1A29461FF">
-        <File Id="DeckcraftExe" Source="$(var.BinDir)\deckcraft.exe" KeyPath="yes">
-          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="DeckCraft"
-              Description="DeckCraft presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
+      <Component Id="DeckcraftApp" Guid="F3911F7B-4F9F-4BA6-8D06-B513AB237AF1">
+        <File Id="DeckcraftExe" Source="$(var.BinDir)\deckcraft.exe" Name="nexus-slides.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Nexus Slides"
+              Description="Nexus Slides presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
               Icon="DeckcraftIcon.ico" IconIndex="0" />
         </File>
 
-        <!-- .deckcraft: DeckCraft's own format. -->
-        <ProgId Id="DeckCraft.Presentation" Description="DeckCraft Presentation" Icon="DeckcraftExe" IconIndex="0">
+        <!-- .deckcraft: the app's own format (extension and MIME type unchanged from upstream). -->
+        <ProgId Id="Sonnytech.NexusSlides.Presentation" Description="Nexus Slides Presentation" Icon="DeckcraftExe" IconIndex="0">
           <Extension Id="deckcraft" ContentType="application/x-deckcraft">
             <Verb Id="open" Command="Open" TargetFile="DeckcraftExe" Argument="&quot;%1&quot;" />
           </Extension>
         </ProgId>
 
         <!-- "Open with" for PowerPoint formats, without becoming the default. -->
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe" Name="FriendlyAppName" Value="DeckCraft" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".deckcraft" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".pptx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".potx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".ppsx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.pptx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.potx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.ppsx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe" Name="FriendlyAppName" Value="Nexus Slides" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".deckcraft" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".pptx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".potx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".ppsx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.pptx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.potx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.ppsx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
 
-        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\deckcraft.exe" Value="[#DeckcraftExe]" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\nexus-slides.exe" Value="[#DeckcraftExe]" Type="string" />
       </Component>
 
       <Component Id="DeckcraftCli">
-        <File Id="DeckcraftCliExe" Source="$(var.BinDir)\deckcraft-cli.exe" KeyPath="yes" />
+        <File Id="DeckcraftCliExe" Source="$(var.BinDir)\deckcraft-cli.exe" Name="nexus-slides-cli.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

@@ -1,6 +1,134 @@
-# Allowlist cho `nexus-tools brand-check`.
-# Mỗi mục cho phép một chuỗi thương hiệu upstream xuất hiện ở một đường dẫn (tương đối so với gốc repo).
-# Ví dụ:
-# [[allow]]
-# path = "docs/**"
-# reason = "tài liệu lịch sử, không phát hành"
+# Allowlist cho `nexus-tools brand-check` (Nexus Slides).
+# Mỗi mục khoanh vào file cụ thể (không dùng `**/*.rs`) + mẫu hẹp, có lý do. Việc còn nợ: nexus/BRANDING_PATCH.md.
+
+# ---------------------------------------------------------------------------------------------
+# 1. Không phát hành: chú thích, test, tài liệu dev, metadata crate
+# ---------------------------------------------------------------------------------------------
+
+[[allow]]
+path = "{apps/deckcraft-cli/src/main.rs,apps/deckcraft-web/src/main.rs,apps/deckcraft/src/display.rs,apps/deckcraft/src/graphics.rs,apps/deckcraft/src/logging.rs,apps/deckcraft/src/main.rs,crates/anim/src/lib.rs,crates/bitstream/src/lib.rs,crates/color/src/lib.rs,crates/engine/src/cmd/file.rs,crates/engine/src/cmd/format.rs,crates/engine/src/cmd/richclip.rs,crates/engine/src/cmd/smartart.rs,crates/engine/src/cmd/text.rs,crates/engine/src/icons.rs,crates/engine/src/lib.rs,crates/engine/src/nexus.rs,crates/engine/src/sounds.rs,crates/engine/src/spell.rs,crates/engine/src/tests.rs,crates/engine/src/tools.rs,crates/fonts/build.rs,crates/fonts/src/fontdb.rs,crates/fonts/src/lib.rs,crates/format/src/lib.rs,crates/geom/src/lib.rs,crates/geom/src/warp.rs,crates/mcp/src/backend.rs,crates/mcp/src/lib.rs,crates/media/src/lib.rs,crates/media/src/probe.rs,crates/metafile/src/lib.rs,crates/model/src/lib.rs,crates/pdf/src/lib.rs,crates/pptx/src/cfb.rs,crates/pptx/src/dgm.rs,crates/pptx/src/lib.rs,crates/pptx/src/maps.rs,crates/pptx/src/read/chartex.rs,crates/pptx/src/read/mod.rs,crates/pptx/src/read/shapes.rs,crates/pptx/src/tables.rs,crates/pptx/src/write/mod.rs,crates/render/src/camera.rs,crates/render/src/chartex.rs,crates/render/src/lib.rs,crates/render/src/tests.rs,crates/text/src/tests.rs,crates/ui-egui/examples/icon_gallery.rs,crates/ui-egui/src/backstage.rs,crates/ui-egui/src/icons.rs,crates/ui-egui/src/lib.rs,crates/ui-egui/src/nexus.rs,crates/ui-egui/src/ribbon.rs,crates/ui-egui/src/theme.rs,crates/ui-egui/src/uifonts.rs,xtask/src/layers.rs}"
+pattern = '^\s*//.*'
+reason = "Chú thích Rust (//, ///, //!) trong đúng các file này: không biên dịch vào binary, người dùng không thấy"
+
+[[allow]]
+path = "{apps/deckcraft-cli/Cargo.toml,apps/deckcraft-web/Cargo.toml,apps/deckcraft/Cargo.toml,crates/anim/Cargo.toml,crates/color/Cargo.toml,crates/engine/Cargo.toml,crates/fonts/Cargo.toml,crates/format/Cargo.toml,crates/geom/Cargo.toml,crates/mcp/Cargo.toml,crates/media/Cargo.toml,crates/metafile/Cargo.toml,crates/model/Cargo.toml,crates/pdf/Cargo.toml,crates/pptx/Cargo.toml,crates/render/Cargo.toml,crates/text/Cargo.toml,crates/ui-egui/Cargo.toml}"
+pattern = '^description = ".*"$'
+reason = "Mô tả crate nội bộ (publish = false), không hiện cho người dùng"
+
+[[allow]]
+path = "crates/fonts/src/lib.rs"
+pattern = '"DeckCraft (Legacy|Legacy Semibold|Colr Squares)"'
+reason = "Tên họ phông thử nghiệm trong module #[cfg(test)] (từ craft-fonts), không phát hành"
+
+[[allow]]
+path = "{crates/engine/src/tests.rs,crates/render/src/tests.rs}"
+pattern = '"DeckCraft Colr Squares"'
+reason = "Tên phông thử nghiệm trong file test (#[cfg(test)]), không phát hành"
+
+[[allow]]
+path = "crates/engine/src/tests.rs"
+pattern = '(\["dc", "DeckCraft"\]|"DeckCraft teh ")'
+reason = "Dữ liệu test AutoCorrect (#[cfg(test)]), không phát hành"
+
+[[allow]]
+path = "crates/model/src/bidi.rs"
+pattern = 'first_strong_is_rtl\("DeckCraft"\)'
+reason = "Chuỗi mẫu trong module #[cfg(test)]"
+
+[[allow]]
+path = "apps/deckcraft/src/logging.rs"
+pattern = '"(deckcraft: )?DeckCraft starting"'
+reason = "Bản ghi log mẫu trong module #[cfg(test)]"
+
+[[allow]]
+path = "apps/deckcraft/src/pasteboard.rs"
+pattern = '(set_html\("<b>DeckCraft</b>", "DeckCraft"\)|assert_eq!\(text, "DeckCraft"\))'
+reason = "Dữ liệu test clipboard trong module #[cfg(test)]"
+
+[[allow]]
+path = "{AGENTS.md,CLAUDE.md,ROADMAP.md,crates/pdf/README.md,packaging/macos/dmg/README.md}"
+pattern = '.*'
+reason = "Tài liệu dev của upstream, không đóng gói, không phải giao diện (README.md đã viết lại cho Nexus Slides và được quét)"
+
+[[allow]]
+path = "crates/engine/data/thesaurus.txt"
+pattern = '^# .*'
+reason = "Dòng chú thích đầu file từ điển đồng nghĩa (parser bỏ qua dòng #), không hiện cho người dùng"
+
+[[allow]]
+path = "{packaging/icons.sh,packaging/linux/flatpak/ai.storyteller.deckcraft.yml,packaging/freebsd/package.sh,packaging/linux/flatpak-bundle.sh}"
+pattern = '^\s*#.*'
+reason = "Chú thích trong script đóng gói, không hiện cho người dùng"
+
+[[allow]]
+path = "packaging/macos/entitlements.plist"
+pattern = '<!--.*'
+reason = "Chú thích XML, không hiện cho người dùng"
+
+[[allow]]
+path = "packaging/windows/deckcraft.wxs"
+pattern = '^\s+Nexus Slides MSI \(NexusOffices, by Sonnytech; based on DeckCraft\)'
+reason = "Dòng đầu chú thích XML của file WiX (ghi công), không hiện cho người dùng"
+
+# ---------------------------------------------------------------------------------------------
+# 2. Không dùng trong bản phát hành Nexus (còn nợ, xem BRANDING_PATCH.md)
+# ---------------------------------------------------------------------------------------------
+
+[[allow]]
+path = ".github/workflows/{release.yml,windows-arm64.yml}"
+pattern = 'app-(title|dir): DeckCraft'
+reason = "CI phát hành của upstream (đã tắt trên fork); NexusOffices phát hành bằng nexus-release.yml (Task 12)"
+
+[[allow]]
+path = "packaging/linux/flatpak-bundle.sh"
+pattern = 'echo "==> DeckCraft \$VERSION Flatpak bundle'
+reason = "Flatpak chưa phát hành (NỢ trong BRANDING_PATCH.md)"
+
+[[allow]]
+path = "packaging/macos/dmg/generate.py"
+pattern = '(VOLUME = "DeckCraft"|"DeckCraft\.app": )'
+reason = "Công cụ dev sinh nền DMG của upstream; package.sh của Nexus không dùng layout này (NỢ: làm lại trên macOS, Task 12)"
+
+# ---------------------------------------------------------------------------------------------
+# 3. Ghi công upstream (bắt buộc theo giấy phép / brand license, chỉ chữ)
+# ---------------------------------------------------------------------------------------------
+
+[[allow]]
+path = "crates/engine/src/nexus.rs"
+pattern = '"(NexusOffices is developed from the open-source apps of ArtCraft[^"]*|NexusOffices được phát triển dựa trên các ứng dụng mã nguồn mở của ArtCraft[^"]*|MIT OR Apache-2\.0 · © 2026 ArtCraft Team and the DeckCraft contributors)"'
+reason = "Câu ghi công + thông báo bản quyền upstream trong About (MIT/Apache, LICENSE-brand.txt cho phép ghi chữ)"
+
+[[allow]]
+path = "crates/engine/src/nexus.rs"
+pattern = 'contains\("(ArtCraft|DeckCraft|ArtCraft Team)"\)'
+reason = "Test (#[cfg(test)]) khẳng định câu ghi công giữ tên upstream"
+
+[[allow]]
+path = "apps/deckcraft/build.rs"
+pattern = 'based on DeckCraft by the ArtCraft team'
+reason = "Ghi công trong LegalCopyright của resource Windows"
+
+[[allow]]
+path = "packaging/macos/Info.plist.in"
+pattern = 'Based on DeckCraft by the ArtCraft team'
+reason = "Ghi công trong NSHumanReadableCopyright"
+
+[[allow]]
+path = "packaging/macos/Info.plist.in"
+pattern = '<key>DeckCraft(Version|BuildCommit)</key>'
+reason = "Khoá plist nội bộ (không hiển thị), giữ như upstream"
+
+[[allow]]
+path = "packaging/linux/nfpm.yaml"
+pattern = '^  DeckCraft by the ArtCraft team\.$'
+reason = "Ghi công trong mô tả gói deb/rpm"
+
+[[allow]]
+path = "packaging/linux/vn.sonnytech.nexus.slides.metainfo.xml.in"
+pattern = '(based on the open-source DeckCraft by the|^\s+ArtCraft team \(MIT/Apache-2\.0\)\.)'
+reason = "Ghi công trong mô tả AppStream"
+
+[[allow]]
+path = "README.md"
+pattern = '(dựa trên DeckCraft của ArtCraft|developed from DeckCraft by ArtCraft) \(MIT/Apache-2\.0\)\.'
+reason = "Câu ghi công bắt buộc trong README (chỉ chữ, không logo/link)"

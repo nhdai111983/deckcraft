@@ -18,6 +18,7 @@ pub mod fillui;
 pub mod icons;
 pub mod media;
 pub mod menus;
+pub mod nexus;
 pub mod notes;
 pub mod opening;
 pub mod panes;
@@ -191,7 +192,7 @@ fn command_for(purpose: FilePurpose, name: &str, bytes: &[u8]) -> Result<&'stati
         FilePurpose::Open => open_command(name),
         FilePurpose::Infer => infer_command(name, bytes),
     };
-    cmd.ok_or_else(|| format!("{name}: DeckCraft can't open this kind of file"))
+    cmd.ok_or_else(|| format!("{name}: Nexus Slides can't open this kind of file"))
 }
 
 /// How long a transient status message stays visible.
@@ -392,7 +393,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
         Some("Cmd+P"),
         "{layout?, perPage?, slides?, includeHidden?, frame?, paper?: letter|a4|legal|a3, orientation?: portrait|landscape}",
     ),
-    ("app.about", "About DeckCraft", None, "{}"),
+    ("app.about", "About Nexus Slides", None, "{}"),
     ("app.palette", "Command Palette", Some("Cmd+Shift+P"), "{}"),
     ("app.preferences", "Preferences…", Some("Cmd+,"), "{}"),
     ("app.openDialog", "Open…", None, "{purpose?}"),
@@ -411,7 +412,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("app.qat", "Quick Access Toolbar", None, "{add: command id, params?, label?, icon?} | {remove: id, params?} | {reset: true} → [buttons]"),
     ("app.find", "Find…", Some("Cmd+F"), "{}"),
     ("app.replace", "Replace…", Some("Cmd+H"), "{}"),
-    ("app.links", "Community Links", None, "{}"),
+    ("app.links", "Project Links", None, "{}"),
 ];
 
 pub struct Perf {
@@ -744,7 +745,7 @@ impl SlideApp {
             "deckcraft" => ("deckcraft", "deckcraft", false),
             "gif" => ("gif", "gif", false),
             other => {
-                self.set_status(format!("DeckCraft can't export “{other}”"));
+                self.set_status(format!("Nexus Slides can't export “{other}”"));
                 return false;
             }
         };
@@ -1050,7 +1051,7 @@ impl SlideApp {
             }
             "app.links" => {
                 use deckcraft_engine::links::*;
-                return Ok(json!({"discord": DISCORD, "website": WEBSITE, "apps": APPS, "appPage": APP_PAGE, "github": GITHUB}));
+                return Ok(json!({"appPage": APP_PAGE, "github": GITHUB, "issues": ISSUES}));
             }
             _ => return Err(format!("unknown UI command `{id}`")),
         }
