@@ -24,6 +24,17 @@ pub const DEFAULT_AUTHOR: &str = "Nexus Slides User";
 /// The first built-in theme (and its colour, font and effect schemes): new presentations use it.
 pub const THEME_NAME: &str = "Nexus";
 
+/// Upstream's name for the first built-in theme ([`THEME_NAME`] here).
+const UPSTREAM_THEME_NAME: &str = "DeckCraft";
+
+/// For lookups of a built-in theme or scheme by name only: upstream's name for the first built-in
+/// theme (any case) finds [`THEME_NAME`], so scripts, agents and starters written for upstream keep
+/// working. Every other name is returned as given. Never apply it to names that are shown or stored:
+/// a presentation whose theme is called "DeckCraft" keeps that name.
+pub fn theme_alias(name: &str) -> &str {
+    if name.eq_ignore_ascii_case(UPSTREAM_THEME_NAME) { THEME_NAME } else { name }
+}
+
 /// The About page's attribution to upstream, which the MIT/Apache licences and ArtCraft's brand
 /// licence ask for: text only, no logo, no endorsement implied. (English, Vietnamese.)
 pub const ATTRIBUTION: (&str, &str) = (
@@ -49,6 +60,15 @@ mod tests {
         for link in [crate::links::APP_PAGE, crate::links::GITHUB, crate::links::ISSUES] {
             assert!(!link.contains("artcraft") && !link.contains("storytold") && !link.contains("discord"), "{link}");
         }
+    }
+
+    #[test]
+    fn theme_alias_maps_only_upstreams_first_theme() {
+        assert_eq!(theme_alias("DeckCraft"), THEME_NAME);
+        assert_eq!(theme_alias("deckcraft"), THEME_NAME);
+        assert_eq!(theme_alias("Harbor"), "Harbor");
+        assert_eq!(theme_alias("DeckCraft 2"), "DeckCraft 2");
+        assert_eq!(theme_alias(""), "");
     }
 
     /// About attributes upstream in plain text (no logo, no link) in both languages.

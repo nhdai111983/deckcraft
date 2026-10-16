@@ -14,6 +14,12 @@ trong file `.deckcraft`, `serverInfo.name = "deckcraft"` của MCP (định danh
 `DeckCraftVersion`/`DeckCraftBuildCommit`, id DOM `deckcraft_canvas`, tên file log `deckcraft.log`
 (nằm trong thư mục cấu hình riêng của Nexus).
 
+Giữ / đổi trong khai báo kiểu tệp macOS (`packaging/macos/Info.plist.in`): **đổi** UTI xuất
+`ai.storyteller.deckcraft.presentation` → `vn.sonnytech.nexus.slides.presentation` (UTI gắn với bundle
+id của app khai báo nó) và mô tả "Nexus Slides Presentation"; **giữ** đuôi `deckcraft`
+(`public.filename-extension`), thẻ MIME `application/x-deckcraft` (`public.mime-type`) và
+`UTTypeConformsTo`. Linux giữ cùng MIME type; Windows giữ đuôi `.deckcraft` và ContentType.
+
 ## Cơ chế
 
 DeckCraft **không có hệ thống i18n** và **không có điểm chặn chung** cho nhãn giao diện: nhãn lệnh nằm
@@ -30,8 +36,11 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 - Các literal người dùng thấy được sửa tại chỗ (bảng dưới). Văn bản của người dùng không bao giờ bị
   thay. Không Việt hoá ở P0 (chỉ câu ghi công có bản vi).
 - Theme dựng sẵn đầu tiên đổi tên `DeckCraft` → `Nexus` (hiện trong Home/New/Design và ghi vào file
-  pptx/.deckcraft). Không giữ bí danh "DeckCraft": script gọi `file.new {"theme":"DeckCraft"}` sẽ báo
-  "no theme" (xem Việc còn nợ).
+  pptx/.deckcraft). Bí danh chỉ dùng khi **tra theo tên**: `nexus::theme_alias()` đổi "DeckCraft"
+  (không phân biệt hoa thường) thành `Nexus` trong `file.new`, `design.theme`, `design.colors`,
+  `design.effects`, `insert.photoAlbum` và starter template (`templates.rs`), nên script/agent/starter
+  viết cho upstream vẫn chạy và nhận theme `Nexus`. Không áp vào tên hiển thị hay tên lưu: bài trình
+  chiếu có theme tên "DeckCraft" giữ nguyên tên đó khi mở và lưu lại (có test).
 
 ## File thương hiệu
 
@@ -42,10 +51,11 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `crates/engine/src/recovery.rs` | Thư mục AutoRecover riêng (`Nexus Slides/Recovery`, `nexus-slides/recovery`) — không mở bản phục hồi của DeckCraft | Có — `SETTINGS_DIR` |
 | `crates/engine/src/spell.rs` | Thư mục từ điển riêng + `user.dic` (Add to Dictionary) trong thư mục Nexus | Có — `SETTINGS_DIR` |
 | `crates/engine/src/sample.rs` | Deck mẫu: theme `Nexus`, "made in Nexus Slides", "Made with Nexus Slides" | Có |
-| `crates/engine/src/cmd/file.rs` | Lỗi mở file (mật khẩu, không đọc được) nêu Nexus Slides | Có |
+| `crates/engine/src/cmd/file.rs` | Lỗi mở file (mật khẩu, không đọc được) nêu Nexus Slides; `theme_named` tra qua `nexus::theme_alias` | Có |
 | `crates/engine/src/cmd/format.rs` | Lỗi `font.add` nêu Nexus Slides | Có |
-| `crates/engine/src/cmd/insert.rs` | Theme mặc định của Photo Album = `nexus::THEME_NAME`; 2 assert test theo tên mới | Có |
-| `crates/engine/src/cmd/design.rs` | Chỉ test: tên theme/effect scheme `Nexus` | Đi cùng `theme.rs` |
+| `crates/engine/src/cmd/insert.rs` | Theme mặc định của Photo Album = `nexus::THEME_NAME`; tra theme qua `nexus::theme_alias`; 2 assert test theo tên mới | Có |
+| `crates/engine/src/cmd/design.rs` | `design.theme`/`design.colors`/`design.effects` tra tên qua `nexus::theme_alias`; test: tên theme/effect scheme `Nexus` | Đi cùng `theme.rs` |
+| `crates/engine/src/templates.rs` | Starter template tra theme qua `nexus::theme_alias` (starter mới của upstream ghi "DeckCraft" vẫn chạy) | Đi cùng `theme.rs` |
 | `crates/engine/src/tests.rs` | Test caret dùng theme `Nexus` | Đi cùng `theme.rs` |
 | `crates/model/src/theme.rs` | Theme/colour/format scheme dựng sẵn đầu tiên tên `Nexus` (ghi vào file) | Có — tên theme qua biến build |
 | `crates/model/src/tests.rs` | Assert tên theme mới | Đi cùng `theme.rs` |
@@ -102,7 +112,8 @@ Sinh bằng `python3 -c "import uuid; print(uuid.uuid4())"` ngày 2026-10-17.
 
 ### File mới (không tính là patch)
 `crates/engine/src/nexus.rs`, `crates/ui-egui/src/nexus.rs`, `crates/engine/tests/nexus_brand.rs`
-(tác giả mặc định, `<Application>`, theme `Nexus`, generator `.deckcraft`),
+(tác giả mặc định, `<Application>`, theme `Nexus`, generator `.deckcraft`, bí danh theme "DeckCraft",
+deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus …"),
 `crates/mcp/tests/nexus_brand.rs` (serverInfo, tool_definitions không có `deckcraft-cli`),
 `apps/deckcraft-cli/tests/nexus_brand.rs` (`--version`/usage/help/links/app nêu `nexus-slides(-cli)`),
 `nexus/assets/*` (logo tạm `nexus-slides.svg` + PNG/ICO/ICNS/hicolor sinh bằng
@@ -125,9 +136,13 @@ phải gọi mạng lúc chạy.
 ## Việc còn nợ (đã allowlist có lý do, hoặc không bị brand-check bắt)
 - Đề xuất PR upstream (white-label): hằng `APP_NAME`/`SETTINGS_DIR`/`APP_ID`/tên theme đầu lấy từ biến
   build (`DECKCRAFT_APP_NAME`…) → fork chỉ còn đặt biến, bỏ phần lớn patch ở trên.
-- Theme `DeckCraft` không còn tên đó: script/agent viết cho upstream dùng `{"theme":"DeckCraft"}` hay
-  `design.effects {"name":"DeckCraft"}` nhận lỗi "no theme"; file cũ có theme tên `DeckCraft` vẫn mở
-  bình thường (theme lưu đầy đủ trong file), chỉ Design › Variants không nhận ra nó là theme dựng sẵn.
+- Theme dựng sẵn đầu tiên tên `Nexus`; tên upstream "DeckCraft" vẫn được chấp nhận khi tra theo tên
+  (`nexus::theme_alias`) và cho ra `Nexus`. File cũ có theme tên `DeckCraft` mở và lưu lại giữ nguyên
+  tên; chỉ Design › Variants (`theme_variants`, so tên chính xác trong `deckcraft-model`) không nhận ra
+  nó là theme dựng sẵn và dựng biến thể từ màu của chính file (kết quả màu như nhau).
+- `crates/matroska/src/mux.rs:81` (`WritingApp = "deckcraft"`) và `:169` (`MuxingApp =
+  "deckcraft-matroska"`) ghi tên upstream (chữ thường, brand-check không bắt) vào tệp Matroska do muxer
+  tạo; hiện app không xuất video nên không tới tay người dùng — đổi khi có tính năng xuất video.
 - Tác giả mặc định đổi từ "Presenter" (upstream, không mang thương hiệu) sang "Nexus Slides User"
   theo quy ước chung của bộ (ruling T7).
 - Gói FreeBSD (`packaging/freebsd/package.sh`) và Flatpak (`packaging/linux/flatpak*`) chưa đổi —

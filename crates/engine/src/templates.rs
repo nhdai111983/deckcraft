@@ -209,7 +209,7 @@ pub fn build(name: &str, size: Size) -> Result<Presentation> {
     })?;
     let theme = deckcraft_model::theme::builtin_themes()
         .into_iter()
-        .find(|t| t.name.eq_ignore_ascii_case(starter.theme))
+        .find(|t| t.name.eq_ignore_ascii_case(crate::nexus::theme_alias(starter.theme)))
         .ok_or_else(|| bad("file.new", format!("template `{}` names a missing theme `{}`", starter.name, starter.theme)))?;
     let mut doc = defaults::blank_presentation(size, theme, false);
     for seed in starter.slides {

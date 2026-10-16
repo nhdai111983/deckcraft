@@ -100,6 +100,16 @@ reason = "Câu ghi công + thông báo bản quyền upstream trong About (MIT/A
 
 [[allow]]
 path = "crates/engine/src/nexus.rs"
+pattern = 'const UPSTREAM_THEME_NAME: &str = "DeckCraft";'
+reason = "Tên theme của upstream, chỉ để tra cứu (theme_alias): script/agent viết cho upstream vẫn chạy; không hiển thị, không ghi vào file"
+
+[[allow]]
+path = "crates/engine/src/nexus.rs"
+pattern = 'assert_eq!\(theme_alias\("DeckCraft( 2)?"\), (THEME_NAME|"DeckCraft 2")\);'
+reason = "Test (#[cfg(test)]) của theme_alias"
+
+[[allow]]
+path = "crates/engine/src/nexus.rs"
 pattern = 'contains\("(ArtCraft|DeckCraft|ArtCraft Team)"\)'
 reason = "Test (#[cfg(test)]) khẳng định câu ghi công giữ tên upstream"
 
@@ -112,11 +122,6 @@ reason = "Ghi công trong LegalCopyright của resource Windows"
 path = "packaging/macos/Info.plist.in"
 pattern = 'Based on DeckCraft by the ArtCraft team'
 reason = "Ghi công trong NSHumanReadableCopyright"
-
-[[allow]]
-path = "packaging/macos/Info.plist.in"
-pattern = '<key>DeckCraft(Version|BuildCommit)</key>'
-reason = "Khoá plist nội bộ (không hiển thị), giữ như upstream"
 
 [[allow]]
 path = "packaging/linux/nfpm.yaml"

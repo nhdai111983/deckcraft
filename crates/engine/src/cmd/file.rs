@@ -73,6 +73,7 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn theme_named(name: &str) -> Option<deckcraft_model::Theme> {
+    let name = crate::nexus::theme_alias(name);
     deckcraft_model::theme::builtin_themes().into_iter().find(|t| t.name.eq_ignore_ascii_case(name))
 }
 

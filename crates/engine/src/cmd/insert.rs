@@ -657,7 +657,7 @@ fn album_opts(p: &Value) -> Result<AlbumOpts> {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) if s.trim().is_empty() => None,
         Some(Value::String(s)) => {
-            let name = s.trim();
+            let name = crate::nexus::theme_alias(s.trim());
             let found = deckcraft_model::theme::builtin_themes().into_iter().find(|t| t.name.eq_ignore_ascii_case(name));
             let Some(t) = found else {
                 return Err(bad("insert.photoAlbum", format!("unknown theme `{name}`")));

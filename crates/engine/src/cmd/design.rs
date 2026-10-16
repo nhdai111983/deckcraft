@@ -130,7 +130,7 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn theme(s: &mut Session, p: &Value) -> Result<Value> {
-    let name = str_param(p, "name").ok_or_else(|| bad("design.theme", "missing `name`"))?;
+    let name = crate::nexus::theme_alias(str_param(p, "name").ok_or_else(|| bad("design.theme", "missing `name`"))?);
     let t =
         builtin_themes().into_iter().find(|t| t.name.eq_ignore_ascii_case(name)).ok_or_else(|| bad("design.theme", format!("no theme `{name}`")))?;
     s.edit(|doc, sel| {
@@ -333,7 +333,7 @@ fn next_scheme(
     slots: Option<&[(deckcraft_color::SchemeSlot, deckcraft_color::Rgba)]>,
 ) -> Result<deckcraft_color::ColorScheme> {
     let mut next = current.clone();
-    if let Some(name) = given {
+    if let Some(name) = given.map(crate::nexus::theme_alias) {
         if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
             next = builtin;
         } else if slots.is_none() {
@@ -460,7 +460,7 @@ fn effects(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").ok_or_else(|| bad("design.effects", "missing `name`"))?;
     let scheme = builtin_format_schemes()
         .into_iter()
-        .find(|f| f.name.eq_ignore_ascii_case(name))
+        .find(|f| f.name.eq_ignore_ascii_case(crate::nexus::theme_alias(name)))
         .ok_or_else(|| bad("design.effects", format!("no effect scheme `{name}`")))?;
     let stored = scheme.name.clone();
     let same = {
