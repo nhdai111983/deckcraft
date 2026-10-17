@@ -130,7 +130,7 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn theme(s: &mut Session, p: &Value) -> Result<Value> {
-    let name = str_param(p, "name").ok_or_else(|| bad("design.theme", "missing `name`"))?;
+    let name = crate::nexus::theme_alias(str_param(p, "name").ok_or_else(|| bad("design.theme", "missing `name`"))?);
     let t =
         builtin_themes().into_iter().find(|t| t.name.eq_ignore_ascii_case(name)).ok_or_else(|| bad("design.theme", format!("no theme `{name}`")))?;
     s.edit(|doc, sel| {
@@ -334,12 +334,15 @@ fn next_scheme(
 ) -> Result<deckcraft_color::ColorScheme> {
     let mut next = current.clone();
     if let Some(name) = given {
-        if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+        // NexusOffices: upstream's theme name finds the Nexus scheme; a name saved with colours is
+        // the user's own and is kept as given.
+        let lookup = crate::nexus::theme_alias(name);
+        if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(lookup)) {
             next = builtin;
         } else if slots.is_none() {
             return Err(bad("design.colors", format!("no colour scheme `{name}`")));
         }
-        next.name = name.to_string();
+        next.name = if slots.is_some() { name } else { lookup }.to_string();
     }
     if let Some(changes) = slots {
         for (slot, rgb) in changes {
@@ -460,7 +463,7 @@ fn effects(s: &mut Session, p: &Value) -> Result<Value> {
     let name = str_param(p, "name").ok_or_else(|| bad("design.effects", "missing `name`"))?;
     let scheme = builtin_format_schemes()
         .into_iter()
-        .find(|f| f.name.eq_ignore_ascii_case(name))
+        .find(|f| f.name.eq_ignore_ascii_case(crate::nexus::theme_alias(name)))
         .ok_or_else(|| bad("design.effects", format!("no effect scheme `{name}`")))?;
     let stored = scheme.name.clone();
     let same = {
@@ -1510,7 +1513,7 @@ mod tests {
         match &s.ui_requests[0] {
             UiRequest::Dialog { id, params } => {
                 assert_eq!(id, "themeColors");
-                assert_eq!(params["name"], "DeckCraft");
+                assert_eq!(params["name"], "Nexus");
                 let colors = params["colors"].as_object().unwrap();
                 assert_eq!(colors.len(), 12);
                 assert_eq!(colors["accent1"].as_str().unwrap(), format!("#{}", original.get(SchemeSlot::Accent1).hex()));
@@ -1767,10 +1770,10 @@ mod browse_theme_tests {
         let mut s = crate::Session::with_new();
         let listed = s.execute("design.themes", &json!({})).unwrap();
         let names: Vec<String> = listed["effectSchemes"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
-        assert_eq!(names, ["DeckCraft", "Soft", "Crisp", "Lift", "Glow", "Plain"]);
+        assert_eq!(names, ["Nexus", "Soft", "Crisp", "Lift", "Glow", "Plain"]);
 
         let n = undo_len(&s);
-        s.execute("design.effects", &json!({"name": "DeckCraft"})).unwrap();
+        s.execute("design.effects", &json!({"name": "Nexus"})).unwrap();
         assert_eq!(undo_len(&s), n, "the scheme already on the theme is not an undo step");
         let err = s.execute("design.effects", &json!({"name": "Office"})).unwrap_err().to_string();
         assert!(err.contains("no effect scheme"), "{err}");

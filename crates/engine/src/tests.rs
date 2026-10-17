@@ -3258,7 +3258,7 @@ fn the_caret_takes_the_colour_of_the_text() {
         empty
     };
     // Dark text on the light theme, light text on the dark one: never black on a dark slide.
-    let (light, dark) = (caret("DeckCraft"), caret("Nocturne"));
+    let (light, dark) = (caret("Nexus"), caret("Nocturne"));
     assert!(light.r < 0x60 && light.g < 0x60 && light.b < 0x60, "{light:?}");
     assert!(dark.r > 0xC0 && dark.g > 0xC0 && dark.b > 0xC0, "{dark:?}");
     // Text set to red gets a red caret.

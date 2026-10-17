@@ -1,80 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  DeckCraft MSI (WiX Toolset v5: `dotnet tool install -g wix`). Built by package.ps1:
+  Nexus Slides MSI (NexusOffices, by Sonnytech; based on DeckCraft). WiX Toolset v5:
+  `dotnet tool install -g wix`. Built by package.ps1:
 
     wix build deckcraft.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
 
-  Per-machine install into Program Files, a Start Menu shortcut, `.deckcraft` owned by
-  DeckCraft, and DeckCraft offered under "Open with" for .pptx/.potx/.ppsx (without taking over
-  the user's default app for them).
+  Per-machine install into Program Files\Nexus Slides, a Start Menu shortcut, and Nexus Slides
+  offered under "Open with" for .deckcraft/.pptx/.potx/.ppsx without taking over the user's
+  default app for them. Unlike upstream, it does not own .deckcraft (see the ProgId below), so it
+  coexists with an installed copy of upstream's app.
 
-  UpgradeCode is fixed for DeckCraft forever (playbook §6); never change it.
+  UpgradeCode and the component GUID below belong to Nexus Slides alone (generated 2026-10-17;
+  never change them, or upgrades install side by side). Never copy them from (or into) upstream
+  or a sibling app: Windows Installer treats every package sharing an UpgradeCode as one product
+  and would remove the other app. Registry keys, ProgIds and the install folder are Nexus Slides'
+  own too, so it installs and uninstalls next to upstream's app without touching it.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- NexusOffices: package.ps1 passes FontLicences=yes when it staged licenses\ (the OFL texts of
+       the embedded fonts); a build without that folder (a smoke test) leaves the group out. -->
+  <?ifndef FontLicences ?>
+  <?define FontLicences = "no" ?>
+  <?endif ?>
   <Package
-      Name="DeckCraft"
-      Manufacturer="Learning Machines LLC"
+      Name="Nexus Slides"
+      Manufacturer="Sonnytech"
       Version="$(var.Version)"
-      UpgradeCode="6F9C69E7-7825-40D2-BF26-C274DA676425"
+      UpgradeCode="96D068F9-30CC-4E22-808D-242613C1E158"
       Scope="perMachine"
       Compressed="yes"
       Language="1033">
-    <SummaryInformation Description="DeckCraft presentations and slide shows" Manufacturer="Learning Machines LLC" />
+    <SummaryInformation Description="Nexus Slides presentations and slide shows" Manufacturer="Sonnytech" />
     <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other
          (MSI versions are numeric, so 1.2.3-rc.1 and 1.2.3-rc.2 are both 1.2.3). -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
-        DowngradeErrorMessage="A newer version of DeckCraft is already installed." />
+        DowngradeErrorMessage="A newer version of Nexus Slides is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="DeckcraftIcon.ico" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="DeckcraftIcon.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://getartcraft.com/apps/deckcraft" />
-    <Property Id="ARPURLUPDATEINFO" Value="https://getartcraft.com/apps/deckcraft" />
-    <Property Id="ARPHELPLINK" Value="https://discord.gg/artcraft" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/nhdai111983/deckcraft" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="DeckCraft" />
+      <Directory Id="INSTALLFOLDER" Name="Nexus Slides">
+        <?if $(var.FontLicences) = "yes" ?>
+        <Directory Id="LicensesFolder" Name="licenses" />
+        <?endif ?>
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <Feature Id="Main" Title="DeckCraft" Level="1">
+    <Feature Id="Main" Title="Nexus Slides" Level="1">
       <ComponentGroupRef Id="DeckcraftFiles" />
+      <?if $(var.FontLicences) = "yes" ?>
+      <ComponentGroupRef Id="DeckcraftFontLicences" />
+      <?endif ?>
     </Feature>
   </Package>
 
   <Fragment>
     <ComponentGroup Id="DeckcraftFiles" Directory="INSTALLFOLDER">
-      <Component Id="DeckcraftApp" Guid="D87EA444-41A4-4C19-922E-66D1A29461FF">
-        <File Id="DeckcraftExe" Source="$(var.BinDir)\deckcraft.exe" KeyPath="yes">
-          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="DeckCraft"
-              Description="DeckCraft presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
+      <Component Id="DeckcraftApp" Guid="F3911F7B-4F9F-4BA6-8D06-B513AB237AF1">
+        <File Id="DeckcraftExe" Source="$(var.BinDir)\deckcraft.exe" Name="nexus-slides.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Nexus Slides"
+              Description="Nexus Slides presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
               Icon="DeckcraftIcon.ico" IconIndex="0" />
         </File>
 
-        <!-- .deckcraft: DeckCraft's own format. -->
-        <ProgId Id="DeckCraft.Presentation" Description="DeckCraft Presentation" Icon="DeckcraftExe" IconIndex="0">
-          <Extension Id="deckcraft" ContentType="application/x-deckcraft">
-            <Verb Id="open" Command="Open" TargetFile="DeckcraftExe" Argument="&quot;%1&quot;" />
-          </Extension>
-        </ProgId>
+        <!-- ProgId: how Explorer opens a file with Nexus Slides. Written as plain registry values,
+             not a WiX <ProgId><Extension>, because that would make Nexus Slides the owner of
+             .deckcraft: upstream's app owns the same extension (its own ProgId), and
+             installing would overwrite HKCR\.deckcraft's default value and Content Type while
+             uninstalling would delete them, breaking upstream's installed app. Nexus Slides never
+             writes .deckcraft's default value or Content Type; the extension and the
+             application/x-deckcraft MIME type stay the shared file-format identifiers. -->
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation" Value="Nexus Slides Presentation" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\DefaultIcon" Value="&quot;[#DeckcraftExe]&quot;,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
 
-        <!-- "Open with" for PowerPoint formats, without becoming the default. -->
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe" Name="FriendlyAppName" Value="DeckCraft" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".deckcraft" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".pptx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".potx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\deckcraft.exe\SupportedTypes" Name=".ppsx" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.pptx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.potx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
-        <RegistryValue Root="HKLM" Key="Software\Classes\.ppsx\OpenWithProgids" Name="DeckCraft.Presentation" Value="" Type="string" />
+        <!-- "Open with" for .deckcraft and the PowerPoint formats, without becoming the default
+             (only a named value under OpenWithProgids; uninstall removes just that value). -->
+        <RegistryValue Root="HKLM" Key="Software\Classes\.deckcraft\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe" Name="FriendlyAppName" Value="Nexus Slides" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".deckcraft" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".pptx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".potx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".ppsx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.pptx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.potx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.ppsx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
 
-        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\deckcraft.exe" Value="[#DeckcraftExe]" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\nexus-slides.exe" Value="[#DeckcraftExe]" Type="string" />
       </Component>
 
       <Component Id="DeckcraftCli">
-        <File Id="DeckcraftCliExe" Source="$(var.BinDir)\deckcraft-cli.exe" KeyPath="yes" />
+        <File Id="DeckcraftCliExe" Source="$(var.BinDir)\deckcraft-cli.exe" Name="nexus-slides-cli.exe" KeyPath="yes" />
+      </Component>
+      <!-- NexusOffices: the licences, NOTICE (Apache-2.0 4(d)) and ATTRIBUTION.md, staged by
+           package.ps1, are installed beside the binaries. Auto GUIDs, like the CLI component. -->
+      <Component Id="DeckcraftMitLicense">
+        <File Id="DeckcraftMitLicenseFile" Source="$(var.BinDir)\LICENSE-MIT" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftApacheLicense">
+        <File Id="DeckcraftApacheLicenseFile" Source="$(var.BinDir)\LICENSE-APACHE" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftNotice">
+        <File Id="DeckcraftNoticeFile" Source="$(var.BinDir)\NOTICE" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftAttribution">
+        <File Id="DeckcraftAttributionFile" Source="$(var.BinDir)\ATTRIBUTION.md" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+    <?if $(var.FontLicences) = "yes" ?>
+    <!-- NexusOffices: OFL texts of the embedded fonts, staged by package.ps1 in licenses\, one
+         auto-GUID component each. -->
+    <ComponentGroup Id="DeckcraftFontLicences" Directory="LicensesFolder">
+      <Files Include="$(var.BinDir)\licenses\*" />
+    </ComponentGroup>
+    <?endif ?>
   </Fragment>
 </Wix>
