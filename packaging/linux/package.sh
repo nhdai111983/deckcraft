@@ -101,7 +101,7 @@ fi
 if has appimage; then
   APPDIR="$WORK/NexusSlides.AppDir"
   cp -R "$STAGE" "$APPDIR"
-  # NexusOffices: usr/share/doc (licences, NOTICE, ATTRIBUTION.md) stays inside the AppImage.
+  # NexusOffices: usr/share/doc (licences, NOTICE, ATTRIBUTION.md, OFL texts) stays inside the AppImage.
   ln -s usr/bin/nexus-slides "$APPDIR/AppRun"
   cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
   cp "$ROOT/nexus/assets/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"

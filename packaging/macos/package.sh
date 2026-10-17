@@ -105,6 +105,7 @@ cp "$WORK/bin/deckcraft" "$APP/Contents/MacOS/NexusSlides"
 cp "$ROOT/nexus/assets/nexus-slides.icns" "$APP/Contents/Resources/NexusSlides.icns"
 # Licences of the embedded craft-fonts fonts (only when built with CRAFT_FONTS_DIR).
 copy_font_licences "$APP/Contents/Resources"
+# NexusOffices: licences, NOTICE, ATTRIBUTION.md and the repo fonts' OFL texts (after the craft-fonts ones).
 copy_notices "$APP/Contents/Resources"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$SHORT_VERSION/g" \
   -e "s/@BUILD_SHA@/${DECKCRAFT_BUILD_SHA:-unknown}/g" \

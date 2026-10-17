@@ -17,6 +17,11 @@
   own too, so it installs and uninstalls next to upstream's app without touching it.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- NexusOffices: package.ps1 passes FontLicences=yes when it staged licenses\ (the OFL texts of
+       the embedded fonts); a build without that folder (a smoke test) leaves the group out. -->
+  <?ifndef FontLicences ?>
+  <?define FontLicences = "no" ?>
+  <?endif ?>
   <Package
       Name="Nexus Slides"
       Manufacturer="Sonnytech"
@@ -37,12 +42,19 @@
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/nhdai111983/deckcraft" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="Nexus Slides" />
+      <Directory Id="INSTALLFOLDER" Name="Nexus Slides">
+        <?if $(var.FontLicences) = "yes" ?>
+        <Directory Id="LicensesFolder" Name="licenses" />
+        <?endif ?>
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
     <Feature Id="Main" Title="Nexus Slides" Level="1">
       <ComponentGroupRef Id="DeckcraftFiles" />
+      <?if $(var.FontLicences) = "yes" ?>
+      <ComponentGroupRef Id="DeckcraftFontLicences" />
+      <?endif ?>
     </Feature>
   </Package>
 
@@ -100,5 +112,12 @@
         <File Id="DeckcraftAttributionFile" Source="$(var.BinDir)\ATTRIBUTION.md" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+    <?if $(var.FontLicences) = "yes" ?>
+    <!-- NexusOffices: OFL texts of the embedded fonts, staged by package.ps1 in licenses\, one
+         auto-GUID component each. -->
+    <ComponentGroup Id="DeckcraftFontLicences" Directory="LicensesFolder">
+      <Files Include="$(var.BinDir)\licenses\*" />
+    </ComponentGroup>
+    <?endif ?>
   </Fragment>
 </Wix>
