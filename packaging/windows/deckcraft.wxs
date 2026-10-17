@@ -5,9 +5,10 @@
 
     wix build deckcraft.wxs -arch x64 -d Version=1.2.3 -d BinDir=... -d IconPath=... -o out.msi
 
-  Per-machine install into Program Files\Nexus Slides, a Start Menu shortcut, `.deckcraft`
-  owned by Nexus Slides, and Nexus Slides offered under "Open with" for .pptx/.potx/.ppsx
-  (without taking over the user's default app for them).
+  Per-machine install into Program Files\Nexus Slides, a Start Menu shortcut, and Nexus Slides
+  offered under "Open with" for .deckcraft/.pptx/.potx/.ppsx without taking over the user's
+  default app for them. Unlike upstream, it does not own .deckcraft (see the ProgId below), so it
+  coexists with an installed copy of upstream's app.
 
   UpgradeCode and the component GUID below belong to Nexus Slides alone (generated 2026-10-17;
   never change them, or upgrades install side by side). Never copy them from (or into) upstream
@@ -54,14 +55,20 @@
               Icon="DeckcraftIcon.ico" IconIndex="0" />
         </File>
 
-        <!-- .deckcraft: the app's own format (extension and MIME type unchanged from upstream). -->
-        <ProgId Id="Sonnytech.NexusSlides.Presentation" Description="Nexus Slides Presentation" Icon="DeckcraftExe" IconIndex="0">
-          <Extension Id="deckcraft" ContentType="application/x-deckcraft">
-            <Verb Id="open" Command="Open" TargetFile="DeckcraftExe" Argument="&quot;%1&quot;" />
-          </Extension>
-        </ProgId>
+        <!-- ProgId: how Explorer opens a file with Nexus Slides. Written as plain registry values,
+             not a WiX <ProgId><Extension>, because that would make Nexus Slides the owner of
+             .deckcraft: upstream's app owns the same extension (its own ProgId), and
+             installing would overwrite HKCR\.deckcraft's default value and Content Type while
+             uninstalling would delete them, breaking upstream's installed app. Nexus Slides never
+             writes .deckcraft's default value or Content Type; the extension and the
+             application/x-deckcraft MIME type stay the shared file-format identifiers. -->
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation" Value="Nexus Slides Presentation" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\DefaultIcon" Value="&quot;[#DeckcraftExe]&quot;,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
 
-        <!-- "Open with" for PowerPoint formats, without becoming the default. -->
+        <!-- "Open with" for .deckcraft and the PowerPoint formats, without becoming the default
+             (only a named value under OpenWithProgids; uninstall removes just that value). -->
+        <RegistryValue Root="HKLM" Key="Software\Classes\.deckcraft\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe" Name="FriendlyAppName" Value="Nexus Slides" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slides.exe\SupportedTypes" Name=".deckcraft" Value="" Type="string" />

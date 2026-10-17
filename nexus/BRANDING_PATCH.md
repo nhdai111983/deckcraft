@@ -18,7 +18,24 @@ Giữ / đổi trong khai báo kiểu tệp macOS (`packaging/macos/Info.plist.i
 `ai.storyteller.deckcraft.presentation` → `vn.sonnytech.nexus.slides.presentation` (UTI gắn với bundle
 id của app khai báo nó) và mô tả "Nexus Slides Presentation"; **giữ** đuôi `deckcraft`
 (`public.filename-extension`), thẻ MIME `application/x-deckcraft` (`public.mime-type`) và
-`UTTypeConformsTo`. Linux giữ cùng MIME type; Windows giữ đuôi `.deckcraft` và ContentType.
+`UTTypeConformsTo`. Linux giữ cùng MIME type; Windows giữ đuôi `.deckcraft` (MIME `application/x-deckcraft` là định danh định dạng dùng chung).
+
+## Cùng tồn tại với DeckCraft gốc (Review Focus #1)
+- **Windows:** Nexus Slides **không sở hữu** `.deckcraft` (DeckCraft gốc sở hữu qua ProgId riêng). MSI chỉ
+  ghi ProgId `Sonnytech.NexusSlides.Presentation` và giá trị có tên dưới `.deckcraft\OpenWithProgids`
+  (như `.pptx/.potx/.ppsx`); không ghi giá trị mặc định hay `Content Type` của `HKLM\Software\Classes\.deckcraft`,
+  nên cài/gỡ Nexus Slides không đổi hay xoá đăng ký của DeckCraft. Thư mục cài, khoá registry, UpgradeCode,
+  GUID component đều riêng.
+- **Linux:** file MIME cài dưới tên riêng `/usr/share/mime/packages/vn.sonnytech.nexus.slides.xml`; DeckCraft
+  cài `ai.storyteller.deckcraft.xml` cùng định nghĩa `application/x-deckcraft` + `*.deckcraft`. shared-mime-info
+  gộp hai file, gỡ gói nào chỉ xoá file của gói đó → định nghĩa vẫn còn từ gói kia. `.desktop` chỉ khai báo
+  `MimeType=` (thêm Nexus vào danh sách ứng dụng mở được, không đặt mặc định). Gói deb/rpm tên khác,
+  không trùng đường dẫn file (binary, desktop, metainfo, icon, doc). Không cần sửa.
+- **macOS:** `Info.plist.in` không có `CFBundleDocumentTypes` (nên không có `LSHandlerRank`); chỉ có
+  `UTExportedTypeDeclarations` với UTI riêng `vn.sonnytech.nexus.slides.presentation` cho đuôi `deckcraft`.
+  Khi cài cả hai app, hai UTI xuất cùng một đuôi: Launch Services chọn một để gán kiểu cho tệp — không phá
+  đăng ký của DeckCraft khi gỡ, nhưng là điểm cần xem lại khi thêm `CFBundleDocumentTypes` (khi đó dùng
+  `LSHandlerRank` = `Alternate`, hoặc chuyển sang `UTImportedTypeDeclarations` với UTI của upstream).
 
 ## Cơ chế
 
@@ -84,7 +101,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `apps/deckcraft-cli/tests/cli.rs` | Assert trợ giúp theo tên `nexus-slides-cli` | Đi cùng `help.rs` |
 | `apps/deckcraft-web/index.html` | `<title>Nexus Slides</title>`, favicon Nexus, "Loading Nexus Slides…" | Có |
 | `apps/deckcraft-web/src/web.rs` | Lỗi khởi động bản web | Có |
-| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer Sonnytech, **UpgradeCode + GUID component mới**, cài `nexus-slides.exe`/`nexus-slides-cli.exe` vào `Program Files\Nexus Slides`, ProgId `Sonnytech.NexusSlides.Presentation`, `Applications\nexus-slides.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork) | Một phần (biến WiX) |
+| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer Sonnytech, **UpgradeCode + GUID component mới**, cài `nexus-slides.exe`/`nexus-slides-cli.exe` vào `Program Files\Nexus Slides`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slides.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork) | Một phần (biến WiX) |
 | `packaging/windows/package.ps1` | `NexusSlides-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slides(.exe)`/`nexus-slides-cli.exe` như MSI | Một phần |
 | `packaging/windows/sign.ps1` | Mô tả chữ ký `/d Nexus Slides`, `/du` repo fork | Một phần |
 | `packaging/macos/Info.plist.in` | Tên bundle, executable `NexusSlides`, id `vn.sonnytech.nexus.slides`, icon, UTI `.deckcraft` mới, copyright (ghi công) | Một phần |
