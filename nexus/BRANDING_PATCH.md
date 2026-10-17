@@ -116,6 +116,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `packaging/web/README.md` | Được đóng gói thành `HOSTING.md` trong zip web → tên sản phẩm/tên zip/đường dẫn ví dụ | Không (tài liệu đi kèm gói) |
 | `omastore.toml` | Icon, tên tài sản `NexusSlides-*`, exec `bin/nexus-slides` | Không |
 | `README.md` | README Nexus Slides ngắn (vi trước, có English): sản phẩm, NexusOffices/Sonnytech, câu ghi công "Nexus Slides được phát triển dựa trên DeckCraft của ArtCraft (MIT/Apache-2.0)" chỉ bằng chữ, trỏ LICENSE-MIT/LICENSE-APACHE/NOTICE/ATTRIBUTION; được `copy_docs` và zip portable đóng gói | Không (README của fork) |
+| `Cargo.toml` | `[workspace.package] repository` → `https://github.com/nhdai111983/deckcraft` (brand-check `brand-url`; metadata, không code nào đọc `CARGO_PKG_REPOSITORY`) | Có — metadata của fork |
 | `ATTRIBUTION.md` | 14 dòng cho icon Nexus (`nexus/assets/**`, Sonnytech, CC0-1.0) | Không (bắt buộc theo luật asset) |
 
 ### GUID WiX mới (Nexus Slides riêng, không dùng chung với DeckCraft hay app Nexus khác)
