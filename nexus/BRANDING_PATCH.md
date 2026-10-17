@@ -101,13 +101,14 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `apps/deckcraft-cli/tests/cli.rs` | Assert trợ giúp theo tên `nexus-slides-cli` | Đi cùng `help.rs` |
 | `apps/deckcraft-web/index.html` | `<title>Nexus Slides</title>`, favicon Nexus, "Loading Nexus Slides…" | Có |
 | `apps/deckcraft-web/src/web.rs` | Lỗi khởi động bản web | Có |
-| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer Sonnytech, **UpgradeCode + GUID component mới**, cài `nexus-slides.exe`/`nexus-slides-cli.exe` vào `Program Files\Nexus Slides`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slides.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork) | Một phần (biến WiX) |
-| `packaging/windows/package.ps1` | `NexusSlides-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slides(.exe)`/`nexus-slides-cli.exe` như MSI | Một phần |
+| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer Sonnytech, **UpgradeCode + GUID component mới**, cài `nexus-slides.exe`/`nexus-slides-cli.exe` vào `Program Files\Nexus Slides`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slides.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork); cài `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` cạnh exe (4 component mới, GUID tự sinh) | Một phần (biến WiX) |
+| `packaging/windows/package.ps1` | `NexusSlides-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slides(.exe)`/`nexus-slides-cli.exe` như MSI; chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào thư mục stage (MSI cài từ đó) và zip portable (Apache-2.0 §4(d)) | Một phần |
 | `packaging/windows/sign.ps1` | Mô tả chữ ký `/d Nexus Slides`, `/du` repo fork | Một phần |
 | `packaging/macos/Info.plist.in` | Tên bundle, executable `NexusSlides`, id `vn.sonnytech.nexus.slides`, icon, UTI `.deckcraft` mới, copyright (ghi công) | Một phần |
-| `packaging/macos/package.sh` | `Nexus Slides.app`, `NexusSlides-*.dmg`, `NexusSlides-cli-*.zip` chứa `nexus-slides-cli`, icns Nexus, tên volume; không chép `dmg-layout.DS_Store`/nền (gắn tên/icon DeckCraft) | Một phần |
-| `packaging/linux/package.sh` | `APP_ID=vn.sonnytech.nexus.slides`, `/usr/bin/nexus-slides(-cli)`, `NexusSlides-*`, icon `nexus/assets/hicolor`, maintainer Sonnytech, zsync trỏ fork | Một phần |
+| `packaging/macos/package.sh` | `Nexus Slides.app`, `NexusSlides-*.dmg`, `NexusSlides-cli-*.zip` chứa `nexus-slides-cli`, icns Nexus, tên volume; không chép `dmg-layout.DS_Store`/nền (gắn tên/icon DeckCraft); `copy_notices` chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào `Contents/Resources` của app (trước khi ký) | Một phần |
+| `packaging/linux/package.sh` | `APP_ID=vn.sonnytech.nexus.slides`, `/usr/bin/nexus-slides(-cli)`, `NexusSlides-*`, icon `nexus/assets/hicolor`, maintainer Sonnytech, zsync trỏ fork; AppImage giữ `usr/share/doc/nexus-slides` (giấy phép, `NOTICE`, `ATTRIBUTION.md`) thay vì bỏ ra ngoài | Một phần |
 | `packaging/linux/nfpm.yaml` | Gói `nexus-slides`, vendor/homepage, binary, ghi công | Một phần |
+| `packaging/common.sh` | `copy_docs` chép thêm `NOTICE` (Apache-2.0 §4(d)) và `ATTRIBUTION.md` (README Nexus trỏ tới cả hai) qua hàm mới `copy_notices` — bắt buộc, thiếu file thì lỗi; dùng cho deb/AppImage/tar, zip CLI macOS, zip web (và FreeBSD của upstream) | Nên PR upstream (gói upstream cũng thiếu NOTICE) |
 | `packaging/linux/vn.sonnytech.nexus.slides.desktop` | Đổi tên từ `ai.storyteller.deckcraft.desktop`: Name, Exec/TryExec `nexus-slides`, Icon, StartupWMClass | Một phần |
 | `packaging/linux/vn.sonnytech.nexus.slides.metainfo.xml.in` | Đổi tên từ `ai.storyteller.deckcraft.metainfo.xml.in`: id, tên, developer Sonnytech, URL fork, bỏ Discord và ảnh chụp trên storytold, binary, ghi công | Một phần |
 | `packaging/linux/vn.sonnytech.nexus.slides.mime.xml` | Đổi tên từ `ai.storyteller.deckcraft.mime.xml`: **giữ MIME `application/x-deckcraft` + glob `*.deckcraft`**, chỉ đổi tên hiển thị và icon | Một phần |
@@ -124,6 +125,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `UpgradeCode` | `6F9C69E7-7825-40D2-BF26-C274DA676425` | `96D068F9-30CC-4E22-808D-242613C1E158` |
 | Component `DeckcraftApp` | `D87EA444-41A4-4C19-922E-66D1A29461FF` | `F3911F7B-4F9F-4BA6-8D06-B513AB237AF1` |
 | Component `DeckcraftCli` | (tự sinh theo đường dẫn) | tự sinh — thư mục cài (`Nexus Slides`) và tên file (`nexus-slides-cli.exe`) đã khác |
+| Component `DeckcraftMitLicense`, `DeckcraftApacheLicense`, `DeckcraftNotice`, `DeckcraftAttribution` | (không có ở upstream) | tự sinh — file giấy phép/NOTICE/ATTRIBUTION.md cài cạnh exe |
 
 Sinh bằng `python3 -c "import uuid; print(uuid.uuid4())"` ngày 2026-10-17.
 

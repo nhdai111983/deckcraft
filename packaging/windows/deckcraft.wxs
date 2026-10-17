@@ -85,6 +85,20 @@
       <Component Id="DeckcraftCli">
         <File Id="DeckcraftCliExe" Source="$(var.BinDir)\deckcraft-cli.exe" Name="nexus-slides-cli.exe" KeyPath="yes" />
       </Component>
+      <!-- NexusOffices: the licences, NOTICE (Apache-2.0 4(d)) and ATTRIBUTION.md, staged by
+           package.ps1, are installed beside the binaries. Auto GUIDs, like the CLI component. -->
+      <Component Id="DeckcraftMitLicense">
+        <File Id="DeckcraftMitLicenseFile" Source="$(var.BinDir)\LICENSE-MIT" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftApacheLicense">
+        <File Id="DeckcraftApacheLicenseFile" Source="$(var.BinDir)\LICENSE-APACHE" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftNotice">
+        <File Id="DeckcraftNoticeFile" Source="$(var.BinDir)\NOTICE" KeyPath="yes" />
+      </Component>
+      <Component Id="DeckcraftAttribution">
+        <File Id="DeckcraftAttributionFile" Source="$(var.BinDir)\ATTRIBUTION.md" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
   </Fragment>
 </Wix>

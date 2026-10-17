@@ -87,6 +87,11 @@ $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'deckcraft.exe'), (Join-Path $Bin 'deckcraft-cli.exe') $Stage
+# NexusOffices: the licences, NOTICE (Apache-2.0 §4(d)) and ATTRIBUTION.md travel beside the
+# binaries: the MSI installs them from here and the portable zip copies them below.
+foreach ($f in 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
+  Copy-Item (Join-Path $Root $f) $Stage
+}
 
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'deckcraft.exe') (Join-Path $Stage 'deckcraft-cli.exe')
 
@@ -108,7 +113,7 @@ New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 # The installed names, as in the MSI (Cargo still builds deckcraft.exe / deckcraft-cli.exe).
 Copy-Item (Join-Path $Stage 'deckcraft.exe') (Join-Path $Portable 'nexus-slides.exe')
 Copy-Item (Join-Path $Stage 'deckcraft-cli.exe') (Join-Path $Portable 'nexus-slides-cli.exe')
-foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE') {
+foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }
