@@ -80,6 +80,11 @@ pattern = 'app-(title|dir): DeckCraft'
 reason = "CI phát hành của upstream (đã tắt trên fork); NexusOffices phát hành bằng nexus-release.yml (Task 12)"
 
 [[allow]]
+path = ".github/workflows/{nexus-ci.yml,nexus-sync.yml}"
+pattern = 'github\.com/storytold/\$UPSTREAM_REPO'
+reason = "Workflow NexusOffices (template trong NexusOffices/templates/workflows) phải lấy upstream để đếm patch và đồng bộ; không phát hành, người dùng không thấy"
+
+[[allow]]
 path = "packaging/linux/flatpak-bundle.sh"
 pattern = 'echo "==> DeckCraft \$VERSION Flatpak bundle'
 reason = "Flatpak chưa phát hành (NỢ trong BRANDING_PATCH.md)"
