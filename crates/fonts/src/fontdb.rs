@@ -773,6 +773,18 @@ fn style_italic(style: &str) -> bool {
     s.contains("italic") || s.contains("oblique") || s == "it"
 }
 
+/// Font family names in list order: sorted by collation (layer 1: accented letters beside their
+/// base letter, case and NFC/NFD ignored; pure ASCII names keep the lowercase byte order), and
+/// merged when two names are the same text, keeping the spelling met first. Names are never
+/// rewritten.
+pub fn sorted_unique_names(v: Vec<String>) -> Vec<String> {
+    let mut keyed: Vec<(TextKey, String)> = v.into_iter().map(|s| (text_key(&s, Collation::Root), s)).collect();
+    // A stable sort leaves equal names in the order they came, so the first one met survives.
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    keyed.dedup_by(|later, earlier| later.0 == earlier.0);
+    keyed.into_iter().map(|(_, s)| s).collect()
+}
+
 impl FontDb {
     /// A database holding the bundled fonts, then the craft-fonts Japanese faces (Mincho first,
     /// so they are the fallback for Japanese text after the requested and bundled fonts; empty
@@ -1475,18 +1487,6 @@ mod font_dir_tests {
         u.dedup();
         assert_eq!(u.len(), d.len());
     }
-}
-
-/// Font family names in list order: sorted by collation (layer 1: accented letters beside their
-/// base letter, case and NFC/NFD ignored; pure ASCII names keep the lowercase byte order), and
-/// merged when two names are the same text, keeping the spelling met first. Names are never
-/// rewritten.
-pub fn sorted_unique_names(v: Vec<String>) -> Vec<String> {
-    let mut keyed: Vec<(TextKey, String)> = v.into_iter().map(|s| (text_key(&s, Collation::Root), s)).collect();
-    // A stable sort leaves equal names in the order they came, so the first one met survives.
-    keyed.sort_by(|a, b| a.0.cmp(&b.0));
-    keyed.dedup_by(|later, earlier| later.0 == earlier.0);
-    keyed.into_iter().map(|(_, s)| s).collect()
 }
 
 #[cfg(test)]

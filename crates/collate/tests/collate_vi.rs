@@ -3,7 +3,7 @@
 //!
 //! Expected orders are fixed vectors for the `vi` collation, written out as literals: they were
 //! first checked with ICU 77.1 / CLDR 47 `vi` and are re-checked against ICU4X 2.3.1 in
-//! `collate_icu.rs`, both at secondary strength. PdfCraft has no case level in its text order (a list
+//! `collate_icu.rs`, both at secondary strength. DeckCraft has no case level in its text order (a list
 //! of names or bookmarks ignores case), so case-level vectors are not here.
 
 use std::cmp::Ordering;

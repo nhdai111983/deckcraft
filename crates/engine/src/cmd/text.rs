@@ -1438,6 +1438,10 @@ fn replace_font(s: &mut Session, p: &Value) -> Result<Value> {
     if to.len() > 256 || to.chars().any(char::is_control) {
         return Err(bad("font.replace", "`to` is not a font name"));
     }
+    // `from` is folded once per call and compared with every font name in the deck: bound it.
+    if from.len() > 256 {
+        return Err(bad("font.replace", "`from` is not a font name"));
+    }
     // Count on a copy first so a replace that finds nothing leaves no undo step.
     let mut probe = (*s.doc()?.doc).clone();
     if crate::fonts::replace_font(&mut probe, &from, &to) == 0 {
@@ -1528,10 +1532,11 @@ mod replace_font_tests {
 
     #[test]
     fn ascii_font_order_unchanged() {
-        let mut s = session_in_fonts(&["Times New Roman", "calibri", "Arial", "arial black"]);
-        let used = fonts(&mut s);
-        let at = |n: &str| used.iter().position(|f| f == n).unwrap_or_else(|| panic!("{n} in {used:?}"));
-        assert!(at("Arial") < at("arial black") && at("arial black") < at("calibri") && at("calibri") < at("Times New Roman"), "{used:?}");
+        // Names no machine has, so format.font keeps their spelling.
+        let mut s = session_in_fonts(&["Qqq Times New Roman", "Qqq calibri", "Qqq Arial", "Qqq arial black"]);
+        let used: Vec<String> = fonts(&mut s).into_iter().filter(|f| f.starts_with("Qqq ")).collect();
+        // The old order: `to_lowercase` byte order.
+        assert_eq!(used, ["Qqq Arial", "Qqq arial black", "Qqq calibri", "Qqq Times New Roman"]);
     }
 
     #[test]
@@ -1554,6 +1559,18 @@ mod replace_font_tests {
         }
         let _ = s.execute("format.font", &json!({"family": marks}));
         let _ = fonts(&mut s);
+    }
+
+    #[test]
+    fn replace_from_over_256_bytes_is_refused() {
+        let mut s = session_in_fonts(&["Qqq Sans"]);
+        let undo = s.doc().unwrap().history.undo.len();
+        for from in ["x".repeat(257), "Ế".repeat(1 << 19), format!("e{}", "\u{301}".repeat(10_000))] {
+            assert!(s.execute("font.replace", &json!({"from": from, "to": "Inter"})).is_err(), "{}", from.len());
+        }
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo);
+        // 256 bytes is still a (nonexistent) font name: nothing replaced, no error.
+        assert_eq!(s.execute("font.replace", &json!({"from": "x".repeat(256), "to": "Inter"})).unwrap()["replaced"], 0);
     }
 
     #[test]

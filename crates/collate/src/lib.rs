@@ -1,5 +1,5 @@
-//! Text collation for the lists DeckCraft sorts and filters (font names; the same code serves the
-//! sibling apps' comment authors, bookmarks, form choices and file names).
+//! Text collation for the lists DeckCraft sorts and filters (comment authors, bookmarks, form
+//! choices, file names).
 //!
 //! - **Canonical equivalence.** A letter typed precomposed (`ế`, U+1EBF) and typed as base + marks
 //!   (`e` U+0302 U+0301) is the same text, and so are marks of different combining classes typed
@@ -551,7 +551,7 @@ pub fn natural(a: &str, b: &str, c: Collation) -> Ordering {
 
 /// `s` prepared for searching: the viewer's case mapping first, then [`fold_key`].
 ///
-/// The mapping is the one the PdfCraft viewer applies to page text: the Latin `I`
+/// The mapping is the one `pdfcraft_render::text::fold_case` applies to page text: the Latin `I`
 /// and `i`, the dotted `İ` (U+0130) and the dotless `ı` (U+0131) all become `i` (Turkish and
 /// Azerbaijani text can be found by typing `istanbul` or `ırmak`; search cannot know the
 /// language, so the four are one letter), and Greek `Σ`, `σ` and the word-final `ς` become `σ`.

@@ -1,7 +1,7 @@
 # deckcraft-collate
 
-Text collation for the lists DeckCraft sorts and filters (font names; the same code serves the
-sibling apps' comment authors, bookmarks, form choices and file names).
+Text collation for the lists DeckCraft sorts and filters: comment authors, bookmarks, form
+choices and file names.
 
 - **Layer:** L0, standalone, no dependencies. `#![forbid(unsafe_code)]` (workspace lint) and the
   crate denies `unwrap`/`expect`/`panic!`/`todo!`. std only, no dependencies; the wasm gate runs in CI.

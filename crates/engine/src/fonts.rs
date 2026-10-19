@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use deckcraft_collate::{fold_key, text_eq};
+use deckcraft_collate::fold_key;
 use deckcraft_fonts::{FontDb, sorted_unique_names};
 use deckcraft_model::resolve::{self, Ctx};
 use deckcraft_model::text::{Bullet, TextBody};
@@ -90,9 +90,11 @@ pub fn replace_font(p: &mut Presentation, from: &str, to: &str) -> usize {
     if from.is_empty() || to.is_empty() || from.starts_with('+') || from == to {
         return 0;
     }
+    // Folded once: every field is compared with this key, not with `from` again.
+    let from_key = fold_key(from);
     let mut n = 0usize;
     let mut fix = |f: &mut Option<String>| {
-        if f.as_deref().is_some_and(|x| text_eq(x.trim(), from)) {
+        if f.as_deref().is_some_and(|x| fold_key(x.trim()) == from_key) {
             *f = Some(to.to_string());
             n = n.saturating_add(1);
         }
@@ -116,7 +118,7 @@ pub fn replace_font(p: &mut Presentation, from: &str, to: &str) -> usize {
         }
         for set in [&mut m.theme.fonts.major, &mut m.theme.fonts.minor] {
             for face in [&mut set.latin, &mut set.ea, &mut set.cs].into_iter().chain(set.scripts.iter_mut().map(|s| &mut s.typeface)) {
-                if text_eq(face.trim(), from) {
+                if fold_key(face.trim()) == from_key {
                     *face = to.to_string();
                     theme_hits = theme_hits.saturating_add(1);
                 }

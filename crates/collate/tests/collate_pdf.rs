@@ -1,4 +1,4 @@
-//! What PdfCraft needs on top of the collation: natural (number-aware) order for file names,
+//! What DeckCraft needs on top of the collation: natural (number-aware) order for file names,
 //! whole-letter search with the viewer's Turkish and Greek folds, and language tags.
 
 use std::cmp::Ordering;
@@ -220,7 +220,7 @@ fn search_keeps_turkish_and_sigma_and_whole_letters() {
 
 #[test]
 fn search_fold_maps_like_the_viewer_then_folds_the_key() {
-    // The mapping of `the PdfCraft viewer's case fold`: I i İ ı -> i, Σ σ ς -> σ.
+    // The mapping of `pdfcraft_render::text::fold_case`: I i İ ı -> i, Σ σ ς -> σ.
     assert_eq!(search_fold("I\u{130}\u{131}i"), "iiii");
     assert_eq!(search_fold("Σσς"), "σσσ");
     // Then the key: lowercase, decomposed, marks in canonical order.
