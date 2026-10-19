@@ -1429,9 +1429,7 @@ pub(crate) fn format_body(s: &mut Session, f: &(dyn Fn(&mut deckcraft_model::tex
 }
 
 fn fonts_used(s: &mut Session, _: &Value) -> Result<Value> {
-    let mut v = crate::fonts::used_fonts(&s.doc()?.doc);
-    v.sort_by_key(|f| f.to_lowercase());
-    Ok(json!(v))
+    Ok(json!(deckcraft_fonts::sorted_unique_names(crate::fonts::used_fonts(&s.doc()?.doc))))
 }
 
 fn replace_font(s: &mut Session, p: &Value) -> Result<Value> {
@@ -1505,6 +1503,57 @@ mod replace_font_tests {
         s.execute("edit.undo", &json!({})).unwrap();
         s.execute("edit.undo", &json!({})).unwrap();
         assert!(fonts(&mut s).iter().any(|f| f == "Comic Neue"));
+    }
+
+    /// A session whose text boxes are drawn in the given fonts, one box per name.
+    fn session_in_fonts(names: &[&str]) -> Session {
+        let mut s = Session::with_new();
+        s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "T", "body": "B"})).unwrap();
+        for n in names {
+            s.execute("insert.textBox", &json!({"rect": [10, 10, 200, 50], "text": "Hello"})).unwrap();
+            s.execute("text.exit", &json!({})).unwrap();
+            s.execute("format.font", &json!({"family": n})).unwrap();
+        }
+        s
+    }
+
+    #[test]
+    fn font_lists_merge_case_and_nfd() {
+        let mut s = session_in_fonts(&["Zapfino", "Đồ Hoạ", "ann sans", "Ánh Sáng", "Ann Sans", "đồ hoạ", "A\u{301}nh Sáng"]);
+        let used = fonts(&mut s);
+        let spellings = ["Zapfino", "Đồ Hoạ", "ann sans", "Ánh Sáng", "Ann Sans", "đồ hoạ", "A\u{301}nh Sáng"];
+        let ours: Vec<&str> = used.iter().map(String::as_str).filter(|f| spellings.contains(f)).collect();
+        assert_eq!(ours, ["Ánh Sáng", "ann sans", "Đồ Hoạ", "Zapfino"], "{used:?}");
+    }
+
+    #[test]
+    fn ascii_font_order_unchanged() {
+        let mut s = session_in_fonts(&["Times New Roman", "calibri", "Arial", "arial black"]);
+        let used = fonts(&mut s);
+        let at = |n: &str| used.iter().position(|f| f == n).unwrap_or_else(|| panic!("{n} in {used:?}"));
+        assert!(at("Arial") < at("arial black") && at("arial black") < at("calibri") && at("calibri") < at("Times New Roman"), "{used:?}");
+    }
+
+    #[test]
+    fn replace_matches_nfd_and_case() {
+        let mut s = session_in_fonts(&["Đô\u{300} Hoa\u{323}"]);
+        let r = s.execute("font.replace", &json!({"from": " đồ hoạ ", "to": "Lato"})).unwrap();
+        assert!(r["replaced"].as_u64().unwrap() >= 1, "{r}");
+        let used = fonts(&mut s);
+        assert!(used.iter().any(|f| f == "Lato") && !used.iter().any(|f| f.starts_with("Đ")), "{used:?}");
+    }
+
+    #[test]
+    fn font_names_hostile_never_panic() {
+        let marks = format!("e{}", "\u{301}".repeat(10_000));
+        let big = "Ế".repeat(1 << 19);
+        let mut s = session_in_fonts(&["\u{10FFFF}", "Lato"]);
+        for from in [marks.as_str(), big.as_str(), "\u{10FFFF}", "e\u{301}", "\u{0}", " "] {
+            let _ = s.execute("font.replace", &json!({"from": from, "to": "Inter"}));
+            let _ = fonts(&mut s);
+        }
+        let _ = s.execute("format.font", &json!({"family": marks}));
+        let _ = fonts(&mut s);
     }
 
     #[test]
