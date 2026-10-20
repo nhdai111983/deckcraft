@@ -1555,7 +1555,7 @@ mod replace_font_tests {
         let mut s = session_in_fonts(&[nfd, "Đồ Hoạ"]);
         // The variant's run (and its end mark) change; the NFC field already spells `to`.
         let r = s.execute("font.replace", &json!({"from": "Đồ Hoạ", "to": "Đồ Hoạ"})).unwrap();
-        assert!(r["replaced"].as_u64().unwrap() >= 1, "{r}");
+        assert_eq!(r["replaced"], 2, "{r}");
         assert!(!spelled(&s, nfd) && spelled(&s, "Đồ Hoạ"));
         // Once normalised there is nothing left to change, and no undo step for it.
         let undo = s.doc().unwrap().history.undo.len();
