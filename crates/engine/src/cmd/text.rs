@@ -1549,6 +1549,27 @@ mod replace_font_tests {
     }
 
     #[test]
+    fn replace_with_the_same_name_normalises_variants_and_undoes() {
+        let nfd = "Đô\u{300} Hoa\u{323}";
+        let spelled = |s: &Session, name: &str| crate::fonts::used_fonts(&s.doc().unwrap().doc).iter().any(|f| f == name);
+        let mut s = session_in_fonts(&[nfd, "Đồ Hoạ"]);
+        // The variant's run (and its end mark) change; the NFC field already spells `to`.
+        let r = s.execute("font.replace", &json!({"from": "Đồ Hoạ", "to": "Đồ Hoạ"})).unwrap();
+        assert!(r["replaced"].as_u64().unwrap() >= 1, "{r}");
+        assert!(!spelled(&s, nfd) && spelled(&s, "Đồ Hoạ"));
+        // Once normalised there is nothing left to change, and no undo step for it.
+        let undo = s.doc().unwrap().history.undo.len();
+        assert_eq!(s.execute("font.replace", &json!({"from": "Đồ Hoạ", "to": "Đồ Hoạ"})).unwrap()["replaced"], 0);
+        assert_eq!(s.doc().unwrap().history.undo.len(), undo);
+        // One undo restores the variant spelling.
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(spelled(&s, nfd));
+        // A name with no variant: nothing to do.
+        let mut s = session_in_fonts(&["Đồ Hoạ"]);
+        assert_eq!(s.execute("font.replace", &json!({"from": "Đồ Hoạ", "to": "Đồ Hoạ"})).unwrap()["replaced"], 0);
+    }
+
+    #[test]
     fn font_names_hostile_never_panic() {
         let marks = format!("e{}", "\u{301}".repeat(10_000));
         let big = "Ế".repeat(1 << 19);

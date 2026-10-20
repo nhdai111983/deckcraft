@@ -59,12 +59,14 @@ common misspellings (`crates/engine/src/cmd/review.rs`); see [gaps.md](gaps.md#p
 The font lists (the installed-family list, `font.used`, the missing-fonts list) and Replace Fonts
 use the std-only crate `crates/collate` (`deckcraft-collate`): names sort by base letter first,
 then accent marks (`Ánh` beside `Anh`, `đ` as `d` plus a mark), and names that differ only by case
-or by NFC against NFD are one entry (the first spelling met is kept; names are never rewritten).
+or by NFC against NFD are one entry (the first spelling met is kept; the lists never rewrite a name).
 Other characters (`ø`, `ł`, Cyrillic, CJK, digits, punctuation) go by code point, so this is
 collation layer 1, not the CLDR root order. Pure-ASCII lists keep their order. There is no
 Vietnamese or other tailored order until the interface has languages. The ribbon font menu still
 puts the theme fonts first and removes only adjacent duplicates. Not covered: looking an installed
-font up by name (ASCII case only) and Find and Replace on slide text.
+font up by name (ASCII case only; so the missing-fonts list, which checks each exact spelling
+before merging, lists an NFD variant of an installed font as missing, and Replace Fonts "X with X"
+rewrites such variants to X) and Find and Replace on slide text.
 
 ## Revision history
 

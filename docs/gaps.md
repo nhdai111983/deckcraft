@@ -329,13 +329,16 @@ Detail in [localization-parity.md](localization-parity.md).
 - **Font names: only some lists are collation-aware.** The installed-family list
   (`FontDb::families`), `font.used`, the missing-fonts list and Replace Fonts sort and match by base
   letter first, then accent marks (case and NFC/NFD ignored; other characters by code point; the
-  first spelling met is kept and names are never rewritten). This is collation layer 1, not the
+  first spelling met is kept; the lists never rewrite a name). This is collation layer 1, not the
   CLDR/UCA root order (`ø`, `ł`, `æ`, `ß`, Cyrillic, CJK, digits and punctuation order by code
   point). The ribbon font menu puts the two theme fonts first and removes only adjacent duplicates,
   so a theme font that is a case or NFD variant of an installed family still shows twice, and the
   Replace Fonts "With" filter still uses `to_lowercase().contains`. Looking an installed font up by
   name (`has_family`, face and document-face lookup) still ignores ASCII case only, so a document
-  that names an installed non-ASCII font in NFD still draws in a stand-in. There is no Vietnamese
+  that names an installed non-ASCII font in NFD still draws in a stand-in. The missing-fonts list
+  judges each exact spelling by that lookup before merging, so it lists that NFD spelling as
+  missing even when its NFC spelling is installed (Replace Fonts "X with X" rewrites such variant
+  spellings to X). There is no Vietnamese
   tailoring (no interface language yet), and Find and Replace text is not covered. Making the
   lookups use the same comparison is a small fix (about 1 h, estimate).
 - **UI isn't mirrored for right-to-left languages.** 6–10 h.

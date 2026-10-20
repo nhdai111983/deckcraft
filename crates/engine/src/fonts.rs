@@ -27,19 +27,40 @@ pub fn install_embedded_fonts(p: &Presentation) {
 /// The font families the slides' text is drawn in (theme fonts resolved, bullet fonts included)
 /// that aren't installed or bundled, in list order (see [`sorted_unique_names`]): names that differ
 /// only in case or in NFC/NFD encoding are one font, shown as first met.
+///
+/// Whether a name is installed is judged per exact spelling (`has_family` ignores ASCII case
+/// only), before spellings are merged: an installed `Đồ Hoạ` (NFC) does not hide a later
+/// `Đô Hoạ` in NFD, which still draws in a stand-in.
 pub fn missing_fonts(p: &Presentation) -> Vec<String> {
     let db = FontDb::global();
-    sorted_unique_names(used_fonts(p).into_iter().filter(|family| !db.has_family(family)).collect())
+    merge_missing(spellings(p), |family| db.has_family(family))
+}
+
+/// The names `has` doesn't know, in list order. Each distinct exact spelling is looked up (in
+/// document order); the ones that are missing are then merged like [`sorted_unique_names`] does,
+/// keeping the spelling met first.
+fn merge_missing(names: impl IntoIterator<Item = String>, has: impl Fn(&str) -> bool) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let missing: Vec<String> = names.into_iter().filter(|n| seen.insert(n.clone())).filter(|n| !has(n)).collect();
+    sorted_unique_names(missing)
 }
 
 /// The families the slides' text runs and bullets are drawn in, in the order they are met. Names
 /// that are the same text (case and NFC/NFD aside) count once, under the spelling met first.
 pub fn used_fonts(p: &Presentation) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    spellings(p).into_iter().filter(|f| seen.insert(fold_key(f))).collect()
+}
+
+/// Every distinct exact spelling (trimmed, not empty) of the families the slides' text runs and
+/// bullets are drawn in, in the order they are met.
+fn spellings(p: &Presentation) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     let mut add = |f: String| {
         let f = f.trim().to_string();
-        if !f.is_empty() && seen.insert(fold_key(&f)) {
+        if !f.is_empty() && !seen.contains(&f) {
+            seen.insert(f.clone());
             out.push(f);
         }
     };
@@ -82,19 +103,21 @@ fn body_fonts(ctx: &Ctx, s: &Shape, body: &TextBody, add: &mut dyn FnMut(String)
 /// their east Asian, complex script and symbol faces), bullet fonts, paragraph end marks, list
 /// styles of shapes, layouts and masters, the master text styles, the deck default style, speaker
 /// notes, tables and the theme fonts. Names compare as text, ignoring case and NFC/NFD encoding;
-/// theme references (`+mn-lt`) are left alone. Returns how many names changed.
+/// theme references (`+mn-lt`) are left alone. A name already spelled exactly `to` is not counted,
+/// so replacing a name with itself rewrites only its variant spellings (other case, NFD) to `to`.
+/// Returns how many names changed.
 pub fn replace_font(p: &mut Presentation, from: &str, to: &str) -> usize {
     use std::sync::Arc;
     let from = from.trim();
     let to = to.trim();
-    if from.is_empty() || to.is_empty() || from.starts_with('+') || from == to {
+    if from.is_empty() || to.is_empty() || from.starts_with('+') {
         return 0;
     }
     // Folded once: every field is compared with this key, not with `from` again.
     let from_key = fold_key(from);
     let mut n = 0usize;
     let mut fix = |f: &mut Option<String>| {
-        if f.as_deref().is_some_and(|x| fold_key(x.trim()) == from_key) {
+        if f.as_deref().is_some_and(|x| x.trim() != to && fold_key(x.trim()) == from_key) {
             *f = Some(to.to_string());
             n = n.saturating_add(1);
         }
@@ -118,7 +141,7 @@ pub fn replace_font(p: &mut Presentation, from: &str, to: &str) -> usize {
         }
         for set in [&mut m.theme.fonts.major, &mut m.theme.fonts.minor] {
             for face in [&mut set.latin, &mut set.ea, &mut set.cs].into_iter().chain(set.scripts.iter_mut().map(|s| &mut s.typeface)) {
-                if fold_key(face.trim()) == from_key {
+                if face.trim() != to && fold_key(face.trim()) == from_key {
                     *face = to.to_string();
                     theme_hits = theme_hits.saturating_add(1);
                 }
@@ -209,6 +232,23 @@ mod tests {
     }
 
     #[test]
+    fn merge_missing_judges_each_spelling_by_the_lookup() {
+        let nfc = "Đồ Hoạ";
+        let nfd = "Đô\u{300} Hoa\u{323}";
+        // The lookup is exact here, like `has_family` (ASCII case only): the installed NFC
+        // spelling does not hide an NFD spelling that still draws in a stand-in.
+        let installed = |f: &str| f == nfc;
+        assert_eq!(merge_missing(strs(&[nfc, nfd]), installed), strs(&[nfd]));
+        assert_eq!(merge_missing(strs(&[nfd, nfc]), installed), strs(&[nfd]));
+        // Two missing spellings of one name are one entry, as first met.
+        let none = |_: &str| false;
+        assert_eq!(merge_missing(strs(&[nfd, nfc, "đồ hoạ"]), none), strs(&[nfd]));
+        assert_eq!(merge_missing(strs(&["Zed", nfc, "zed", nfd]), none), strs(&[nfc, "Zed"]));
+        // Everything installed: nothing missing.
+        assert!(merge_missing(strs(&[nfc, nfc]), |_: &str| true).is_empty());
+    }
+
+    #[test]
     fn ascii_font_order_unchanged() {
         let p = deck_in_fonts(&["Qqq Times New Roman", "Qqq calibri", "Qqq Arial", "Qqq arial black"]);
         assert_eq!(missing_fonts(&p), strs(&["Qqq Arial", "Qqq arial black", "Qqq calibri", "Qqq Times New Roman"]));
@@ -223,6 +263,24 @@ mod tests {
         // A different word with the same letters but another accent is not a match.
         let mut p = deck_in_fonts(&["Đồ Hoả"]);
         assert_eq!(replace_font(&mut p, "đồ hoạ", "Lato"), 0);
+    }
+
+    #[test]
+    fn replace_with_the_same_name_normalises_variants() {
+        let nfd = "Đô\u{300} Hoa\u{323}";
+        let mut p = deck_in_fonts(&[nfd, "Đồ Hoạ", "Other Qqq"]);
+        // Only the variant spelling changes; the field already spelled `to` is left alone.
+        assert_eq!(replace_font(&mut p, "Đồ Hoạ", "Đồ Hoạ"), 1);
+        assert_eq!(used_fonts(&p), strs(&["Đồ Hoạ", "Other Qqq"]));
+        let runs: Vec<String> =
+            p.slides[0].shapes[0].text.iter().flat_map(|b| &b.paragraphs).flat_map(|para| &para.runs).filter_map(|r| r.props.font.clone()).collect();
+        assert_eq!(runs, strs(&["Đồ Hoạ", "Đồ Hoạ", "Other Qqq"]));
+        // Nothing left to normalise, or no such font: nothing changes.
+        assert_eq!(replace_font(&mut p, "Đồ Hoạ", "Đồ Hoạ"), 0);
+        assert_eq!(replace_font(&mut p, "Nope Qqq", "Nope Qqq"), 0);
+        // A field spelled `to` with stray spaces is already `to`.
+        let mut p = deck_in_fonts(&[" Lato "]);
+        assert_eq!(replace_font(&mut p, "lato", "Lato"), 0);
     }
 
     #[test]
