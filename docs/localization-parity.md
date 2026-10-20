@@ -1,6 +1,6 @@
 # Localization parity with PowerPoint
 
-> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-14 · **Change:** minor (IME composition underlined in table cells; previous: minor, IME composition and CJK interface text, #101; previous: major, created) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
+> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-20 · **Change:** trivial (font-name lists ordered and merged by Unicode collation; previous: minor, IME composition underlined in table cells; previous: minor, IME composition and CJK interface text, #101; previous: major, created) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
 
 DeckCraft's interface is English only today: strings are literals in the UI and engine code, with
 no catalog and no language switch. Requests: #15 (follow the system language), #30 and PR #34
@@ -54,10 +54,20 @@ PowerPoint checks spelling in dozens of languages and lets each run carry a proo
 DeckCraft keeps `a:rPr/@lang` on round trip but its spelling check is a small English list of
 common misspellings (`crates/engine/src/cmd/review.rs`); see [gaps.md](gaps.md#proofing-spelling-thesaurus-autocorrect).
 
+## Sorting and matching names
+
+The font lists (font menu, `font.used`, the missing-fonts list) and Replace Fonts use the std-only
+crate `crates/collate` (`deckcraft-collate`): Root collation, so accented Latin letters sort beside
+their base letter, and names that differ only by case or by NFC against NFD are one entry (the first
+spelling met is kept; names are never rewritten). Pure-ASCII lists keep their order. Only the Root
+order exists: no Vietnamese or other tailored order until the interface has languages. Not covered:
+looking an installed font up by name (ASCII case only) and Find and Replace on slide text.
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-20 | trivial | Font-name lists and Replace Fonts sort and match by Unicode Root collation (NFC = NFD, case-insensitive). Scores unchanged |
 | 2026-10-14 | minor | IME composition in a table cell is underlined in place; the candidate window sits on that cell's caret |
 | 2026-10-12 | minor | IME composition for Chinese, Japanese and Korean, and interface text in any installed script (#101) |
 | 2026-10-10 | major | Created: twelve-language table, ~1,050 UI strings measured, PowerPoint for Mac's 26 languages from its bundle |
