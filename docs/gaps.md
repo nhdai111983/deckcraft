@@ -1,6 +1,6 @@
 # Where DeckCraft falls short of PowerPoint
 
-> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-20 · **Change:** trivial (font-name lists ordered and merged by base letter, then accent (NFC = NFD); previous: minor, native chart payloads stored in bounded ZIP members; previous: major, community PR wave 2026-10-14: soak tests, PPTX corpus, comment threads (#70), embedded fonts, SmartArt Text Pane, Animation Pane timeline, Hunspell spelling, thesaurus, AutoCorrect, 14 new dialogs, pen pressure and trackpad gestures; duplicated entries and headers folded; previous: minor, 3-D bevel, camera and face lighting rendered) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
+> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-20 · **Change:** trivial (font-name lists ordered and merged by base letter, then accent (NFC = NFD for Latin letters); previous: minor, native chart payloads stored in bounded ZIP members; previous: major, community PR wave 2026-10-14: soak tests, PPTX corpus, comment threads (#70), embedded fonts, SmartArt Text Pane, Animation Pane timeline, Hunspell spelling, thesaurus, AutoCorrect, 14 new dialogs, pen pressure and trackpad gestures; duplicated entries and headers folded; previous: minor, 3-D bevel, camera and face lighting rendered) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
 
 Every known shortfall, one entry each, ranked by how much it stops someone who presents with
 PowerPoint from switching. This is the work list: pick from the top. Numbers are summarized in
@@ -328,8 +328,10 @@ Detail in [localization-parity.md](localization-parity.md).
   Adding an openly licensed Korean face (e.g. Nanum Gothic, OFL) to craft-fonts: 1–2 h.
 - **Font names: only some lists are collation-aware.** The installed-family list
   (`FontDb::families`), `font.used`, the missing-fonts list and Replace Fonts sort and match by base
-  letter first, then accent marks (case and NFC/NFD ignored; other characters by code point; the
-  first spelling met is kept; the lists never rewrite a name). This is collation layer 1, not the
+  letter first, then accent marks (case ignored, and NFC against NFD for the precomposed Latin
+  letters of U+00C0..=U+024F and U+1E00..=U+1EFF only: Cyrillic `й` against `и` + U+0306 or
+  Greek `ά` against `α` + U+0301 stay two entries; other characters by code point; the first
+  spelling met is kept; the lists never rewrite a name). This is collation layer 1, not the
   CLDR/UCA root order (`ø`, `ł`, `æ`, `ß`, Cyrillic, CJK, digits and punctuation order by code
   point). The ribbon font menu puts the two theme fonts first and removes only adjacent duplicates,
   so a theme font that is a case or NFD variant of an installed family still shows twice, and the
