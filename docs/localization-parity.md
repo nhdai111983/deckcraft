@@ -73,8 +73,10 @@ rewrites such variants to X). Find and Replace on slide text (`text.find`, `text
 letter by letter with the same equivalence: a letter (a character and the combining marks after it)
 typed precomposed finds it decomposed and the other way round, in any order of marks of different
 classes; Match case still tells cases apart; a match never starts or ends inside a letter, so `e`
-does not find the `e` of a decomposed `ễ`; matches are ranges of the original text, and Replace
-changes only them.
+does not find the `e` of a decomposed `ễ`; a query of combining marks only finds those marks as
+typed wherever they are; for Whole words a mark counts with its letter; matches are ranges of the
+original text, and Replace changes only them. Find uses this case fold, not the list search's
+(`istanbul` does not find `İSTANBUL`, `σ` does not find `ς`), as before.
 
 ## Revision history
 

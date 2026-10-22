@@ -70,6 +70,9 @@ fn bodies(slide: &mut Slide, f: &mut dyn FnMut(Loc, &mut TextBody)) {
 struct Opts {
     /// The text to find, one key per letter ([`Opts::key`]).
     pat: Vec<String>,
+    /// The text to find as typed, when it is combining marks only: such a query looks for the
+    /// marks themselves, inside letters too (removing a stray accent).
+    marks: Option<Vec<char>>,
     case: bool,
     whole: bool,
 }
@@ -81,9 +84,45 @@ struct Letter {
     key: String,
 }
 
-/// Whether `c` is a combining mark that belongs to the letter before it (U+0300–U+036F).
+/// Whether `c` is a combining mark that belongs to the letter before it (U+0300–U+036F). The
+/// same range as `deckcraft_collate`'s own (private) test.
 fn is_mark(c: char) -> bool {
     ('\u{300}'..='\u{36f}').contains(&c)
+}
+
+/// The letters of `text`, one at a time: each char with the combining marks after it, keyed by
+/// [`Opts::key`]. Lazy, so a search holds only the letters it compares, never a key per char of
+/// a huge paragraph.
+struct Letters<'a> {
+    text: &'a [char],
+    at: usize,
+    case: bool,
+}
+
+impl Iterator for Letters<'_> {
+    type Item = Letter;
+    fn next(&mut self) -> Option<Letter> {
+        let start = self.at;
+        self.text.get(start)?;
+        let mut end = start + 1;
+        while self.text.get(end).is_some_and(|&m| is_mark(m)) {
+            end += 1;
+        }
+        self.at = end;
+        let letter: String = self.text.get(start..end).unwrap_or_default().iter().collect();
+        Some(Letter { start, end, key: Opts::key(&letter, self.case) })
+    }
+}
+
+/// Whether the char at `i` is part of a word for Whole words: a letter, digit or `_`, or a
+/// combining mark on one (a mark after a space or punctuation is not).
+fn word_at(text: &[char], i: usize) -> bool {
+    let Some(&c) = text.get(i) else { return false };
+    if !is_mark(c) {
+        return c.is_alphanumeric() || c == '_';
+    }
+    // The base the mark belongs to: the first non-mark before it.
+    text.get(..i).and_then(|before| before.iter().rev().find(|&&b| !is_mark(b))).is_some_and(|b| b.is_alphanumeric() || *b == '_')
 }
 
 impl Opts {
@@ -93,8 +132,10 @@ impl Opts {
             return Err(bad(cmd, "missing `text`"));
         }
         let case = bool_or(p, "matchCase", false);
-        let pat = Self::letters(&text.chars().collect::<Vec<_>>(), case).into_iter().map(|l| l.key).collect();
-        Ok(Opts { pat, case, whole: bool_or(p, "wholeWords", false) })
+        let chars: Vec<char> = text.chars().collect();
+        let marks = chars.iter().all(|&c| is_mark(c)).then(|| chars.clone());
+        let pat = Letters { text: &chars, at: 0, case }.map(|l| l.key).collect();
+        Ok(Opts { pat, marks, case, whole: bool_or(p, "wholeWords", false) })
     }
 
     /// The key two letters share when they are the same letter: canonical (a letter typed
@@ -104,45 +145,57 @@ impl Opts {
         if case { deckcraft_collate::canonical(letter) } else { deckcraft_collate::fold_key(letter) }
     }
 
-    /// `text` cut into letters: each char with the combining marks after it.
-    fn letters(text: &[char], case: bool) -> Vec<Letter> {
-        let mut out: Vec<Letter> = Vec::new();
-        let mut i = 0;
-        while i < text.len() {
-            let start = i;
-            i += 1;
-            while text.get(i).is_some_and(|&m| is_mark(m)) {
-                i += 1;
-            }
-            let letter: String = text.get(start..i).unwrap_or_default().iter().collect();
-            out.push(Letter { start, end: i, key: Self::key(&letter, case) });
-        }
-        out
-    }
-
     /// Non-overlapping matches as char ranges. Letters are compared whole, so a match never
     /// starts or ends inside a letter (`e` does not find the `e` of a decomposed `ễ`), and the
-    /// precomposed and decomposed spellings of a letter match each other.
+    /// precomposed and decomposed spellings of a letter match each other. A query of combining
+    /// marks only matches those marks as typed, wherever they are.
     fn matches(&self, text: &[char]) -> Vec<(usize, usize)> {
+        if let Some(marks) = &self.marks {
+            return marks_in(text, marks);
+        }
         let n = self.pat.len();
-        let word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric() || *c == '_' || is_mark(*c));
-        let letters = Self::letters(text, self.case);
+        if n == 0 {
+            return vec![];
+        }
         let mut out = vec![];
-        let mut i: usize = 0;
-        while let Some(window) = letters.get(i..i.saturating_add(n)).filter(|w| w.len() == n && n > 0) {
-            let (Some(first), Some(last)) = (window.first(), window.last()) else { break };
-            let (a, b) = (first.start, last.end);
+        // The last `n` letters read: the window compared with the query.
+        let mut window: std::collections::VecDeque<Letter> = std::collections::VecDeque::with_capacity(n);
+        for letter in (Letters { text, at: 0, case: self.case }) {
+            window.push_back(letter);
+            if window.len() < n {
+                continue;
+            }
+            let (Some(a), Some(b)) = (window.front().map(|l| l.start), window.back().map(|l| l.end)) else { break };
             let hit = window.iter().zip(&self.pat).all(|(l, k)| l.key == *k)
-                && (!self.whole || (!word(a.checked_sub(1).and_then(|j| text.get(j))) && !word(text.get(b))));
+                && (!self.whole || (!a.checked_sub(1).is_some_and(|j| word_at(text, j)) && !word_at(text, b)));
             if hit {
                 out.push((a, b));
-                i += n;
+                window.clear();
             } else {
-                i += 1;
+                window.pop_front();
             }
         }
         out
     }
+}
+
+/// Non-overlapping occurrences of the mark sequence `marks` in `text`, as char ranges.
+fn marks_in(text: &[char], marks: &[char]) -> Vec<(usize, usize)> {
+    let n = marks.len();
+    if n == 0 {
+        return vec![];
+    }
+    let mut out = vec![];
+    let mut i: usize = 0;
+    while let Some(w) = text.get(i..i.saturating_add(n)) {
+        if w == marks {
+            out.push((i, i + n));
+            i += n;
+        } else {
+            i += 1;
+        }
+    }
+    out
 }
 
 fn para_chars(p: &Paragraph) -> Vec<char> {
@@ -280,9 +333,18 @@ mod tests {
         assert_eq!(opts("Vie", false, false).matches(&text).len(), 1);
         assert_eq!(opts("Viê", false, false).matches(&text).len(), 0);
         assert_eq!(opts("viet", false, true).matches(&text).len(), 1);
-        // A query that starts with a mark, a lone mark and marks only never panic.
-        assert_eq!(opts("\u{302}", false, false).matches(&text).len(), 0);
+        // A query of marks only finds those marks as typed, inside letters too (removing a stray
+        // accent); a text of marks only never panics.
+        assert_eq!(opts("\u{302}", false, false).matches(&text), vec![(30, 31), (37, 38)]);
+        assert_eq!(opts("\u{301}", false, false).matches(&"e\u{301}x".chars().collect::<Vec<_>>()), vec![(1, 2)]);
         assert!(opts("a", false, false).matches(&['\u{301}', '\u{301}']).is_empty());
+        // Whole words: a mark on a letter is part of the word; a stray mark after a space is not.
+        let ww = |q: &str, t: &str| opts(q, false, true).matches(&t.chars().collect::<Vec<_>>());
+        assert_eq!(ww("x", "e\u{301}x x"), vec![(4, 5)]);
+        assert_eq!(ww("Viet", "x \u{301}Viet"), vec![(3, 7)]);
+        // A huge paragraph is searched letter by letter without a key per char kept in memory.
+        let big: Vec<char> = "Tiếng Việt ".chars().cycle().take(200_000).collect();
+        assert_eq!(opts("Việt", false, false).matches(&big).len(), 200_000 / 11);
     }
 
     #[test]

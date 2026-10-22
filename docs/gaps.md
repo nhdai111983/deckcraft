@@ -1,6 +1,6 @@
 # Where DeckCraft falls short of PowerPoint
 
-> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-20 · **Change:** trivial (font-name lists ordered and merged by base letter, then accent (NFC = NFD for Latin letters); previous: minor, native chart payloads stored in bounded ZIP members; previous: major, community PR wave 2026-10-14: soak tests, PPTX corpus, comment threads (#70), embedded fonts, SmartArt Text Pane, Animation Pane timeline, Hunspell spelling, thesaurus, AutoCorrect, 14 new dialogs, pen pressure and trackpad gestures; duplicated entries and headers folded; previous: minor, 3-D bevel, camera and face lighting rendered) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
+> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-23 · **Change:** trivial (Find and Replace compare slide text by letter, NFC = NFD; previous: trivial, font-name lists ordered and merged by base letter, then accent (NFC = NFD for Latin letters); previous: minor, native chart payloads stored in bounded ZIP members; previous: major, community PR wave 2026-10-14: soak tests, PPTX corpus, comment threads (#70), embedded fonts, SmartArt Text Pane, Animation Pane timeline, Hunspell spelling, thesaurus, AutoCorrect, 14 new dialogs, pen pressure and trackpad gestures; duplicated entries and headers folded; previous: minor, 3-D bevel, camera and face lighting rendered) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
 
 Every known shortfall, one entry each, ranked by how much it stops someone who presents with
 PowerPoint from switching. This is the work list: pick from the top. Numbers are summarized in
@@ -341,7 +341,8 @@ Detail in [localization-parity.md](localization-parity.md).
   judges each exact spelling by that lookup before merging, so it lists that NFD spelling as
   missing even when its NFC spelling is installed (Replace Fonts "X with X" rewrites such variant
   spellings to X). There is no Vietnamese
-  tailoring (no interface language yet), and Find and Replace text is not covered. Making the
+  tailoring (no interface language yet). Find and Replace on slide text compare letter by letter
+  with the same equivalence (a letter typed precomposed finds it decomposed). Making the
   lookups use the same comparison is a small fix (about 1 h, estimate).
 - **UI isn't mirrored for right-to-left languages.** 6–10 h.
 - **Browser build draws Arabic and Hebrew as missing-glyph boxes in exports** (#81). 1–2 h.
@@ -373,6 +374,7 @@ Detail in [localization-parity.md](localization-parity.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-23 | trivial | Font-names gap: Find and Replace on slide text are no longer listed as missing canonical equivalence; estimates unchanged |
 | 2026-10-20 | trivial | Localization: font-name lists sort and merge by base letter, then accent; catalog lookups, Vietnamese tailoring and Find are listed as the remaining work. Scores and ranking unchanged |
 | 2026-10-18 | minor | Native chart payloads use referenced ZIP members and share media byte/item limits; old inline sidecars remain readable. Synthetic tests cover multi-megabyte layout, all shape owners, shared budgets, missing/corrupt members and invalid references. Scores and milestone scope unchanged |
 | 2026-10-15 | trivial | Native saves retain chart package parts and relationships, including charts in groups; edited chart data still does not export a stale source workbook. Chart editing gaps and scores remain unchanged |
