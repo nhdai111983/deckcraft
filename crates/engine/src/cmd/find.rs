@@ -68,33 +68,74 @@ fn bodies(slide: &mut Slide, f: &mut dyn FnMut(Loc, &mut TextBody)) {
 }
 
 struct Opts {
-    pat: Vec<char>,
+    /// The text to find, one key per letter ([`Opts::key`]).
+    pat: Vec<String>,
     case: bool,
     whole: bool,
 }
 
+/// A letter of a paragraph: its char range and its comparison key.
+struct Letter {
+    start: usize,
+    end: usize,
+    key: String,
+}
+
+/// Whether `c` is a combining mark that belongs to the letter before it (U+0300–U+036F).
+fn is_mark(c: char) -> bool {
+    ('\u{300}'..='\u{36f}').contains(&c)
+}
+
 impl Opts {
     fn from(p: &Value, cmd: &str) -> Result<Self> {
-        let pat: Vec<char> = str_param(p, "text").unwrap_or("").chars().collect();
-        if pat.is_empty() {
+        let text = str_param(p, "text").unwrap_or("");
+        if text.is_empty() {
             return Err(bad(cmd, "missing `text`"));
         }
-        Ok(Opts { pat, case: bool_or(p, "matchCase", false), whole: bool_or(p, "wholeWords", false) })
+        let case = bool_or(p, "matchCase", false);
+        let pat = Self::letters(&text.chars().collect::<Vec<_>>(), case).into_iter().map(|l| l.key).collect();
+        Ok(Opts { pat, case, whole: bool_or(p, "wholeWords", false) })
     }
-    fn eq(&self, a: char, b: char) -> bool {
-        a == b || (!self.case && a.to_lowercase().eq(b.to_lowercase()))
+
+    /// The key two letters share when they are the same letter: canonical (a letter typed
+    /// precomposed, `ệ`, equals it typed as base and marks, `e` U+0323 U+0302, in any order of
+    /// marks of different classes), and lowercased unless the search matches case.
+    fn key(letter: &str, case: bool) -> String {
+        if case { deckcraft_collate::canonical(letter) } else { deckcraft_collate::fold_key(letter) }
     }
-    /// Non-overlapping matches as char ranges.
+
+    /// `text` cut into letters: each char with the combining marks after it.
+    fn letters(text: &[char], case: bool) -> Vec<Letter> {
+        let mut out: Vec<Letter> = Vec::new();
+        let mut i = 0;
+        while i < text.len() {
+            let start = i;
+            i += 1;
+            while text.get(i).is_some_and(|&m| is_mark(m)) {
+                i += 1;
+            }
+            let letter: String = text.get(start..i).unwrap_or_default().iter().collect();
+            out.push(Letter { start, end: i, key: Self::key(&letter, case) });
+        }
+        out
+    }
+
+    /// Non-overlapping matches as char ranges. Letters are compared whole, so a match never
+    /// starts or ends inside a letter (`e` does not find the `e` of a decomposed `ễ`), and the
+    /// precomposed and decomposed spellings of a letter match each other.
     fn matches(&self, text: &[char]) -> Vec<(usize, usize)> {
         let n = self.pat.len();
-        let word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric() || *c == '_');
+        let word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric() || *c == '_' || is_mark(*c));
+        let letters = Self::letters(text, self.case);
         let mut out = vec![];
-        let mut i = 0;
-        while i + n <= text.len() {
-            let hit = text[i..i + n].iter().zip(&self.pat).all(|(a, b)| self.eq(*a, *b))
-                && (!self.whole || (!word(i.checked_sub(1).and_then(|j| text.get(j))) && !word(text.get(i + n))));
+        let mut i: usize = 0;
+        while let Some(window) = letters.get(i..i.saturating_add(n)).filter(|w| w.len() == n && n > 0) {
+            let (Some(first), Some(last)) = (window.first(), window.last()) else { break };
+            let (a, b) = (first.start, last.end);
+            let hit = window.iter().zip(&self.pat).all(|(l, k)| l.key == *k)
+                && (!self.whole || (!word(a.checked_sub(1).and_then(|j| text.get(j))) && !word(text.get(b))));
             if hit {
-                out.push((i, i + n));
+                out.push((a, b));
                 i += n;
             } else {
                 i += 1;
@@ -211,7 +252,7 @@ mod tests {
     use deckcraft_model::{Run, RunProps};
 
     fn opts(t: &str, case: bool, whole: bool) -> Opts {
-        Opts { pat: t.chars().collect(), case, whole }
+        Opts::from(&json!({"text": t, "matchCase": case, "wholeWords": whole}), "text.find").unwrap()
     }
 
     #[test]
@@ -220,6 +261,28 @@ mod tests {
         assert_eq!(opts("cat", false, false).matches(&t).len(), 3);
         assert_eq!(opts("cat", true, false).matches(&t).len(), 2);
         assert_eq!(opts("cat", false, true).matches(&t), vec![(0, 3), (4, 7)]);
+    }
+
+    #[test]
+    fn precomposed_and_decomposed_letters_match_each_other() {
+        let text: Vec<char> = "Tiếng Việt, tiê\u{301}ng Viê\u{323}t, tie\u{323}\u{302}ng Vie\u{302}\u{323}t, Viet".chars().collect();
+        // Typed precomposed or decomposed, in either mark order: the three spellings of Việt.
+        for q in ["Việt", "Vie\u{323}\u{302}t", "Viê\u{323}t"] {
+            assert_eq!(opts(q, false, false).matches(&text).len(), 3, "{q:?}");
+        }
+        assert_eq!(opts("tiếng", false, false).matches(&text).len(), 2);
+        // Ranges are the text's own chars: the decomposed match is longer than the query.
+        let found = opts("Việt", true, false).matches(&text);
+        assert_eq!(found.iter().map(|&(a, b)| b - a).collect::<Vec<_>>(), [4, 5, 6]);
+        // Match case in both spellings; whole letters; whole words.
+        assert_eq!(opts("VIỆT", true, false).matches(&text).len(), 0);
+        assert_eq!(opts("VIỆT", false, false).matches(&text).len(), 3);
+        assert_eq!(opts("Vie", false, false).matches(&text).len(), 1);
+        assert_eq!(opts("Viê", false, false).matches(&text).len(), 0);
+        assert_eq!(opts("viet", false, true).matches(&text).len(), 1);
+        // A query that starts with a mark, a lone mark and marks only never panic.
+        assert_eq!(opts("\u{302}", false, false).matches(&text).len(), 0);
+        assert!(opts("a", false, false).matches(&['\u{301}', '\u{301}']).is_empty());
     }
 
     #[test]

@@ -3496,6 +3496,27 @@ fn find_and_replace_across_shapes_and_notes() {
 }
 
 #[test]
+fn find_and_replace_treat_precomposed_and_decomposed_letters_alike() {
+    // A deck saved on another machine or pasted from a PDF holds decomposed letters; the user
+    // types precomposed ones. Find and Replace treat the two as the same letter (VI-SLIDES-003).
+    let mut s = session();
+    let nfd = "Nguye\u{302}\u{303}n Thi\u{323} Ngo\u{323}c A\u{301}nh\nTiê\u{301}ng Viê\u{323}t: Vie\u{302}\u{323}t Nam";
+    s.execute("shape.insert", &json!({"preset": "rect", "rect": [100, 100, 400, 100], "text": nfd})).unwrap();
+    s.execute("slide.notes", &json!({"text": "Tiếng Việt"})).unwrap();
+    let found = s.execute("text.find", &json!({"text": "Nguyễn Thị Ngọc Ánh"})).unwrap();
+    assert_eq!(found.as_array().unwrap().len(), 1, "{found}");
+    assert_eq!((found[0]["para"].as_u64(), found[0]["start"].as_u64()), (Some(0), Some(0)));
+    assert_eq!(s.execute("text.find", &json!({"text": "Vie\u{323}\u{302}t"})).unwrap().as_array().unwrap().len(), 3);
+    // `e` is not found inside a decomposed letter.
+    assert_eq!(s.execute("text.find", &json!({"text": "Vie", "matchCase": true})).unwrap().as_array().unwrap().len(), 0);
+    let r = s.execute("text.replace", &json!({"text": "Việt", "with": "VIỆT"})).unwrap();
+    assert_eq!(r["replaced"].as_u64(), Some(3));
+    let shape = s.doc().unwrap().doc.slides[0].shapes.iter().filter_map(|x| x.text.as_ref()).map(|t| t.text()).collect::<Vec<_>>().join("|");
+    assert!(shape.contains("Tiê\u{301}ng VIỆT: VIỆT Nam"), "{shape:?}");
+    assert!(shape.contains("Nguye\u{302}\u{303}n Thi\u{323}"), "the rest keeps its spelling: {shape:?}");
+}
+
+#[test]
 fn pen_pressure_is_kept_and_a_mouse_draws_at_full_width() {
     let mut s = session();
     s.set_tool(tools::ToolKind::Ink { mode: "pen".into(), color: deckcraft_model::Rgba::rgb(20, 20, 20), width: 4.0 });

@@ -1,6 +1,6 @@
 # Localization parity with PowerPoint
 
-> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-20 · **Change:** trivial (font-name lists ordered and merged by base letter, then accent (NFC = NFD for Latin letters); previous: minor, IME composition underlined in table cells; previous: minor, IME composition and CJK interface text, #101; previous: major, created) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
+> **Last reviewed:** 2026-10-14 · **Last updated:** 2026-10-23 · **Change:** minor (Find and Replace match a letter typed precomposed or decomposed alike; previous: trivial, font-name lists ordered and merged by base letter, then accent (NFC = NFD for Latin letters); previous: minor, IME composition underlined in table cells; previous: minor, IME composition and CJK interface text, #101; previous: major, created) · **Target:** Microsoft PowerPoint for Mac 16.113 (Microsoft 365)
 
 DeckCraft's interface is English only today: strings are literals in the UI and engine code, with
 no catalog and no language switch. Requests: #15 (follow the system language), #30 and PR #34
@@ -69,12 +69,18 @@ Vietnamese or other tailored order until the interface has languages. The ribbon
 puts the theme fonts first and removes only adjacent duplicates. Not covered: looking an installed
 font up by name (ASCII case only; so the missing-fonts list, which checks each exact spelling
 before merging, lists an NFD variant of an installed font as missing, and Replace Fonts "X with X"
-rewrites such variants to X) and Find and Replace on slide text.
+rewrites such variants to X). Find and Replace on slide text (`text.find`, `text.replace`) compare
+letter by letter with the same equivalence: a letter (a character and the combining marks after it)
+typed precomposed finds it decomposed and the other way round, in any order of marks of different
+classes; Match case still tells cases apart; a match never starts or ends inside a letter, so `e`
+does not find the `e` of a decomposed `ễ`; matches are ranges of the original text, and Replace
+changes only them.
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-23 | minor | Find and Replace compare slide text letter by letter: precomposed = decomposed (the Latin letters above), Match case kept, whole letters only |
 | 2026-10-20 | trivial | Font-name lists and Replace Fonts sort and match by base letter, then accent (NFC = NFD for the precomposed Latin letters of U+00C0..=U+024F and U+1E00..=U+1EFF, case-insensitive; other characters by code point). Scores unchanged |
 | 2026-10-14 | minor | IME composition in a table cell is underlined in place; the candidate window sits on that cell's caret |
 | 2026-10-12 | minor | IME composition for Chinese, Japanese and Korean, and interface text in any installed script (#101) |
