@@ -1,4 +1,4 @@
-# Allowlist cho `nexus-tools brand-check` (Nexus Slides).
+# Allowlist cho `nexus-tools brand-check` (Nexus Slide).
 # Mỗi mục khoanh vào file cụ thể (không dùng `**/*.rs`) + mẫu hẹp, có lý do. Việc còn nợ: nexus/BRANDING_PATCH.md.
 
 # ---------------------------------------------------------------------------------------------
@@ -48,7 +48,7 @@ reason = "Dữ liệu test clipboard trong module #[cfg(test)]"
 [[allow]]
 path = "{AGENTS.md,CLAUDE.md,ROADMAP.md,crates/pdf/README.md,packaging/macos/dmg/README.md}"
 pattern = '.*'
-reason = "Tài liệu dev của upstream, không đóng gói, không phải giao diện (README.md đã viết lại cho Nexus Slides và được quét)"
+reason = "Tài liệu dev của upstream, không đóng gói, không phải giao diện (README.md đã viết lại cho Nexus Slide và được quét)"
 
 [[allow]]
 path = "crates/engine/data/thesaurus.txt"
@@ -67,7 +67,7 @@ reason = "Chú thích XML, không hiện cho người dùng"
 
 [[allow]]
 path = "packaging/windows/deckcraft.wxs"
-pattern = '^\s+Nexus Slides MSI \(NexusOffices, by Sonnytech; based on DeckCraft\)'
+pattern = '^\s+Nexus Slide MSI \(NexusOffice, by SonnyTech; based on DeckCraft\)'
 reason = "Dòng đầu chú thích XML của file WiX (ghi công), không hiện cho người dùng"
 
 # ---------------------------------------------------------------------------------------------
@@ -77,12 +77,12 @@ reason = "Dòng đầu chú thích XML của file WiX (ghi công), không hiện
 [[allow]]
 path = ".github/workflows/{release.yml,windows-arm64.yml}"
 pattern = 'app-(title|dir): DeckCraft'
-reason = "CI phát hành của upstream (đã tắt trên fork); NexusOffices phát hành bằng nexus-release.yml (Task 12)"
+reason = "CI phát hành của upstream (đã tắt trên fork); NexusOffice phát hành bằng nexus-release.yml (Task 12)"
 
 [[allow]]
 path = ".github/workflows/{nexus-ci.yml,nexus-sync.yml}"
 pattern = 'github\.com/storytold/\$UPSTREAM_REPO'
-reason = "Workflow NexusOffices (template trong NexusOffices/templates/workflows) phải lấy upstream để đếm patch và đồng bộ; không phát hành, người dùng không thấy"
+reason = "Workflow NexusOffice (template trong NexusOffices/templates/workflows) phải lấy upstream để đếm patch và đồng bộ; không phát hành, người dùng không thấy"
 
 [[allow]]
 path = "packaging/linux/flatpak-bundle.sh"
@@ -100,7 +100,7 @@ reason = "Công cụ dev sinh nền DMG của upstream; package.sh của Nexus k
 
 [[allow]]
 path = "crates/engine/src/nexus.rs"
-pattern = '"(NexusOffices is developed from the open-source apps of ArtCraft[^"]*|NexusOffices được phát triển dựa trên các ứng dụng mã nguồn mở của ArtCraft[^"]*|MIT OR Apache-2\.0 · © 2026 ArtCraft Team and the DeckCraft contributors)"'
+pattern = '"(NexusOffice is developed from the open-source apps of ArtCraft[^"]*|NexusOffice được phát triển dựa trên các ứng dụng mã nguồn mở của ArtCraft[^"]*|MIT OR Apache-2\.0 · © 2026 ArtCraft Team and the DeckCraft contributors)"'
 reason = "Câu ghi công + thông báo bản quyền upstream trong About (MIT/Apache, LICENSE-brand.txt cho phép ghi chữ)"
 
 [[allow]]

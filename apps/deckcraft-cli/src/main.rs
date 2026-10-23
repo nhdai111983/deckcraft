@@ -18,7 +18,7 @@ macro_rules! outln {
             if e.kind() == std::io::ErrorKind::BrokenPipe {
                 std::process::exit(0);
             }
-            eprintln!("nexus-slides-cli: can't write to stdout: {e}");
+            eprintln!("nexus-slide-cli: can't write to stdout: {e}");
             std::process::exit(1);
         }
     }};
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
             },
         },
         Some("--version" | "-V" | "version") => {
-            outln!("nexus-slides-cli {}", env!("CARGO_PKG_VERSION"));
+            outln!("nexus-slide-cli {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Some("info") => report(info(rest)),
@@ -92,7 +92,7 @@ fn help_page(name: &str) -> String {
 }
 
 fn unknown(sub: &str) -> ExitCode {
-    eprintln!("nexus-slides-cli: unknown subcommand `{sub}`\n");
+    eprintln!("nexus-slide-cli: unknown subcommand `{sub}`\n");
     usage()
 }
 
@@ -106,7 +106,7 @@ fn report(r: Result<(), String>) -> ExitCode {
     match r {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("nexus-slides-cli: {e}");
+            eprintln!("nexus-slide-cli: {e}");
             ExitCode::FAILURE
         }
     }
@@ -525,7 +525,7 @@ fn describe(id: Option<&str>) -> Result<(), String> {
     }
     let bare = params.is_empty() || params.iter().any(|p| params.iter().filter(|q| q.object == p.object).all(|q| q.optional));
     let call = if bare { c.id.to_string() } else { format!("'{}={{…}}'", c.id) };
-    outln!("\nRun it with: nexus-slides-cli run --cmd {call}");
+    outln!("\nRun it with: nexus-slide-cli run --cmd {call}");
     Ok(())
 }
 
@@ -570,7 +570,7 @@ fn app(args: &[String]) -> Result<(), String> {
         }
     }
     let mut r = Remote::connect(&control_addr(&port))
-        .map_err(|e| format!("no Nexus Slides app on port {port} ({e}); start it with `nexus-slides --control {port}`"))?;
+        .map_err(|e| format!("no Nexus Slide app on port {port} ({e}); start it with `nexus-slide --control {port}`"))?;
     let parse = |s: Option<&String>| -> Result<Value, String> {
         s.map(|j| serde_json::from_str(j).map_err(|e| format!("bad JSON: {e}"))).transpose().map(|v| v.unwrap_or(json!({})))
     };
@@ -624,7 +624,7 @@ so drop --connect (or use --connect without the roots)"
                 // Every thread of this process, not only the server's: nothing reaches past the roots.
                 file_access::confine_process(roots.clone());
                 let show = |root: Option<&std::path::Path>| root.map_or_else(|| "none".to_string(), |r| r.display().to_string());
-                eprintln!("nexus-slides-cli: files confined: read root {}, write root {}", show(roots.read_root()), show(roots.write_root()));
+                eprintln!("nexus-slide-cli: files confined: read root {}, write root {}", show(roots.read_root()), show(roots.write_root()));
                 h = h.with_automation_roots(Some(roots));
             }
             Box::new(h)
