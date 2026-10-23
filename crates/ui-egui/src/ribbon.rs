@@ -119,7 +119,7 @@ pub fn title_bar(app: &mut SlideApp, ui: &mut Ui) {
 }
 
 /// Which contextual tabs apply to the selection.
-fn contextual(app: &SlideApp) -> Vec<&'static str> {
+pub(crate) fn contextual(app: &SlideApp) -> Vec<&'static str> {
     let mut v = vec![];
     let Some(st) = app.session.active() else { return v };
     if st.selection.target == Target::Handout {
@@ -154,7 +154,7 @@ fn contextual(app: &SlideApp) -> Vec<&'static str> {
     v
 }
 
-const TABS: [&str; 10] = ["Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide Show", "Record", "Review", "View"];
+pub(crate) const TABS: [&str; 10] = ["Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide Show", "Record", "Review", "View"];
 
 /// Tab row and the ribbon card.
 pub fn show(app: &mut SlideApp, ui: &mut Ui) {
@@ -304,7 +304,7 @@ fn toggle(app: &mut SlideApp, ui: &mut Ui, icon: Icon, label: &str, id: &str, on
     }
 }
 
-fn tip(id: &str, label: &str) -> String {
+pub(crate) fn tip(id: &str, label: &str) -> String {
     let sc = deckcraft_engine::find_command(id).and_then(|c| c.shortcut).or_else(|| crate::UI_COMMANDS.iter().find(|c| c.0 == id).and_then(|c| c.2));
     match sc {
         Some(s) => format!("{label} ({})", pretty_shortcut(s)),
@@ -320,7 +320,7 @@ pub fn pretty_shortcut(s: &str) -> String {
     }
 }
 
-fn scheme(app: &SlideApp) -> deckcraft_color::ColorScheme {
+pub(crate) fn scheme(app: &SlideApp) -> deckcraft_color::ColorScheme {
     app.session.active().and_then(|d| d.doc.masters.first().map(|m| m.scheme())).unwrap_or_else(|| deckcraft_model::Theme::default().colors)
 }
 
@@ -375,7 +375,7 @@ fn clipboard_group(app: &mut SlideApp, ui: &mut Ui) {
     });
 }
 
-fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
+pub(crate) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
     let layouts: Vec<(String, deckcraft_model::LayoutId)> = app
         .session
         .active()

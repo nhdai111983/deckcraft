@@ -19,6 +19,7 @@ pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
+pub mod nexus_toolbar;
 pub mod notes;
 pub mod opening;
 pub mod panes;
@@ -275,6 +276,16 @@ pub struct UiState {
     pub comment_focus: Option<(usize, usize)>,
     /// Quick Access Toolbar buttons, left to right.
     pub qat: Vec<qat::QatItem>,
+    /// NexusOffice: the accent colour the user picked (`#RRGGBB`, Preferences or `ui.accent`);
+    /// `None` is the app's own Amber. A saved value that isn't a colour reads as `None`, and
+    /// `None` writes no key (an upstream `ui.json` stays the same).
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "lenient_accent")]
+    pub accent: Option<String>,
+}
+
+fn lenient_accent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_str().and_then(theme::parse_hex).map(theme::to_hex))
 }
 
 impl Default for UiState {
@@ -306,6 +317,7 @@ impl Default for UiState {
             grayscale: false,
             comment_focus: None,
             qat: qat::defaults(),
+            accent: None,
         }
     }
 }
@@ -413,6 +425,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("app.find", "Find…", Some("Cmd+F"), "{}"),
     ("app.replace", "Replace…", Some("Cmd+H"), "{}"),
     ("app.links", "Project Links", None, "{}"),
+    ("ui.accent", "Accent Color", None, "{value?: \"#RRGGBB\" | \"\" | null} (\"\" or null: the app's own Amber; no value reads it) → {accent}"),
 ];
 
 pub struct Perf {
@@ -514,6 +527,9 @@ pub struct SlideApp {
     next_file_id: u64,
     /// Picks and drops whose bytes have not arrived yet.
     pending_files: Vec<PendingFile>,
+    /// NexusOffice layout: a menu bar and one tool row instead of the ribbon ([`nexus_toolbar`]).
+    /// The Nexus apps turn it on; off (the default) keeps upstream's ribbon.
+    pub toolbar: bool,
 }
 
 fn grid_options_touched(p: &Value) -> bool {
@@ -581,6 +597,7 @@ impl SlideApp {
             twisting: false,
             next_file_id: 1,
             pending_files: Vec::new(),
+            toolbar: false,
         }
     }
 
@@ -1052,6 +1069,24 @@ impl SlideApp {
             "app.links" => {
                 use deckcraft_engine::links::*;
                 return Ok(json!({"appPage": APP_PAGE, "github": GITHUB, "issues": ISSUES}));
+            }
+            "ui.accent" => {
+                // NexusOffice: `{"value": "#RRGGBB"}` sets the accent colour, `""` or `null` goes
+                // back to the app's own Amber; no value reads it. Applied on the next frame.
+                if let Some(v) = p.get("value") {
+                    match v.as_str().map(str::trim).filter(|h| !h.is_empty()) {
+                        None if v.is_null() || v.is_string() => self.ui.accent = None,
+                        None => return Err("the accent colour is a string: \"#RRGGBB\", or \"\" for the app's own".into()),
+                        Some(hex) => match theme::parse_hex(hex) {
+                            Some(c) => self.ui.accent = Some(theme::to_hex(c)),
+                            None => {
+                                let shown: String = hex.chars().take(24).collect();
+                                return Err(format!("unknown colour {shown:?}; use \"#RRGGBB\""));
+                            }
+                        },
+                    }
+                }
+                return Ok(json!({"accent": self.ui.accent}));
             }
             _ => return Err(format!("unknown UI command `{id}`")),
         }
@@ -1526,8 +1561,14 @@ impl SlideApp {
         } else {
             self.fonts_ready = true;
         }
+        // NexusOffice: the user's accent colour (Preferences, `ui.accent`).
+        let accent = self.ui.accent.as_deref().and_then(theme::parse_hex);
+        if theme::set_accent(ctx, accent) {
+            self.restyle = true;
+        }
         if self.restyle {
-            theme::apply(ctx, &theme::Tokens::for_brightness(self.ui.brightness));
+            let t = theme::Tokens::for_brightness(self.ui.brightness);
+            theme::apply(ctx, &accent.map_or(t, |c| theme::with_accent(t, c)));
             self.restyle = false;
         }
         let now = ctx.input(|i| i.time);
@@ -1795,7 +1836,11 @@ impl SlideApp {
         self.sync_backstage();
         ribbon::title_bar(self, ui);
         if self.backstage.is_none() && self.session.active().is_some() {
-            ribbon::show(self, ui);
+            if self.toolbar {
+                nexus_toolbar::show(self, ui);
+            } else {
+                ribbon::show(self, ui);
+            }
             status::status_bar(self, ui);
         }
         let now = ui.input(|i| i.time);
@@ -1835,6 +1880,7 @@ impl SlideApp {
         toast::note_missing_fonts(self);
         toast::show(self, &ctx);
         dialogs::show(self, &ctx);
+        nexus_toolbar::args_window(self, &ctx);
         menus::palette(self, &ctx);
         for url in std::mem::take(&mut self.pending_urls) {
             ctx.open_url(egui::OpenUrl::new_tab(url));
