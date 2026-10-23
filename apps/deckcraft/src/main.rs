@@ -236,6 +236,8 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let mut app = SlideApp::new(Session::new(), services());
+            // NexusOffice layout: a menu bar and one tool row instead of the ribbon.
+            app.toolbar = true;
             load_prefs(&mut app);
             // AutoRecover: reopen what a previous run left unsaved, then keep it current.
             if std::env::var_os("DECKCRAFT_NO_RECOVERY").is_none() {
