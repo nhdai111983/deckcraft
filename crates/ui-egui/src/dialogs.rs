@@ -47,7 +47,7 @@ fn title(id: &str) -> &'static str {
         "paragraph" => "Paragraph",
         "tabs" => "Tabs",
         "font" => "Font",
-        "about" => "About Nexus Slides",
+        "about" => "About Nexus Slide",
         "preferences" => "Preferences",
         "autocorrect" => "AutoCorrect",
         "gridOptions" => "Grid Options",
@@ -2603,7 +2603,7 @@ fn pretty_equation(s: &str) -> String {
 }
 
 pub fn about(_app: &mut SlideApp, ui: &mut Ui) {
-    // NexusOffices: Nexus Slides' About (attribution to upstream in text, no community links).
+    // NexusOffice: Nexus Slide's About (attribution to upstream in text, no community links).
     crate::nexus::about_ui(ui);
 }
 
@@ -2622,7 +2622,7 @@ pub fn version_line() -> String {
     s
 }
 
-/// The app's mark, drawn in code. NexusOffices: the Nexus Slides mark (`crate::nexus`).
+/// The app's mark, drawn in code. NexusOffice: the Nexus Slide mark (`crate::nexus`).
 pub fn paint_logo(p: &egui::Painter, r: Rect) {
     crate::nexus::paint_logo(p, r);
 }
@@ -3192,7 +3192,7 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 p["with"] = json!(d.get("with", ""));
                 let msg = match app.session.execute("text.replace", &p) {
                     Ok(v) => format!("Replaced {} occurrence(s).", v.get("replaced").and_then(Value::as_u64).unwrap_or(0)),
-                    Err(_) => format!("Nexus Slides can't find “{text}”."),
+                    Err(_) => format!("Nexus Slide can't find “{text}”."),
                 };
                 d.fields.insert("status".into(), msg);
                 d.fields.remove("cur");
@@ -3207,7 +3207,7 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     if find_next {
         let list = app.session.execute("text.find", &q).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
         if list.is_empty() {
-            d.fields.insert("status".into(), format!("Nexus Slides can't find “{text}”."));
+            d.fields.insert("status".into(), format!("Nexus Slide can't find “{text}”."));
             d.fields.remove("cur");
         } else {
             let n = d.get("next", "0").parse::<usize>().unwrap_or(0) % list.len();

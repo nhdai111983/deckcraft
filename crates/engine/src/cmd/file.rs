@@ -144,7 +144,7 @@ fn open_other(name: &str, bytes: &[u8]) -> Result<Presentation> {
         return Ok(p);
     }
     if deckcraft_pptx::is_encrypted(bytes) {
-        return Err(EngineError::Other(format!("{name} is password-protected. Nexus Slides can't open password-protected presentations yet.")));
+        return Err(EngineError::Other(format!("{name} is password-protected. Nexus Slide can't open password-protected presentations yet.")));
     }
     let lower = name.to_ascii_lowercase();
     if lower.ends_with(".txt") || lower.ends_with(".md") {
@@ -160,7 +160,7 @@ fn open_other(name: &str, bytes: &[u8]) -> Result<Presentation> {
         }
         return Ok(p);
     }
-    Err(EngineError::Other(format!("{name}: not a presentation Nexus Slides can read")))
+    Err(EngineError::Other(format!("{name}: not a presentation Nexus Slide can read")))
 }
 
 pub fn add_opened(s: &mut Session, name: &str, path: Option<String>, p: Presentation) -> usize {

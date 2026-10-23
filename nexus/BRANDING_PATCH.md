@@ -3,10 +3,24 @@
 Danh sách file mà nhánh `nexus` sửa so với upstream vì lý do thương hiệu.
 Mỗi mục là đường dẫn file chính xác trong dấu backtick (không dùng glob/thư mục).
 
-Giá trị: sản phẩm **Nexus Slides**, bộ **NexusOffices**, nhà phát hành **Sonnytech**, app id
-`vn.sonnytech.nexus.slides`, tài sản phát hành `NexusSlides-*`, binary cài đặt
-`nexus-slides`/`nexus-slides-cli` (MSI, zip portable, deb/rpm/AppImage/tar, zip CLI macOS; tên build
-Cargo vẫn là `deckcraft`/`deckcraft-cli`; bundle macOS `Nexus Slides.app`, executable `NexusSlides`).
+Giá trị: sản phẩm **Nexus Slide**, bộ **NexusOffice**, nhà phát hành **SonnyTech**, app id
+`vn.sonnytech.nexus.slides`, tài sản phát hành `NexusSlide-*`, binary cài đặt
+`nexus-slide`/`nexus-slide-cli` (MSI, zip portable, deb/rpm/AppImage/tar, zip CLI macOS; tên build
+Cargo vẫn là `deckcraft`/`deckcraft-cli`; bundle macOS `Nexus Slide.app`, executable `NexusSlide`).
+
+Nguồn của bản build (About, `links.rs`, MCP `websiteUrl`, metadata gói, README): `https://github.com/sonnytech-vn/deckcraft`
+(tổ chức sẽ được tạo và repo chuyển sang; GitHub chuyển hướng URL cũ). Remote git, workflow đồng bộ upstream và URL
+`GITHUB_REPOSITORY`/zsync của bản phát hành chưa đổi.
+
+Giữ nguyên định danh máy (không hiện cho người dùng): ProgId `Sonnytech.NexusSlides.Presentation`, `UpgradeCode` và GUID
+component WiX, app id / UTI `vn.sonnytech.nexus.slides*` (chữ thường, có "s"), `serverInfo.name = "deckcraft"`,
+tên crate, biến `DECKCRAFT_*`, email maintainer `nhdai111983@users.noreply.github.com`.
+
+Đổi thương hiệu 2026-10-23: Sonnytech → SonnyTech, NexusOffices → NexusOffice, Nexus Slides → Nexus Slide
+(binary `nexus-slide`/`nexus-slide-cli`, tài sản `NexusSlide-*`, thư mục cài/Start Menu `Nexus Slide`, icon nguồn
+`nexus/assets/nexus-slide.*`). **Thư mục cấu hình/từ điển/AutoRecover giữ tên cũ `Nexus Slides` / `nexus-slides`**
+(`SETTINGS_DIR(_XDG)` trong `crates/engine/src/nexus.rs`): đổi tên cần đọc thư mục cũ làm dự phòng ở
+`apps/deckcraft/src/main.rs`, `spell.rs` và `recovery.rs` (hơn 30 dòng), nên hoãn.
 
 Không đổi (spec §4.4): tên crate `deckcraft-*`, biến `DECKCRAFT_*`, đuôi `.deckcraft` và MIME
 `application/x-deckcraft` (khoá định dạng; chỉ đổi tên hiển thị), `"format": "deckcraft"` và MIMETYPE
@@ -16,15 +30,15 @@ trong file `.deckcraft`, `serverInfo.name = "deckcraft"` của MCP (định danh
 
 Giữ / đổi trong khai báo kiểu tệp macOS (`packaging/macos/Info.plist.in`): **đổi** UTI xuất
 `ai.storyteller.deckcraft.presentation` → `vn.sonnytech.nexus.slides.presentation` (UTI gắn với bundle
-id của app khai báo nó) và mô tả "Nexus Slides Presentation"; **giữ** đuôi `deckcraft`
+id của app khai báo nó) và mô tả "Nexus Slide Presentation"; **giữ** đuôi `deckcraft`
 (`public.filename-extension`), thẻ MIME `application/x-deckcraft` (`public.mime-type`) và
 `UTTypeConformsTo`. Linux giữ cùng MIME type; Windows giữ đuôi `.deckcraft` (MIME `application/x-deckcraft` là định danh định dạng dùng chung).
 
 ## Cùng tồn tại với DeckCraft gốc (Review Focus #1)
-- **Windows:** Nexus Slides **không sở hữu** `.deckcraft` (DeckCraft gốc sở hữu qua ProgId riêng). MSI chỉ
+- **Windows:** Nexus Slide **không sở hữu** `.deckcraft` (DeckCraft gốc sở hữu qua ProgId riêng). MSI chỉ
   ghi ProgId `Sonnytech.NexusSlides.Presentation` và giá trị có tên dưới `.deckcraft\OpenWithProgids`
   (như `.pptx/.potx/.ppsx`); không ghi giá trị mặc định hay `Content Type` của `HKLM\Software\Classes\.deckcraft`,
-  nên cài/gỡ Nexus Slides không đổi hay xoá đăng ký của DeckCraft. Thư mục cài, khoá registry, UpgradeCode,
+  nên cài/gỡ Nexus Slide không đổi hay xoá đăng ký của DeckCraft. Thư mục cài, khoá registry, UpgradeCode,
   GUID component đều riêng.
 - **Linux:** file MIME cài dưới tên riêng `/usr/share/mime/packages/vn.sonnytech.nexus.slides.xml`; DeckCraft
   cài `ai.storyteller.deckcraft.xml` cùng định nghĩa `application/x-deckcraft` + `*.deckcraft`. shared-mime-info
@@ -63,69 +77,69 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 
 | File | Lý do | Thay được bằng white-label? |
 |---|---|---|
-| `crates/engine/src/lib.rs` | `pub mod nexus;`; tác giả mặc định `nexus::DEFAULT_AUTHOR` = "Nexus Slides User" (ký bình luận ghi vào file; upstream là "Presenter") | Có — hằng qua biến build |
+| `crates/engine/src/lib.rs` | `pub mod nexus;`; tác giả mặc định `nexus::DEFAULT_AUTHOR` = "Nexus Slide User" (ký bình luận ghi vào file; upstream là "Presenter") | Có — hằng qua biến build |
 | `crates/engine/src/links.rs` | Bỏ `DISCORD`/`WEBSITE`/`APPS` (hạ tầng ArtCraft); `APP_PAGE`/`GITHUB`/`ISSUES` trỏ repo fork | Có |
 | `crates/engine/src/recovery.rs` | Thư mục AutoRecover riêng (`Nexus Slides/Recovery`, `nexus-slides/recovery`) — không mở bản phục hồi của DeckCraft | Có — `SETTINGS_DIR` |
 | `crates/engine/src/spell.rs` | Thư mục từ điển riêng + `user.dic` (Add to Dictionary) trong thư mục Nexus | Có — `SETTINGS_DIR` |
-| `crates/engine/src/sample.rs` | Deck mẫu: theme `Nexus`, "made in Nexus Slides", "Made with Nexus Slides" | Có |
-| `crates/engine/src/cmd/file.rs` | Lỗi mở file (mật khẩu, không đọc được) nêu Nexus Slides; `theme_named` tra qua `nexus::theme_alias` | Có |
-| `crates/engine/src/cmd/format.rs` | Lỗi `font.add` nêu Nexus Slides | Có |
+| `crates/engine/src/sample.rs` | Deck mẫu: theme `Nexus`, "made in Nexus Slide", "Made with Nexus Slide" | Có |
+| `crates/engine/src/cmd/file.rs` | Lỗi mở file (mật khẩu, không đọc được) nêu Nexus Slide; `theme_named` tra qua `nexus::theme_alias` | Có |
+| `crates/engine/src/cmd/format.rs` | Lỗi `font.add` nêu Nexus Slide | Có |
 | `crates/engine/src/cmd/insert.rs` | Theme mặc định của Photo Album = `nexus::THEME_NAME`; tra theme qua `nexus::theme_alias`; 2 assert test theo tên mới | Có |
 | `crates/engine/src/cmd/design.rs` | `design.theme`/`design.colors`/`design.effects` tra tên qua `nexus::theme_alias` (design.colors kèm màu giữ nguyên tên người dùng đặt, kể cả "DeckCraft"); test: tên theme/effect scheme `Nexus` | Đi cùng `theme.rs` |
 | `crates/engine/src/templates.rs` | Starter template tra theme qua `nexus::theme_alias` (starter mới của upstream ghi "DeckCraft" vẫn chạy) | Đi cùng `theme.rs` |
 | `crates/engine/src/tests.rs` | Test caret dùng theme `Nexus` | Đi cùng `theme.rs` |
 | `crates/model/src/theme.rs` | Theme/colour/format scheme dựng sẵn đầu tiên tên `Nexus` (ghi vào file) | Có — tên theme qua biến build |
 | `crates/model/src/tests.rs` | Assert tên theme mới | Đi cùng `theme.rs` |
-| `crates/format/src/lib.rs` | `generator: "Nexus Slides <ver>"` ghi vào `.deckcraft`; lỗi "not a Nexus Slides file", media quá lớn (`format` giữ `deckcraft`) | Có |
-| `crates/pdf/src/lib.rs` | PDF `/Creator` và `/Producer` = "Nexus Slides" | Có — tên app qua tham số |
+| `crates/format/src/lib.rs` | `generator: "Nexus Slide <ver>"` ghi vào `.deckcraft`; lỗi "not a Nexus Slide file", media quá lớn (`format` giữ `deckcraft`) | Có |
+| `crates/pdf/src/lib.rs` | PDF `/Creator` và `/Producer` = "Nexus Slide" | Có — tên app qua tham số |
 | `crates/pdf/src/tests.rs` | Assert Creator/Producer mới | Đi cùng `lib.rs` |
-| `crates/pptx/src/write/mod.rs` | `docProps/app.xml` `<Application>Nexus Slides</Application>` | Có |
+| `crates/pptx/src/write/mod.rs` | `docProps/app.xml` `<Application>Nexus Slide</Application>` | Có |
 | `crates/pptx/src/tables.rs` | Tên table style tự sinh "Nexus {n}" ghi vào `tableStyles.xml` (GUID không đổi) | Có |
-| `crates/mcp/src/server.rs` | `serverInfo.title` = "Nexus Slides", `websiteUrl` repo fork, INSTRUCTIONS; bỏ link Discord; **`serverInfo.name` giữ `deckcraft`** | Có |
-| `crates/mcp/src/backend.rs` | Thông báo kết nối app nêu Nexus Slides | Có |
-| `crates/mcp/src/headless.rs` | Gợi ý `nexus-slides --control 7979` / `nexus-slides-cli mcp --connect` | Có |
-| `crates/mcp/src/tools.rs` | Mô tả tool: `nexus-slides-cli mcp --connect`, theme `Nexus`, cửa sổ Nexus Slides | Có |
-| `crates/ui-egui/src/lib.rs` | `pub mod nexus;`; nhãn `app.about` "About Nexus Slides"; `app.links` "Project Links" trả {appPage, github, issues}; 2 thông báo trạng thái | Có — `APP_NAME` |
-| `crates/ui-egui/src/dialogs.rs` | Tiêu đề About/quit/mặc định; About → `nexus::about_ui` (bỏ link Discord/getartcraft, ghi công chữ); `paint_logo` → logo Nexus; theme album `Nexus`; Find "Nexus Slides can't find" | Có |
-| `crates/ui-egui/src/backstage.rs` | Home/Account: tên + logo Nexus, bỏ 2 link Discord ArtCraft, thêm câu ghi công; định dạng "Nexus Slides Presentation (*.deckcraft)"; câu in qua PDF; ô mẫu dùng theme `Nexus` | Có |
-| `crates/ui-egui/src/menus.rs` | Help › About Nexus Slides | Có |
+| `crates/mcp/src/server.rs` | `serverInfo.title` = "Nexus Slide", `websiteUrl` repo fork, INSTRUCTIONS; bỏ link Discord; **`serverInfo.name` giữ `deckcraft`** | Có |
+| `crates/mcp/src/backend.rs` | Thông báo kết nối app nêu Nexus Slide | Có |
+| `crates/mcp/src/headless.rs` | Gợi ý `nexus-slide --control 7979` / `nexus-slide-cli mcp --connect` | Có |
+| `crates/mcp/src/tools.rs` | Mô tả tool: `nexus-slide-cli mcp --connect`, theme `Nexus`, cửa sổ Nexus Slide | Có |
+| `crates/ui-egui/src/lib.rs` | `pub mod nexus;`; nhãn `app.about` "About Nexus Slide"; `app.links` "Project Links" trả {appPage, github, issues}; 2 thông báo trạng thái | Có — `APP_NAME` |
+| `crates/ui-egui/src/dialogs.rs` | Tiêu đề About/quit/mặc định; About → `nexus::about_ui` (bỏ link Discord/getartcraft, ghi công chữ); `paint_logo` → logo Nexus; theme album `Nexus`; Find "Nexus Slide can't find" | Có |
+| `crates/ui-egui/src/backstage.rs` | Home/Account: tên + logo Nexus, bỏ 2 link Discord ArtCraft, thêm câu ghi công; định dạng "Nexus Slide Presentation (*.deckcraft)"; câu in qua PDF; ô mẫu dùng theme `Nexus` | Có |
+| `crates/ui-egui/src/menus.rs` | Help › About Nexus Slide | Có |
 | `crates/ui-egui/src/ribbon.rs` | Tiêu đề thanh tiêu đề khi chưa mở bài = `APP_NAME` | Có |
-| `crates/ui-egui/src/show.rs` | Cửa sổ "Presenter View — Nexus Slides" | Có |
+| `crates/ui-egui/src/show.rs` | Cửa sổ "Presenter View — Nexus Slide" | Có |
 | `crates/ui-egui/src/backstage_tests.rs` | Assert nhãn/thông báo mới | Đi cùng |
 | `crates/ui-egui/src/effects_tests.rs` | Assert theme `Nexus` | Đi cùng |
 | `crates/ui-egui/src/theme_colors_tests.rs` | Assert colour scheme `Nexus` | Đi cùng |
-| `apps/deckcraft/src/main.rs` | Tiêu đề cửa sổ, app id, tên eframe, USAGE/`--version` (`nexus-slides`), log, bộ lọc file, icon cửa sổ từ `nexus/assets/`, thư mục cấu hình riêng `Nexus Slides` / `nexus-slides` (không đụng cấu hình DeckCraft) | Có |
-| `apps/deckcraft/build.rs` | Resource Windows: icon Nexus, ProductName, CompanyName Sonnytech, LegalCopyright (ghi công), OriginalFilename `nexus-slides.exe` | Có |
-| `apps/deckcraft-cli/src/main.rs` | `--version`, tiền tố lỗi, gợi ý `nexus-slides-cli`/`nexus-slides --control`, `links` (bỏ Discord/website), dòng "Source:" thay "Community:" | Có |
-| `apps/deckcraft-cli/src/help.rs` | Trợ giúp dùng `nexus-slides-cli`, "Nexus Slides presentations", `links` mô tả mới | Có |
-| `apps/deckcraft-cli/tests/cli.rs` | Assert trợ giúp theo tên `nexus-slides-cli` | Đi cùng `help.rs` |
-| `apps/deckcraft-web/index.html` | `<title>Nexus Slides</title>`, favicon Nexus, "Loading Nexus Slides…" | Có |
+| `apps/deckcraft/src/main.rs` | Tiêu đề cửa sổ, app id, tên eframe, USAGE/`--version` (`nexus-slide`), log, bộ lọc file, icon cửa sổ từ `nexus/assets/`, thư mục cấu hình riêng `Nexus Slides` / `nexus-slides` (tên cũ, giữ nguyên) (không đụng cấu hình DeckCraft) | Có |
+| `apps/deckcraft/build.rs` | Resource Windows: icon Nexus, ProductName, CompanyName SonnyTech, LegalCopyright (ghi công), OriginalFilename `nexus-slide.exe` | Có |
+| `apps/deckcraft-cli/src/main.rs` | `--version`, tiền tố lỗi, gợi ý `nexus-slide-cli`/`nexus-slide --control`, `links` (bỏ Discord/website), dòng "Source:" thay "Community:" | Có |
+| `apps/deckcraft-cli/src/help.rs` | Trợ giúp dùng `nexus-slide-cli`, "Nexus Slide presentations", `links` mô tả mới | Có |
+| `apps/deckcraft-cli/tests/cli.rs` | Assert trợ giúp theo tên `nexus-slide-cli` | Đi cùng `help.rs` |
+| `apps/deckcraft-web/index.html` | `<title>Nexus Slide</title>`, favicon Nexus, "Loading Nexus Slide…" | Có |
 | `apps/deckcraft-web/src/web.rs` | Lỗi khởi động bản web | Có |
-| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer Sonnytech, **UpgradeCode + GUID component mới**, cài `nexus-slides.exe`/`nexus-slides-cli.exe` vào `Program Files\Nexus Slides`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slides.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork); cài `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` cạnh exe (4 component mới, GUID tự sinh); vòng sửa 1: thư mục `licenses\` + ComponentGroup `DeckcraftFontLicences` (`<Files Include="$(var.BinDir)\licenses\*">`) trong feature Main, có điều kiện `FontLicences` (mặc định `no`) | Một phần (biến WiX) |
-| `packaging/windows/package.ps1` | `NexusSlides-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slides(.exe)`/`nexus-slides-cli.exe` như MSI; chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào thư mục stage (MSI cài từ đó) và zip portable (Apache-2.0 §4(d)); vòng sửa 1: dựng `licenses\` = OFL craft-fonts (`OFL-<family>.txt`) + `assets\fonts\OFL-*.txt` (tên duy nhất không phân biệt hoa thường; ném lỗi khi `CRAFT_FONTS_REQUIRED=1` mà không có OFL), truyền `-d FontLicences=yes|no` cho WiX, zip portable lấy OFL từ `licenses\` | Một phần |
-| `packaging/windows/sign.ps1` | Mô tả chữ ký `/d Nexus Slides`, `/du` repo fork | Một phần |
-| `packaging/macos/Info.plist.in` | Tên bundle, executable `NexusSlides`, id `vn.sonnytech.nexus.slides`, icon, UTI `.deckcraft` mới, copyright (ghi công) | Một phần |
-| `packaging/macos/package.sh` | `Nexus Slides.app`, `NexusSlides-*.dmg`, `NexusSlides-cli-*.zip` chứa `nexus-slides-cli`, icns Nexus, tên volume; không chép `dmg-layout.DS_Store`/nền (gắn tên/icon DeckCraft); `copy_notices` chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào `Contents/Resources` của app (trước khi ký) | Một phần |
-| `packaging/linux/package.sh` | `APP_ID=vn.sonnytech.nexus.slides`, `/usr/bin/nexus-slides(-cli)`, `NexusSlides-*`, icon `nexus/assets/hicolor`, maintainer Sonnytech, zsync trỏ fork; AppImage giữ `usr/share/doc/nexus-slides` (giấy phép, `NOTICE`, `ATTRIBUTION.md`) thay vì bỏ ra ngoài | Một phần |
-| `packaging/linux/nfpm.yaml` | Gói `nexus-slides`, vendor/homepage, binary, ghi công | Một phần |
+| `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer SonnyTech, **UpgradeCode + GUID component mới**, cài `nexus-slide.exe`/`nexus-slide-cli.exe` vào `Program Files\Nexus Slide`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slide.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork); cài `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` cạnh exe (4 component mới, GUID tự sinh); vòng sửa 1: thư mục `licenses\` + ComponentGroup `DeckcraftFontLicences` (`<Files Include="$(var.BinDir)\licenses\*">`) trong feature Main, có điều kiện `FontLicences` (mặc định `no`) | Một phần (biến WiX) |
+| `packaging/windows/package.ps1` | `NexusSlide-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slide(.exe)`/`nexus-slide-cli.exe` như MSI; chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào thư mục stage (MSI cài từ đó) và zip portable (Apache-2.0 §4(d)); vòng sửa 1: dựng `licenses\` = OFL craft-fonts (`OFL-<family>.txt`) + `assets\fonts\OFL-*.txt` (tên duy nhất không phân biệt hoa thường; ném lỗi khi `CRAFT_FONTS_REQUIRED=1` mà không có OFL), truyền `-d FontLicences=yes|no` cho WiX, zip portable lấy OFL từ `licenses\` | Một phần |
+| `packaging/windows/sign.ps1` | Mô tả chữ ký `/d Nexus Slide`, `/du` repo fork | Một phần |
+| `packaging/macos/Info.plist.in` | Tên bundle, executable `NexusSlide`, id `vn.sonnytech.nexus.slides`, icon, UTI `.deckcraft` mới, copyright (ghi công) | Một phần |
+| `packaging/macos/package.sh` | `Nexus Slide.app`, `NexusSlide-*.dmg`, `NexusSlide-cli-*.zip` chứa `nexus-slide-cli`, icns Nexus, tên volume; không chép `dmg-layout.DS_Store`/nền (gắn tên/icon DeckCraft); `copy_notices` chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào `Contents/Resources` của app (trước khi ký) | Một phần |
+| `packaging/linux/package.sh` | `APP_ID=vn.sonnytech.nexus.slides`, `/usr/bin/nexus-slide(-cli)`, `NexusSlide-*`, icon `nexus/assets/hicolor`, maintainer SonnyTech, zsync trỏ fork; AppImage giữ `usr/share/doc/nexus-slide` (giấy phép, `NOTICE`, `ATTRIBUTION.md`) thay vì bỏ ra ngoài | Một phần |
+| `packaging/linux/nfpm.yaml` | Gói `nexus-slide`, vendor/homepage, binary, ghi công | Một phần |
 | `packaging/common.sh` | `copy_docs` chép thêm `NOTICE` (Apache-2.0 §4(d)) và `ATTRIBUTION.md` (README Nexus trỏ tới cả hai) qua hàm mới `copy_notices` — bắt buộc, thiếu file thì lỗi; dùng cho deb/AppImage/tar, zip CLI macOS, zip web (và FreeBSD của upstream); vòng sửa 1: chép thêm `assets/fonts/OFL-*.txt` (font của repo nhúng trong binary, nếu có) sau OFL craft-fonts và báo lỗi khi trùng tên; mọi `cp` có `|| return 1` (gọi qua `||` thì errexit tắt); `copy_font_licences` báo lỗi khi `CRAFT_FONTS_REQUIRED=1` mà không có OFL | Nên PR upstream (gói upstream cũng thiếu NOTICE) |
-| `packaging/linux/vn.sonnytech.nexus.slides.desktop` | Đổi tên từ `ai.storyteller.deckcraft.desktop`: Name, Exec/TryExec `nexus-slides`, Icon, StartupWMClass | Một phần |
-| `packaging/linux/vn.sonnytech.nexus.slides.metainfo.xml.in` | Đổi tên từ `ai.storyteller.deckcraft.metainfo.xml.in`: id, tên, developer Sonnytech, URL fork, bỏ Discord và ảnh chụp trên storytold, binary, ghi công | Một phần |
+| `packaging/linux/vn.sonnytech.nexus.slides.desktop` | Đổi tên từ `ai.storyteller.deckcraft.desktop`: Name, Exec/TryExec `nexus-slide`, Icon, StartupWMClass | Một phần |
+| `packaging/linux/vn.sonnytech.nexus.slides.metainfo.xml.in` | Đổi tên từ `ai.storyteller.deckcraft.metainfo.xml.in`: id, tên, developer SonnyTech, URL fork, bỏ Discord và ảnh chụp trên storytold, binary, ghi công | Một phần |
 | `packaging/linux/vn.sonnytech.nexus.slides.mime.xml` | Đổi tên từ `ai.storyteller.deckcraft.mime.xml`: **giữ MIME `application/x-deckcraft` + glob `*.deckcraft`**, chỉ đổi tên hiển thị và icon | Một phần |
-| `packaging/web/package.sh` | Zip `NexusSlides-web-<ver>.zip` | Một phần |
+| `packaging/web/package.sh` | Zip `NexusSlide-web-<ver>.zip` | Một phần |
 | `packaging/web/README.md` | Được đóng gói thành `HOSTING.md` trong zip web → tên sản phẩm/tên zip/đường dẫn ví dụ | Không (tài liệu đi kèm gói) |
-| `omastore.toml` | Icon, tên tài sản `NexusSlides-*`, exec `bin/nexus-slides` | Không |
-| `README.md` | README Nexus Slides ngắn (vi trước, có English): sản phẩm, NexusOffices/Sonnytech, câu ghi công "Nexus Slides được phát triển dựa trên DeckCraft của ArtCraft (MIT/Apache-2.0)" chỉ bằng chữ, trỏ LICENSE-MIT/LICENSE-APACHE/NOTICE/ATTRIBUTION; được `copy_docs` và zip portable đóng gói | Không (README của fork) |
-| `Cargo.toml` | `[workspace.package] repository` → `https://github.com/nhdai111983/deckcraft` (brand-check `brand-url`; metadata, không code nào đọc `CARGO_PKG_REPOSITORY`) | Có — metadata của fork |
-| `ATTRIBUTION.md` | 14 dòng cho icon Nexus (`nexus/assets/**`, Sonnytech, CC0-1.0) | Không (bắt buộc theo luật asset) |
+| `omastore.toml` | Icon, tên tài sản `NexusSlide-*`, exec `bin/nexus-slide` | Không |
+| `README.md` | README Nexus Slide ngắn (vi trước, có English): sản phẩm, NexusOffice/SonnyTech, câu ghi công "Nexus Slide được phát triển dựa trên DeckCraft của ArtCraft (MIT/Apache-2.0)" chỉ bằng chữ, trỏ LICENSE-MIT/LICENSE-APACHE/NOTICE/ATTRIBUTION; được `copy_docs` và zip portable đóng gói | Không (README của fork) |
+| `Cargo.toml` | `[workspace.package] repository` → `https://github.com/sonnytech-vn/deckcraft` (brand-check `brand-url`; metadata, không code nào đọc `CARGO_PKG_REPOSITORY`) | Có — metadata của fork |
+| `ATTRIBUTION.md` | 14 dòng cho icon Nexus (`nexus/assets/**`, SonnyTech, CC0-1.0) | Không (bắt buộc theo luật asset) |
 
-### GUID WiX mới (Nexus Slides riêng, không dùng chung với DeckCraft hay app Nexus khác)
+### GUID WiX mới (Nexus Slide riêng, không dùng chung với DeckCraft hay app Nexus khác)
 
-| Mục | GUID cũ (upstream DeckCraft) | GUID mới (Nexus Slides) |
+| Mục | GUID cũ (upstream DeckCraft) | GUID mới (Nexus Slide) |
 |---|---|---|
 | `UpgradeCode` | `6F9C69E7-7825-40D2-BF26-C274DA676425` | `96D068F9-30CC-4E22-808D-242613C1E158` |
 | Component `DeckcraftApp` | `D87EA444-41A4-4C19-922E-66D1A29461FF` | `F3911F7B-4F9F-4BA6-8D06-B513AB237AF1` |
-| Component `DeckcraftCli` | (tự sinh theo đường dẫn) | tự sinh — thư mục cài (`Nexus Slides`) và tên file (`nexus-slides-cli.exe`) đã khác |
+| Component `DeckcraftCli` | (tự sinh theo đường dẫn) | tự sinh — thư mục cài (`Nexus Slide`) và tên file (`nexus-slide-cli.exe`) đã khác |
 | Component `DeckcraftMitLicense`, `DeckcraftApacheLicense`, `DeckcraftNotice`, `DeckcraftAttribution` | (không có ở upstream) | tự sinh — file giấy phép/NOTICE/ATTRIBUTION.md cài cạnh exe |
 | ComponentGroup `DeckcraftFontLicences` (mỗi file trong `licenses\` một component) | (không có ở upstream) | tự sinh — OFL của font nhúng, cài vào `licenses\` |
 
@@ -136,8 +150,8 @@ Sinh bằng `python3 -c "import uuid; print(uuid.uuid4())"` ngày 2026-10-17.
 (tác giả mặc định, `<Application>`, theme `Nexus`, generator `.deckcraft`, bí danh theme "DeckCraft",
 deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus …"),
 `crates/mcp/tests/nexus_brand.rs` (serverInfo, tool_definitions không có `deckcraft-cli`),
-`apps/deckcraft-cli/tests/nexus_brand.rs` (`--version`/usage/help/links/app nêu `nexus-slides(-cli)`),
-`nexus/assets/*` (logo tạm `nexus-slides.svg` + PNG/ICO/ICNS/hicolor sinh bằng
+`apps/deckcraft-cli/tests/nexus_brand.rs` (`--version`/usage/help/links/app nêu `nexus-slide(-cli)`),
+`nexus/assets/*` (logo tạm `nexus-slide.svg` + PNG/ICO/ICNS/hicolor sinh bằng
 `nexus/assets/render-icons.py`).
 
 ## File khác
@@ -164,7 +178,7 @@ phải gọi mạng lúc chạy.
 - `crates/matroska/src/mux.rs:81` (`WritingApp = "deckcraft"`) và `:169` (`MuxingApp =
   "deckcraft-matroska"`) ghi tên upstream (chữ thường, brand-check không bắt) vào tệp Matroska do muxer
   tạo; hiện app không xuất video nên không tới tay người dùng — đổi khi có tính năng xuất video.
-- Tác giả mặc định đổi từ "Presenter" (upstream, không mang thương hiệu) sang "Nexus Slides User"
+- Tác giả mặc định đổi từ "Presenter" (upstream, không mang thương hiệu) sang "Nexus Slide User"
   theo quy ước chung của bộ (ruling T7).
 - Gói FreeBSD (`packaging/freebsd/package.sh`) và Flatpak (`packaging/linux/flatpak*`) chưa đổi —
   chưa phát hành (workflow tắt theo spec §4.6). **Chúng trỏ tới tên file `ai.storyteller.deckcraft.*`
