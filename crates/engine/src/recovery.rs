@@ -191,16 +191,19 @@ pub fn list(dir: &Path) -> Vec<(u64, Value)> {
 
 /// The entries a crash left in `dir`: those of no running instance, this one included (a host
 /// with several sessions offers them once, before any of its own are written, and gives each to
-/// a session of its own with [`reopen`]). Same shape as [`list`].
+/// a session of its own with [`reopen`]). Same shape as [`list`]. Lock files of instances no
+/// longer running are removed, as [`open`] does.
 pub fn recoverable(dir: &Path) -> Vec<(u64, Value)> {
     let me = instance_id();
-    list(dir)
+    let out = list(dir)
         .into_iter()
         .filter(|(_, meta)| match meta.get("owner").and_then(Value::as_u64) {
             Some(owner) => owner != me && !owner_alive(dir, owner),
             None => true,
         })
-        .collect()
+        .collect();
+    remove_stale_locks(dir);
+    out
 }
 
 /// The presentation of entry `uid` in `dir`, read back (`None`: missing, not a regular file, too
@@ -356,12 +359,15 @@ mod tests {
         std::fs::write(&m, json!({"title": "Live", "owner": live}).to_string()).unwrap();
         // A crashed instance's entry (no lock held), with its file: offered.
         let dead = instance_id() ^ (1 << 42);
+        File::create(lock_path(&dir, dead)).unwrap();
         let (d, m) = files(&dir, dead + 1);
         std::fs::write(&d, &bytes).unwrap();
         std::fs::write(&m, json!({"title": "Báo cáo", "path": "/x/báo cáo.pptx", "owner": dead}).to_string()).unwrap();
         let offered = recoverable(&dir);
         assert_eq!(offered.iter().map(|e| e.0).collect::<Vec<_>>(), vec![dead + 1], "only the crash's entry");
         assert!(offered.iter().all(|e| e.0 != mine_uid));
+        assert!(!lock_path(&dir, dead).exists(), "a crashed instance's lock file is cleaned up");
+        assert!(lock_path(&dir, live).exists(), "a running one's stays");
         // Reopened in a session of its own: unsaved, its uid, file and title kept, nothing deleted.
         let mut s = Session::new();
         let read = read_entry(&dir, dead + 1).unwrap();
