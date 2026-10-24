@@ -74,7 +74,15 @@ fn load_prefs(app: &mut SlideApp) {
     let Some(dir) = config_dir() else { return };
     let (ui, prefs) = deckcraft_ui_egui::settings::load(&dir);
     if let Some(ui) = ui {
+        // NexusOffice: a ui.json that names no language (written by an older version, or upstream's
+        // English that writes no key) keeps the Vietnamese default.
+        let saved = std::fs::read(dir.join("ui.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| deckcraft_ui_egui::i18n::saved_language(&v));
+        let language = saved.unwrap_or(app.ui.language);
         app.ui = ui;
+        app.ui.language = language;
     }
     if let Some(prefs) = prefs {
         app.session.prefs = prefs;
@@ -236,8 +244,10 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let mut app = SlideApp::new(Session::new(), services());
-            // NexusOffice layout: a menu bar and one tool row instead of the ribbon.
-            app.toolbar = true;
+            // NexusOffice layout in the style of WPS Office (the menu-bar layout stays behind
+            // `toolbar`); the interface speaks Vietnamese unless the user picked another language.
+            app.wps = true;
+            app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
             load_prefs(&mut app);
             // AutoRecover: reopen what a previous run left unsaved, then keep it current.
             if std::env::var_os("DECKCRAFT_NO_RECOVERY").is_none() {
