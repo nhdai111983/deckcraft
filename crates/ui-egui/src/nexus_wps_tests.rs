@@ -571,8 +571,8 @@ fn fills(template: &str, text: &str) -> bool {
 /// presentation's own text, numbers, units and shortcuts.
 fn exempt(text: &str, doc_text: &str) -> bool {
     let fonts = deckcraft_fonts::FontDb::global().families();
-    // Starter decks' names (their slides are English too: a gap) and paper sizes are names.
-    let starters: Vec<&str> = deckcraft_engine::templates::matching("").iter().map(|t| t.name).collect();
+    // Starter decks' names (shown in Vietnamese, from the engine's table) and paper sizes are names.
+    let starters: Vec<&str> = deckcraft_engine::templates::starters().iter().map(|t| deckcraft_engine::nexus_vi::text(Some("vi"), t.name)).collect();
     let papers: Vec<&str> = deckcraft_engine::cmd::file::PAPERS.iter().map(|p| p.1).collect();
     let builtin = deckcraft_model::theme::builtin_themes();
     let themes: Vec<String> = builtin.iter().map(|t| t.name.clone()).collect();
@@ -832,4 +832,226 @@ fn entering_a_placeholder_alone_is_not_a_change() {
     }
     assert!(!h.state().session.active().unwrap().is_dirty(), "nothing typed");
     assert!(!h.state().has_drafts());
+}
+
+/// Whether `t`, a line drawn in Vietnamese, is translated: a catalogue translation, a filled
+/// template, or text that may stay as it is ([`exempt`], units, numbering samples).
+fn vietnamese(t: &str, doc: &str) -> bool {
+    let t = t.trim().trim_start_matches('•').trim_end_matches('→').trim();
+    let values: Vec<&str> = crate::i18n::vi_entries().iter().map(|(_, v)| *v).collect();
+    // A number with its unit ("6 pt", "1.5 in") is not a word either.
+    let unit = t.trim_start_matches(|c: char| c.is_ascii_digit() || ".,-+ ".contains(c));
+    t.is_empty()
+        || values.contains(&t)
+        || values.iter().any(|v| v.contains('{') && fills(v, t))
+        // Units, the font sample, the numbering styles' samples and the hex hint are not words.
+        || ["in", "pt", "AaBbCcDd", "I. II. III.", "i. ii. iii.", "RRGGBB"].contains(&unit)
+        || exempt(t, doc)
+}
+
+/// The labels a frame drew, and the ones it asked [`crate::i18n::tl`] for (drop-down items and
+/// tooltips included), that are still English.
+fn english_in(h: &mut H, place: &str, out: &mut std::collections::BTreeSet<String>) {
+    let mut doc = h.state().session.active().map(crate::uifonts::ui_text).unwrap_or_default();
+    // The AutoCorrect list is the user's (its entries are what they type), not interface wording.
+    if let Ok(v) = h.state_mut().session.execute("text.autocorrect", &json!({})) {
+        for pair in v["entries"].as_array().into_iter().flatten() {
+            for side in pair.as_array().into_iter().flatten().filter_map(|s| s.as_str()) {
+                doc.push('\n');
+                doc.push_str(side);
+            }
+        }
+    }
+    for t in drawn(h) {
+        for line in t.lines() {
+            if !vietnamese(line, &doc) {
+                out.insert(format!("{place}: {line:?}"));
+            }
+        }
+    }
+    for miss in crate::i18n::misses::take() {
+        if !vietnamese(&miss, &doc) {
+            out.insert(format!("{place} (tl): {miss:?}"));
+        }
+    }
+}
+
+/// NexusOffice: the Format dialogs (Font, Paragraph, Tabs, Bullets and Numbering, Size and
+/// Position), the Options dialog (with AutoCorrect and Grid Options), the Format Shape pane on
+/// each of its pages and fills, the Format Background pane and the colour menu speak Vietnamese:
+/// every label they draw or ask the catalogue for has a translation. A new label without a `vi`
+/// entry fails here with its place.
+#[test]
+fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnamese() {
+    use crate::dialogs::Dialog;
+    let b64 = |b: Vec<u8>| deckcraft_engine::cmd::base64_encode(&b);
+    let mut missing = std::collections::BTreeSet::new();
+    let shape = |a: &mut SlideApp| {
+        a.run("shape.insert", json!({"preset": "rect", "rect": [100, 100, 300, 200], "text": "x"})).unwrap();
+    };
+    let _ = crate::i18n::misses::take();
+    // Dialogs.
+    let dialogs: Vec<(&str, Vec<(&str, &str)>)> = vec![
+        ("font", vec![]),
+        ("paragraph", vec![]),
+        ("tabs", vec![("stops", "1:l|2.5:dec")]),
+        ("bullets", vec![("tab", "bulleted")]),
+        ("bullets", vec![("tab", "numbered")]),
+        ("sizePosition", vec![]),
+        ("preferences", vec![]),
+        ("autocorrect", vec![]),
+        ("gridOptions", vec![]),
+    ];
+    for (id, fields) in dialogs {
+        let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+            shape(a);
+            let mut d = Dialog::new(id);
+            for (k, v) in &fields {
+                d.fields.insert((*k).into(), (*v).into());
+            }
+            a.dialog = Some(d);
+        });
+        h.run_steps(8);
+        assert!(h.state().dialog.is_some(), "{id} stays open");
+        english_in(&mut h, &format!("dialog {id} {fields:?}"), &mut missing);
+    }
+    // The Format Shape pane: each page, and the fills and lines that show more controls.
+    let pages: Vec<(&str, &str, Box<dyn Fn(&mut SlideApp)>)> = vec![
+        (
+            "fill",
+            "solid + arrows",
+            Box::new(|a: &mut SlideApp| {
+                a.run("shape.fill", json!({"color": "accent1"})).unwrap();
+                a.run("shape.line", json!({"color": "tx1", "width": 2})).unwrap();
+                a.run("shape.line", json!({"head": "triangle"})).unwrap();
+                a.run("shape.line", json!({"tail": "oval"})).unwrap();
+            }),
+        ),
+        (
+            "fill",
+            "gradient",
+            Box::new(|a: &mut SlideApp| {
+                a.run("shape.fill", json!({"gradient": {"stops": [[0, "accent1"], [1, "accent2"]], "angle": 90}})).unwrap();
+            }),
+        ),
+        (
+            "fill",
+            "radial gradient",
+            Box::new(|a: &mut SlideApp| {
+                a.run("shape.fill", json!({"gradient": {"stops": [[0, "accent1"], [1, "accent2"]], "kind": "radial"}})).unwrap();
+            }),
+        ),
+        (
+            "fill",
+            "picture",
+            Box::new(move |a: &mut SlideApp| {
+                a.run("shape.fill", json!({"picture": b64(png())})).unwrap();
+            }),
+        ),
+        (
+            "fill",
+            "tiled picture",
+            Box::new(move |a: &mut SlideApp| {
+                a.run("shape.fill", json!({"picture": b64(png())})).unwrap();
+                a.run("shape.fill", json!({"pictureProps": {"tile": true}})).unwrap();
+            }),
+        ),
+        ("effects", "none", Box::new(|_: &mut SlideApp| {})),
+        (
+            "effects",
+            "all",
+            Box::new(|a: &mut SlideApp| {
+                a.run("shape.effects", json!({"shadow": "outer"})).unwrap();
+                a.run("shape.effects", json!({"reflection": "half"})).unwrap();
+                a.run("shape.effects", json!({"glow": {"color": "accent1", "radius": 6}})).unwrap();
+                a.run("shape.effects", json!({"threeD": {"bevelTop": "circle", "material": "clear"}})).unwrap();
+            }),
+        ),
+        ("size", "", Box::new(|_: &mut SlideApp| {})),
+        ("text", "", Box::new(|_: &mut SlideApp| {})),
+    ];
+    for (tab, what, setup) in pages {
+        let mut h = harness((1600.0, 1400.0), Language::Vi, false, |a| {
+            shape(a);
+            setup(a);
+            a.ui.pane = Some("format".into());
+            a.ui.format_tab = tab.into();
+        });
+        h.run_steps(8);
+        english_in(&mut h, &format!("Format Shape › {tab} ({what})"), &mut missing);
+    }
+    let mut h = harness((1600.0, 1400.0), Language::Vi, false, |a| {
+        a.run("insert.picture", json!({"name": "p.png", "data": b64(png())})).unwrap();
+        a.ui.pane = Some("format".into());
+        a.ui.format_tab = "picture".into();
+    });
+    h.run_steps(8);
+    english_in(&mut h, "Format Shape › picture", &mut missing);
+    let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+        a.run("edit.deselect", json!({})).unwrap();
+        a.ui.pane = Some("format".into());
+    });
+    english_in(&mut h, "Format Shape (nothing selected)", &mut missing);
+    // The Format Background pane, with each kind of fill.
+    let backgrounds: Vec<(&str, serde_json::Value)> = vec![
+        ("follow", json!({"reset": true})),
+        ("solid", json!({"color": "bg2"})),
+        ("gradient", json!({"gradient": {"stops": [[0, "accent1"], [1, "accent2"]], "angle": 90}})),
+        ("pattern", json!({"pattern": {"preset": "pct20", "fg": "accent1", "bg": "bg1"}})),
+        ("picture", json!({"picture": b64(png())})),
+    ];
+    for (what, p) in backgrounds {
+        let mut h = harness((1600.0, 1400.0), Language::Vi, false, |a| {
+            a.run("design.background", p.clone()).unwrap();
+            if what == "picture" {
+                a.run("design.background", json!({"pictureProps": {"tile": true}})).unwrap();
+            }
+            a.ui.pane = Some("background".into());
+        });
+        h.run_steps(8);
+        english_in(&mut h, &format!("Format Background ({what})"), &mut missing);
+    }
+    // The colour menu the panes and dialogs open.
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(400.0, 600.0)).build_ui(|ui| {
+        crate::i18n::set_current(ui.ctx(), Language::Vi);
+        let _ = crate::widgets::color_grid(ui, &deckcraft_model::Theme::default().colors, Some("No Fill"));
+    });
+    h.run_steps(2);
+    let mut got = Vec::new();
+    for s in &h.output().shapes {
+        texts(&s.shape, &mut got);
+    }
+    for t in got {
+        if !vietnamese(&t, "") {
+            missing.insert(format!("colour menu: {t:?}"));
+        }
+    }
+    for miss in crate::i18n::misses::take() {
+        if !vietnamese(&miss, "") {
+            missing.insert(format!("colour menu (tl): {miss:?}"));
+        }
+    }
+    let missing: Vec<String> = missing.into_iter().collect();
+    assert!(missing.is_empty(), "untranslated ({}):\n{}", missing.len(), missing.join("\n"));
+}
+
+/// The File tab's starter gallery shows the starters' Vietnamese names and opens them filled
+/// with Vietnamese text; the sample deck opens in Vietnamese too.
+#[test]
+fn starters_and_the_sample_open_in_the_interface_language() {
+    let mut h = harness((1920.0, 1000.0), Language::Vi, false, |_| {});
+    h.state_mut().open_backstage(crate::backstage::Page::New);
+    h.run_steps(8);
+    let shown = drawn(&h);
+    assert!(shown.iter().any(|t| t == "Giao ban"), "the Briefing tile is named in Vietnamese: {shown:?}");
+    assert!(!shown.iter().any(|t| t == "Briefing"), "{shown:?}");
+    h.get_by_label("Giao ban").click();
+    h.run_steps(6);
+    let title = h.state().session.active().map(|d| d.doc.slides[0].title());
+    assert_eq!(title.as_deref(), Some("Giao ban tuần"));
+    h.state_mut().open_backstage(crate::backstage::Page::New);
+    h.run_steps(8);
+    h.get_by_label("Bản mẫu: Bắc cực quang").click();
+    h.run_steps(6);
+    assert_eq!(h.state().session.active().map(|d| d.title.clone()).as_deref(), Some("Bắc cực quang"));
 }
