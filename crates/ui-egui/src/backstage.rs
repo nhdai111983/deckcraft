@@ -844,7 +844,8 @@ fn open_page(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
             {
                 let _ = app.run("app.openDialog", json!({}));
             }
-            if app.session.recovery_dir.is_some() {
+            // NexusOffice: a host window (one session per tab) offers what a crash left itself.
+            if app.session.recovery_dir.is_some() && !app.embedded {
                 ui.add_space(24.0);
                 if ui.button(crate::i18n::tr(ui.ctx(), "Recover Unsaved Presentations")).clicked() {
                     match app.run("file.recovery.open", json!({})) {
