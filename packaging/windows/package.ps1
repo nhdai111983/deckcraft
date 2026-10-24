@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Build, sign and package Nexus Slides (NexusOffices, by Sonnytech) for Windows.
+  Build, sign and package Nexus Slide (NexusOffice, by SonnyTech) for Windows.
 
 .DESCRIPTION
   Produces, in $env:DIST (default: dist/release):
-    NexusSlides-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
-    NexusSlides-<version>-windows-<arch>-portable.zip   nexus-slides.exe + nexus-slides-cli.exe
+    NexusSlide-<version>-windows-<arch>.msi            per-machine installer (WiX v5)
+    NexusSlide-<version>-windows-<arch>-portable.zip   nexus-slide.exe + nexus-slide-cli.exe
 
   The binaries link the C runtime statically (+crt-static), so neither the MSI nor the portable
   zip needs the Visual C++ redistributable. Signing is delegated to sign.ps1 (skipped with a
@@ -53,7 +53,7 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 if (-not $env:DECKCRAFT_BUILD_SHA) { $env:DECKCRAFT_BUILD_SHA = (git -C $Root rev-parse HEAD 2>$null) }
 if (-not $env:DECKCRAFT_BUILD_DATE) { $env:DECKCRAFT_BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd') }
 
-Write-Output "Nexus Slides $Version for Windows $Arch ($Target)"
+Write-Output "Nexus Slide $Version for Windows $Arch ($Target)"
 
 if (-not $SkipBuild) {
   # Static CRT: no VC++ redistributable needed. Scoped to the target so host build scripts and
@@ -87,12 +87,12 @@ $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item (Join-Path $Bin 'deckcraft.exe'), (Join-Path $Bin 'deckcraft-cli.exe') $Stage
-# NexusOffices: the licences, NOTICE (Apache-2.0 §4(d)) and ATTRIBUTION.md travel beside the
+# NexusOffice: the licences, NOTICE (Apache-2.0 §4(d)) and ATTRIBUTION.md travel beside the
 # binaries: the MSI installs them from here and the portable zip copies them below.
 foreach ($f in 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
   Copy-Item (Join-Path $Root $f) $Stage
 }
-# NexusOffices: the OFL texts of every font the binaries embed go in licenses\ (the MSI installs it
+# NexusOffice: the OFL texts of every font the binaries embed go in licenses\ (the MSI installs it
 # as licenses\, the portable zip puts its files beside the exes): craft-fonts' fonts\<family>\OFL.txt
 # as OFL-<family>.txt, the name the Linux and macOS packages use, and the repo's own
 # assets\fonts\OFL-*.txt under their own names. Names must be unique ignoring case (Windows).
@@ -126,10 +126,10 @@ $FontLicences = if ($LicenceSources.Count) { 'yes' } else { 'no' }
 & (Join-Path $PSScriptRoot 'sign.ps1') (Join-Path $Stage 'deckcraft.exe') (Join-Path $Stage 'deckcraft-cli.exe')
 
 # ---- MSI ---------------------------------------------------------------------------------------
-$Msi = Join-Path $Dist "NexusSlides-$Version-windows-$Arch.msi"
+$Msi = Join-Path $Dist "NexusSlide-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
   wix build (Join-Path $PSScriptRoot 'deckcraft.wxs') -arch $Arch `
-    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'nexus\assets\nexus-slides.ico')" `
+    -d "Version=$MsiVersion" -d "BinDir=$Stage" -d "IconPath=$(Join-Path $Root 'nexus\assets\nexus-slide.ico')" `
     -d "FontLicences=$FontLicences" `
     -o $Msi
 }
@@ -138,19 +138,19 @@ Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Ms
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi
 
 # ---- portable zip ------------------------------------------------------------------------------
-$Portable = Join-Path $TargetDir "windows-package\NexusSlides-$Version-windows-$Arch-portable"
+$Portable = Join-Path $TargetDir "windows-package\NexusSlide-$Version-windows-$Arch-portable"
 Remove-Item -Recurse -Force $Portable -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Portable | Out-Null
 # The installed names, as in the MSI (Cargo still builds deckcraft.exe / deckcraft-cli.exe).
-Copy-Item (Join-Path $Stage 'deckcraft.exe') (Join-Path $Portable 'nexus-slides.exe')
-Copy-Item (Join-Path $Stage 'deckcraft-cli.exe') (Join-Path $Portable 'nexus-slides-cli.exe')
+Copy-Item (Join-Path $Stage 'deckcraft.exe') (Join-Path $Portable 'nexus-slide.exe')
+Copy-Item (Join-Path $Stage 'deckcraft-cli.exe') (Join-Path $Portable 'nexus-slide-cli.exe')
 foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Portable }
 }
-# NexusOffices: the font licences staged in licenses\ (craft-fonts and the repo's own), as in the MSI.
+# NexusOffice: the font licences staged in licenses\ (craft-fonts and the repo's own), as in the MSI.
 Copy-Item (Join-Path $Licenses '*') $Portable
-$Zip = Join-Path $Dist "NexusSlides-$Version-windows-$Arch-portable.zip"
+$Zip = Join-Path $Dist "NexusSlide-$Version-windows-$Arch-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 
