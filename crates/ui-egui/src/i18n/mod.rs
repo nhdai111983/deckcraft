@@ -1,6 +1,6 @@
 //! NexusOffice: the interface language (English, or Vietnamese for the NexusOffice suite).
 //!
-//! Upstream DeckCraft has no translations: its labels are English literals at each widget. This
+//! Upstream has no translations: its labels are English literals at each widget. This
 //! module is the smallest catalogue mechanism that lets the WPS-style layout ([`crate::nexus_wps`]),
 //! the File tab's pages, the status bar and the ribbon's widgets speak Vietnamese without touching
 //! every call site: the widgets look their label up with [`tr`] in the language of the frame being
@@ -20,7 +20,7 @@ mod vi;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
-    /// Upstream's English (the default: tests and the stand-alone DeckCraft read English).
+    /// Upstream's English (the default: tests and the upstream stand-alone app read English).
     #[default]
     En,
     /// Tiếng Việt (the NexusOffice suite and the Nexus Slide app).
