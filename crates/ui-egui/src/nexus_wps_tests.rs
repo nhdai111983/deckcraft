@@ -821,3 +821,15 @@ fn embedded_leaves_the_windows_zoom_alone() {
     });
     assert!((alone.ctx.zoom_factor() - 1.5).abs() < 1e-3);
 }
+
+/// Tab to a placeholder, F2 into it and Esc out types nothing: the presentation isn't "Chưa lưu".
+#[test]
+fn entering_a_placeholder_alone_is_not_a_change() {
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |_| {});
+    for key in [egui::Key::Tab, egui::Key::F2, egui::Key::Escape, egui::Key::Enter, egui::Key::Escape, egui::Key::Escape] {
+        h.key_press(key);
+        h.run_steps(2);
+    }
+    assert!(!h.state().session.active().unwrap().is_dirty(), "nothing typed");
+    assert!(!h.state().has_drafts());
+}
