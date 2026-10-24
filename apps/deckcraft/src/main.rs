@@ -263,7 +263,7 @@ fn main() -> eframe::Result {
                 let rx = control_server::start(port, cc.egui_ctx.clone());
                 app = app.with_control(rx);
             }
-            if sample && let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
+            if sample && let Err(e) = deckcraft_engine::sample::open_sample_in(&mut app.session, Some(app.ui.language.code())) {
                 log::error!("sample: {e}");
             }
             for f in files {
