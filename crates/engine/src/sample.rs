@@ -50,11 +50,8 @@ pub fn open_sample_in(s: &mut Session, language: Option<&str>) -> Result<()> {
     run(s, "animation.options", json!({"textBuild": "byParagraph"}))?;
 
     // Section header.
-    run(
-        s,
-        "slide.new",
-        json!({"layout": "sectionHeader", "title": t("The Science"), "body": t("Charged particles, magnetic fields and glowing gases")}),
-    )?;
+    let (science, gases) = (t("The Science"), t("Charged particles, magnetic fields and glowing gases"));
+    run(s, "slide.new", json!({"layout": "sectionHeader", "title": science, "body": gases}))?;
     run(s, "design.background", json!({"color": "dk2"}))?;
     let st = s.doc()?;
     let ids: Vec<u64> = st.current_slide().map(|x| x.shapes.iter().map(|s| s.id.0 as u64).collect()).unwrap_or_default();
@@ -85,11 +82,8 @@ pub fn open_sample_in(s: &mut Session, language: Option<&str>) -> Result<()> {
         }
         prev = Some(id);
     }
-    let cap = run(
-        s,
-        "insert.textBox",
-        json!({"rect": [60, 380, 840, 60], "text": t("Oxygen glows green and red; nitrogen adds blue and purple fringes.")}),
-    )?;
+    let caption = t("Oxygen glows green and red; nitrogen adds blue and purple fringes.");
+    let cap = run(s, "insert.textBox", json!({"rect": [60, 380, 840, 60], "text": caption}))?;
     run(s, "edit.select", json!({"ids": [last_id(&cap)]}))?;
     run(s, "format.alignCenter", json!({}))?;
     run(s, "format.size", json!({"size": 20}))?;

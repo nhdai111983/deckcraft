@@ -38,11 +38,14 @@ pub fn vi(en: &str) -> Option<&'static str> {
 /// Starters whose name, summary, theme or a slide title contains `query`, in English or in
 /// Vietnamese (empty matches all), in gallery order.
 pub fn matching(query: &str) -> Vec<&'static crate::templates::Starter> {
+    // Upstream's English matches, plus the starters whose Vietnamese name, summary or a slide
+    // title contains the query.
+    let english = crate::templates::matching(query);
     let q = query.trim().to_lowercase();
-    let hit = |en: &str| en.to_lowercase().contains(&q) || vi(en).is_some_and(|v| v.to_lowercase().contains(&q));
+    let hit = |en: &str| vi(en).is_some_and(|v| v.to_lowercase().contains(&q));
     crate::templates::starters()
         .iter()
-        .filter(|t| q.is_empty() || hit(t.name) || hit(t.summary) || hit(t.theme) || t.slides.iter().any(|s| hit(s.title)))
+        .filter(|t| english.iter().any(|e| std::ptr::eq(*e, *t)) || hit(t.name) || hit(t.summary) || t.slides.iter().any(|s| hit(s.title)))
         .collect()
 }
 
@@ -189,7 +192,7 @@ const ENTRIES: &[(&str, &str)] = &[
     ("Magnetosphere", "Từ quyển"),
     ("Particles collide", "Hạt va chạm"),
     ("Light!", "Phát sáng!"),
-    ("Oxygen glows green and red; nitrogen adds blue and purple fringes.", "Ô-xy phát sáng xanh lục và đỏ; ni-tơ thêm viền xanh lam và tím."),
+    ("Oxygen glows green and red; nitrogen adds blue and purple fringes.", "Oxi phát sáng xanh lục và đỏ; nitơ thêm viền xanh lam và tím."),
     ("Best months to look (clear nights)", "Tháng nên ngắm (đêm quang mây)"),
     ("Average clear, dark nights per month", "Số đêm tối, quang mây trung bình mỗi tháng"),
     ("Sep", "Th9"),
