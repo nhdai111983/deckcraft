@@ -644,3 +644,20 @@ fn every_visible_label_in_the_wps_layout_and_the_file_tab_is_vietnamese() {
     let missing: Vec<String> = missing.into_iter().collect();
     assert!(missing.is_empty(), "untranslated ({}):\n{}", missing.len(), missing.join("\n"));
 }
+
+/// Merged into a host window's fonts, the bold family is its own face, then the window's text
+/// faces (which have Vietnamese), then ours; the window's families stay.
+#[test]
+fn merged_fonts_fall_back_to_the_windows_text_faces() {
+    use egui::FontFamily;
+    let mut window = egui::FontDefinitions::empty();
+    window.families.insert(FontFamily::Proportional, vec!["Window".into()]);
+    window.families.insert(FontFamily::Name("semibold".into()), vec!["WindowSemi".into()]);
+    let mut ours = egui::FontDefinitions::empty();
+    ours.families.insert(FontFamily::Proportional, vec!["Ours".into()]);
+    ours.families.insert(theme::bold_family(), vec!["OursBold".into(), "Ours".into()]);
+    let merged = theme::merge_font_definitions(window, ours);
+    assert_eq!(merged.families.get(&theme::bold_family()), Some(&vec!["OursBold".to_string(), "Window".into(), "Ours".into()]));
+    assert_eq!(merged.families.get(&FontFamily::Proportional), Some(&vec!["Window".to_string(), "Ours".into()]));
+    assert!(merged.families.contains_key(&FontFamily::Name("semibold".into())));
+}

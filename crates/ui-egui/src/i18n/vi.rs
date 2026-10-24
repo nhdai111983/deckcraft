@@ -297,7 +297,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Wipe", "Lau"),
     ("Split", "Tách"),
     ("Reveal", "Hé lộ"),
-    ("Random Bars", "Thanh ngẫu nhiên"),
+    ("Random Bars", "Sọc"),
     ("Shape", "Hình"),
     ("Uncover", "Mở ra"),
     ("Cover", "Che phủ"),

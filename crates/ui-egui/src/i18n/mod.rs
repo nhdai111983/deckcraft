@@ -109,6 +109,10 @@ impl Language {
     }
 }
 
+/// Every Vietnamese letter beyond ASCII (NFC), lower and upper case, and the đồng sign.
+pub const VI_LETTERS: &str = "àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ\
+ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ₫";
+
 /// NexusOffice: the placeholder prompts the slide shows in `language` ("Bấm để thêm tiêu đề"), for
 /// [`deckcraft_render::RenderOpts::prompt`]; `None` keeps upstream's English.
 pub fn prompt_fn(language: Language) -> Option<fn(deckcraft_model::PhType) -> &'static str> {

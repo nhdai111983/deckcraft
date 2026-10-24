@@ -380,10 +380,23 @@ pub fn merge_font_definitions(mut window: FontDefinitions, ours: FontDefinitions
     for (name, data) in ours.font_data {
         window.font_data.entry(name).or_insert(data);
     }
+    // The window's own text faces (the host's interface font), as the last fallbacks of our named
+    // families: without Inter embedded, `bold` would otherwise end in egui's defaults, which have
+    // no Vietnamese (Tệp drew as T□p).
+    let window_text = window.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let our_text = ours.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     for (family, chain) in ours.families {
         match family {
             FontFamily::Name(_) => {
-                window.families.insert(family, chain);
+                // The family's own faces (Inter SemiBold), then the window's text faces, then ours.
+                let (own, rest): (Vec<String>, Vec<String>) = chain.into_iter().partition(|n| !our_text.contains(n));
+                let mut merged = own;
+                for name in window_text.iter().chain(&rest) {
+                    if !merged.contains(name) {
+                        merged.push(name.clone());
+                    }
+                }
+                window.families.insert(family, merged);
             }
             other => {
                 let list = window.families.entry(other).or_default();

@@ -1822,6 +1822,11 @@ impl SlideApp {
                 .collect()
         });
         self.ui_fonts.note(ctx, &typed);
+        // NexusOffice: the interface's own Vietnamese labels; a face is borrowed for any letter the
+        // interface fonts lack (a build without the embedded Inter).
+        if self.ui.language == i18n::Language::Vi {
+            self.ui_fonts.note(ctx, i18n::VI_LETTERS);
+        }
         for d in self.session.documents() {
             self.ui_fonts.note(ctx, &d.title());
         }
