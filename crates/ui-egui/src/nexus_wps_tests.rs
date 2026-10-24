@@ -567,7 +567,10 @@ fn exempt(text: &str, doc_text: &str) -> bool {
     // Starter decks' names (their slides are English too: a gap) and paper sizes are names.
     let starters: Vec<&str> = deckcraft_engine::templates::matching("").iter().map(|t| t.name).collect();
     let papers: Vec<&str> = deckcraft_engine::cmd::file::PAPERS.iter().map(|p| p.1).collect();
-    let themes: Vec<String> = deckcraft_model::theme::builtin_themes().into_iter().map(|t| t.name).collect();
+    let builtin = deckcraft_model::theme::builtin_themes();
+    let themes: Vec<String> = builtin.iter().map(|t| t.name.clone()).collect();
+    // The themes' own fonts are names too, installed or not (Inter is missing where craft-fonts isn't).
+    let theme_fonts: Vec<String> = builtin.iter().flat_map(|t| [t.fonts.major.latin.clone(), t.fonts.minor.latin.clone()]).collect();
     let plain = text.trim_end_matches('…').trim();
     let letters = plain.as_bytes().windows(2).any(|w| w[0].is_ascii_alphabetic() && w[1].is_ascii_alphabetic());
     !letters
@@ -587,8 +590,7 @@ fn exempt(text: &str, doc_text: &str) -> bool {
             "Tiếng Việt",
             "English",
         ]
-        .iter()
-        .any(|n| plain == *n)
+        .contains(&plain)
         || plain.starts_with("Ctrl+")
         || plain.ends_with('%')
         || fonts.iter().any(|f| f == plain)
@@ -596,6 +598,7 @@ fn exempt(text: &str, doc_text: &str) -> bool {
         || papers.contains(&plain)
         || (plain.len() <= 3 && plain.chars().all(|c| c.is_ascii_lowercase()))
         || themes.iter().any(|t| t == plain)
+        || theme_fonts.iter().any(|f| f == plain)
         || doc_text.contains(plain)
 }
 
@@ -613,7 +616,7 @@ fn every_visible_label_in_the_wps_layout_and_the_file_tab_is_vietnamese() {
     };
     let mut missing = std::collections::BTreeSet::new();
     let mut check = |h: &H, place: &str| {
-        let doc = h.state().session.active().map(|d| crate::uifonts::ui_text(d)).unwrap_or_default();
+        let doc = h.state().session.active().map(crate::uifonts::ui_text).unwrap_or_default();
         for t in drawn(h) {
             for line in t.lines() {
                 if !ok(line, &doc) {
