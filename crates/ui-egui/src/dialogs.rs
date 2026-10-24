@@ -6,6 +6,7 @@ use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
+use crate::i18n::tl;
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -182,7 +183,7 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(label));
+        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0));
     });
     d.fields.insert(key.into(), v);
@@ -202,7 +203,7 @@ fn alt_text_starts_decorative(decorative: impl IntoIterator<Item = bool>) -> boo
 
 fn check(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: bool) -> bool {
     let mut v = d.get(key, if default { "1" } else { "0" }) == "1";
-    ui.checkbox(&mut v, label);
+    ui.checkbox(&mut v, tl(ui, label));
     d.fields.insert(key.into(), if v { "1".into() } else { "0".into() });
     v
 }
@@ -1298,7 +1299,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let tab = d.get("tab", if numbered { "numbered" } else { "bulleted" });
             ui.horizontal(|ui| {
                 for (k, l) in [("bulleted", "Bulleted"), ("numbered", "Numbered")] {
-                    if ui.selectable_label(tab == k, l).clicked() {
+                    if ui.selectable_label(tab == k, tl(ui, l)).clicked() {
                         d.fields.insert("tab".into(), k.into());
                     }
                 }
@@ -1351,19 +1352,20 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ];
             let color = d.get("color", "");
             ui.horizontal(|ui| {
-                ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Color:"));
+                ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Color:")));
+                let colors = colors.map(|(k, l)| (k, tl(ui, l)));
                 egui::ComboBox::from_id_salt("bullet-color")
-                    .selected_text(colors.iter().find(|c| c.0 == color).map_or("Automatic", |c| c.1))
+                    .selected_text(colors.iter().find(|c| c.0 == color).map_or(tl(ui, "Automatic"), |c| c.1.clone()))
                     .show_ui(ui, |ui| {
-                        for (k, l) in colors {
-                            if ui.selectable_label(color == k, l).clicked() {
+                        for (k, l) in &colors {
+                            if ui.selectable_label(color == *k, l.as_ref()).clicked() {
                                 d.fields.insert("color".into(), k.into());
                             }
                         }
                     });
             });
             ui.horizontal(|ui| {
-                if ui.button("None").on_hover_text("Remove bullets and numbering").clicked() {
+                if ui.button(tl(ui, "None")).on_hover_text(tl(ui, "Remove bullets and numbering")).clicked() {
                     d.fields.insert("none".into(), "1".into());
                 }
             });
@@ -2114,21 +2116,22 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         "autocorrect" => {
             let pr = &mut app.session.prefs;
-            ui.checkbox(&mut pr.ac_two_initials, "Correct TWo INitial CApitals");
-            ui.checkbox(&mut pr.ac_sentence_caps, "Capitalize first letter of sentences");
-            ui.checkbox(&mut pr.ac_days, "Capitalize names of days");
-            ui.checkbox(&mut pr.ac_caps_lock, "Correct accidental use of cAPS LOCK key");
-            ui.checkbox(&mut pr.ac_fractions, "Replace fractions (1/2) with fraction characters (½)");
-            ui.checkbox(&mut pr.autocorrect, "Replace text as you type");
+            let lang = crate::i18n::current(ui.ctx());
+            ui.checkbox(&mut pr.ac_two_initials, lang.tr("Correct TWo INitial CApitals"));
+            ui.checkbox(&mut pr.ac_sentence_caps, lang.tr("Capitalize first letter of sentences"));
+            ui.checkbox(&mut pr.ac_days, lang.tr("Capitalize names of days"));
+            ui.checkbox(&mut pr.ac_caps_lock, lang.tr("Correct accidental use of cAPS LOCK key"));
+            ui.checkbox(&mut pr.ac_fractions, lang.tr("Replace fractions (1/2) with fraction characters (½)"));
+            ui.checkbox(&mut pr.autocorrect, lang.tr("Replace text as you type"));
             ui.add_space(4.0);
             let mut from = d.get("from", "");
             let mut to = d.get("to", "");
             ui.horizontal(|ui| {
-                ui.label("Replace");
+                ui.label(tl(ui, "Replace"));
                 ui.add(egui::TextEdit::singleline(&mut from).desired_width(90.0));
-                ui.label("With");
+                ui.label(tl(ui, "With"));
                 ui.add(egui::TextEdit::singleline(&mut to).desired_width(130.0));
-                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new("Add")).clicked() {
+                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new(tl(ui, "Add"))).clicked() {
                     run(app, "text.autocorrect", json!({"add": [from.trim(), to]}));
                     from.clear();
                     to.clear();
@@ -2144,7 +2147,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     for (k, v) in entries.iter().filter(|(k, _)| q.is_empty() || k.to_lowercase().starts_with(&q)) {
                         ui.label(k);
                         ui.label(v);
-                        if ui.small_button("Delete").clicked() {
+                        if ui.small_button(tl(ui, "Delete")).clicked() {
                             run(app, "text.autocorrect", json!({"remove": k}));
                         }
                         ui.end_row();
@@ -2161,9 +2164,9 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             if d.params.get("before").is_none() {
                 d.params = json!({ "before": preferences_snapshot(app) });
             }
-            ui.label(egui::RichText::new("General").font(theme::bold(13.0)));
+            ui.label(egui::RichText::new(tl(ui, "General")).font(theme::bold(13.0)));
             let mut dark = app.ui.brightness == theme::Brightness::Dark;
-            if ui.checkbox(&mut dark, "Dark appearance").changed() {
+            if ui.checkbox(&mut dark, tl(ui, "Dark appearance")).changed() {
                 let _ = app.run("view.dark", json!({"on": dark}));
             }
             crate::nexus_toolbar::accent_row(app, ui);
@@ -2172,7 +2175,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             // on release, and at once from the keyboard.
             let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
             let mut scale = pending.unwrap_or(app.ui.ui_scale);
-            let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text("Interface size"));
+            let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text(tl(ui, "Interface size")));
             if r.is_pointer_button_down_on() {
                 if r.changed() || pending.is_some() {
                     d.fields.insert("uiScale".into(), scale.to_string());
@@ -2183,13 +2186,14 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 d.fields.remove("uiScale");
             }
-            ui.label(egui::RichText::new("Editing").font(theme::bold(13.0)));
-            ui.checkbox(&mut app.session.prefs.smart_guides, "Show smart guides");
-            ui.checkbox(&mut app.session.prefs.snap_to_grid, "Snap objects to grid");
-            ui.checkbox(&mut app.session.prefs.smart_quotes, "Replace straight quotes with smart quotes");
+            let lang = crate::i18n::current(ui.ctx());
+            ui.label(egui::RichText::new(lang.tr("Editing")).font(theme::bold(13.0)));
+            ui.checkbox(&mut app.session.prefs.smart_guides, lang.tr("Show smart guides"));
+            ui.checkbox(&mut app.session.prefs.snap_to_grid, lang.tr("Snap objects to grid"));
+            ui.checkbox(&mut app.session.prefs.smart_quotes, lang.tr("Replace straight quotes with smart quotes"));
             ui.horizontal(|ui| {
-                ui.checkbox(&mut app.session.prefs.autocorrect, "AutoCorrect as you type");
-                if ui.button("AutoCorrect Options…").clicked() {
+                ui.checkbox(&mut app.session.prefs.autocorrect, lang.tr("AutoCorrect as you type"));
+                if ui.button(lang.tr("AutoCorrect Options…")).clicked() {
                     *d = Dialog::new("autocorrect");
                 }
             });
@@ -2197,7 +2201,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 return false;
             }
             ui.horizontal(|ui| {
-                ui.label("Your name (comments):");
+                ui.label(tl(ui, "Your name (comments):"));
                 ui.text_edit_singleline(&mut app.session.prefs.author);
             });
             let (ok, cancel) = buttons(ui, "Done");
@@ -2423,7 +2427,7 @@ fn size_position_value(d: &Dialog) -> Result<Value, String> {
 fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
     let mut v = field_of(d, key);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(label));
+        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(96.0));
     });
     d.fields.insert(key.into(), v);
@@ -2431,7 +2435,7 @@ fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
 
 fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     seed_size_position(app, d);
-    ui.label(egui::RichText::new("Size").strong());
+    ui.label(egui::RichText::new(tl(ui, "Size")).strong());
     text_row(ui, d, "Height (in):", "h");
     text_row(ui, d, "Width (in):", "w");
     text_row(ui, d, "Rotation (°):", "rot");
@@ -2439,8 +2443,8 @@ fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool
     text_row(ui, d, "Scale width (%):", "scaleW");
     check(ui, d, "Lock aspect ratio", "lock", false);
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Position").strong());
-    ui.label("From the top-left corner of the slide");
+    ui.label(egui::RichText::new(tl(ui, "Position")).strong());
+    ui.label(tl(ui, "From the top-left corner of the slide"));
     text_row(ui, d, "Horizontal (in):", "x");
     text_row(ui, d, "Vertical (in):", "y");
     reconcile_size_fields(d);
@@ -2558,13 +2562,13 @@ fn format_spacing(v: f64) -> String {
 /// Grid Options: spacing, snap and whether the grid and guides are drawn. OK applies one
 /// `view.gridOptions` call; Cancel leaves the presentation as it was.
 fn grid_options(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    ui.label(egui::RichText::new("Snap").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Snap")).font(theme::bold(13.0)));
     let snap = check(ui, d, "Snap objects to grid", "snap", app.session.prefs.snap_to_grid);
     let smart = check(ui, d, "Snap objects to other objects", "smart", app.session.prefs.smart_guides);
     let spacing_default = format_spacing(app.session.prefs.grid_spacing);
     field(ui, d, "Spacing (pt):", "spacing", &spacing_default);
     ui.add_space(6.0);
-    ui.label(egui::RichText::new("Display").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Display")).font(theme::bold(13.0)));
     let gridlines = check(ui, d, "Display grid on screen", "gridlines", app.ui.gridlines);
     let guides = check(ui, d, "Display drawing guides on screen", "guides", app.ui.guides);
     if let Some(err) = d.fields.get("error").cloned().filter(|s| !s.is_empty()) {
@@ -2719,9 +2723,11 @@ fn seed_font_fields(d: &mut Dialog) {
 fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, "");
     let label = choices.iter().find(|(v, _)| *v == cur).map(|(_, l)| *l).unwrap_or(cur.as_str());
-    egui::ComboBox::from_id_salt(salt).selected_text(label).width(140.0).show_ui(ui, |ui| {
-        for (v, l) in choices {
-            if ui.selectable_label(cur == *v, *l).clicked() {
+    // NexusOffice: the items in the interface's language, worked out before the list opens.
+    let shown: Vec<_> = choices.iter().map(|(_, l)| tl(ui, l)).collect();
+    egui::ComboBox::from_id_salt(salt).selected_text(tl(ui, label)).width(140.0).show_ui(ui, |ui| {
+        for ((v, _), l) in choices.iter().zip(&shown) {
+            if ui.selectable_label(cur == *v, l.as_ref()).clicked() {
                 d.fields.insert((*key).into(), (*v).into());
             }
         }
@@ -2730,7 +2736,7 @@ fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, 
 
 fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32) -> String {
     let mut v = d.get(key, "");
-    let l = ui.label(label);
+    let l = ui.label(tl(ui, label));
     ui.add(egui::TextEdit::singleline(&mut v).desired_width(width)).labelled_by(l.id);
     d.fields.insert(key.into(), v.clone());
     v
@@ -2750,7 +2756,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         fams.insert(0, family.clone());
     }
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Font"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Font")));
         egui::ComboBox::from_id_salt("font_dialog_family").selected_text(if family.is_empty() { " " } else { family.as_str() }).width(300.0).show_ui(
             ui,
             |ui| {
@@ -2771,7 +2777,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         check(ui, d, "Italic", "italic", false);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Underline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Underline")));
         choice(
             ui,
             d,
@@ -2783,34 +2789,28 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         let _ = labeled_text(ui, d, "Color", "color", 110.0);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Strikethrough"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Strikethrough")));
         choice(ui, d, "font_dialog_strike", "strike", &[("none", "None"), ("sng", "Single"), ("dbl", "Double")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Baseline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Baseline")));
         choice(ui, d, "font_dialog_baseline", "baseline", &[("none", "None"), ("super", "Superscript"), ("sub", "Subscript")]);
         ui.add_space(8.0);
-        ui.label("Caps");
+        ui.label(tl(ui, "Caps"));
         choice(ui, d, "font_dialog_caps", "caps", &[("none", "None"), ("small", "Small caps"), ("all", "All caps")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Spacing"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Spacing")));
         let mut spacing = d.get("spacing", "0");
         let edited = ui.add(egui::TextEdit::singleline(&mut spacing).desired_width(64.0).hint_text("pt"));
         let mut picked = None;
+        let presets = [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")].map(|(v, l)| (v, tl(ui, l)));
         egui::ComboBox::from_id_salt("font_dialog_spacing")
-            .selected_text(match spacing.as_str() {
-                "-3" => "Very tight",
-                "-1.5" => "Tight",
-                "0" => "Normal",
-                "3" => "Loose",
-                "6" => "Very loose",
-                other => other,
-            })
+            .selected_text(presets.iter().find(|(v, _)| *v == spacing).map_or(spacing.as_str(), |(_, l)| l.as_ref()))
             .width(120.0)
             .show_ui(ui, |ui| {
-                for (v, l) in [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")] {
-                    if ui.selectable_label(spacing == v, l).clicked() {
+                for (v, l) in &presets {
+                    if ui.selectable_label(spacing == *v, l.as_ref()).clicked() {
                         picked = Some(v.to_string());
                     }
                 }
@@ -2953,7 +2953,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.set_min_width(460.0);
     seed_paragraph_fields(d);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Alignment"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Alignment")));
         choice(
             ui,
             d,
@@ -2969,7 +2969,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ],
         );
     });
-    ui.label(egui::RichText::new("Indentation").strong());
+    ui.label(egui::RichText::new(tl(ui, "Indentation")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Before text", "before", 64.0);
         ui.label("in");
@@ -2978,13 +2978,13 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         ui.label("in");
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Special"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Special")));
         choice(ui, d, "paragraph_special", "special", &[("none", "None"), ("first", "First line"), ("hanging", "Hanging")]);
         ui.add_space(8.0);
         let _ = labeled_text(ui, d, "By", "by", 64.0);
         ui.label("in");
     });
-    ui.label(egui::RichText::new("Spacing").strong());
+    ui.label(egui::RichText::new(tl(ui, "Spacing")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Spacing before", "spaceBefore", 64.0);
         ui.label("pt");
@@ -2994,18 +2994,20 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     });
     let mut picked: Option<(&'static str, Option<&'static str>)> = None;
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Line spacing"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Line spacing")));
         let kind = d.get("lineKind", "multiple");
         let value = d.get("lineValue", "1");
-        egui::ComboBox::from_id_salt("paragraph_line").selected_text(line_preset_label(&kind, &value)).width(140.0).show_ui(ui, |ui| {
-            for (label, k, v) in [
-                ("Single", "multiple", Some("1")),
-                ("1.5 lines", "multiple", Some("1.5")),
-                ("Double", "multiple", Some("2")),
-                ("Multiple", "multiple", None),
-                ("Exactly", "exactly", None),
-            ] {
-                if ui.selectable_label(line_preset_label(&kind, &value) == label, label).clicked() {
+        let presets = [
+            ("Single", "multiple", Some("1")),
+            ("1.5 lines", "multiple", Some("1.5")),
+            ("Double", "multiple", Some("2")),
+            ("Multiple", "multiple", None),
+            ("Exactly", "exactly", None),
+        ]
+        .map(|(label, k, v)| (label, tl(ui, label), k, v));
+        egui::ComboBox::from_id_salt("paragraph_line").selected_text(tl(ui, line_preset_label(&kind, &value))).width(140.0).show_ui(ui, |ui| {
+            for (label, shown, k, v) in presets {
+                if ui.selectable_label(line_preset_label(&kind, &value) == label, shown).clicked() {
                     picked = Some((k, v));
                 }
             }
@@ -3025,7 +3027,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     let mut open_tabs = false;
     ui.horizontal(|ui| {
-        if ui.button("Tabs…").clicked() {
+        if ui.button(tl(ui, "Tabs…")).clicked() {
             open_tabs = true;
         }
     });
@@ -3115,17 +3117,19 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         .collect();
     field(ui, d, "Default tab stops (in):", "default", "1");
     ui.add_space(6.0);
-    ui.label("Tab stops:");
+    ui.label(tl(ui, "Tab stops:"));
     let mut remove = None;
     egui::Grid::new("tab_stops").num_columns(3).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
         if stops.is_empty() {
-            ui.label("(none)");
+            ui.label(tl(ui, "(none)"));
             ui.end_row();
         }
         for (i, (pos, align)) in stops.iter().enumerate() {
             ui.label(format!("{pos:.2}\""));
-            ui.label(TAB_KINDS.iter().find(|k| k.0 == align).map(|k| k.1).unwrap_or("Left"));
-            if ui.small_button("Clear").on_hover_text(format!("Clear the tab at {pos:.2}\"")).clicked() {
+            ui.label(tl(ui, TAB_KINDS.iter().find(|k| k.0 == align).map(|k| k.1).unwrap_or("Left")));
+            let at = format!("{pos:.2}\"");
+            let tip = crate::i18n::current(ui.ctx()).fill("Clear the tab at {pos}", &[("pos", &at)]);
+            if ui.small_button(tl(ui, "Clear")).on_hover_text(tip).clicked() {
                 remove = Some(i);
             }
             ui.end_row();
@@ -3136,22 +3140,22 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label("Tab stop position (in):");
+        ui.label(tl(ui, "Tab stop position (in):"));
         let mut v = d.get("newpos", "");
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(60.0));
         d.fields.insert("newpos".into(), v);
     });
     let cur = d.get("newalign", "l");
     ui.horizontal(|ui| {
-        ui.label("Alignment:");
+        ui.label(tl(ui, "Alignment:"));
         for (k, label) in TAB_KINDS {
-            if ui.radio(cur == k, label).clicked() {
+            if ui.radio(cur == k, tl(ui, label)).clicked() {
                 d.fields.insert("newalign".into(), k.into());
             }
         }
     });
     ui.horizontal(|ui| {
-        if ui.button("Set").clicked()
+        if ui.button(tl(ui, "Set")).clicked()
             && let Some(p) = Some(num(d, "newpos", f64::NAN)).filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
         {
             stops.retain(|(q, _)| (q - p).abs() > 0.005);
@@ -3159,7 +3163,7 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             stops.sort_by(|a, b| a.0.total_cmp(&b.0));
             d.fields.insert("newpos".into(), String::new());
         }
-        if ui.button("Clear All").clicked() {
+        if ui.button(tl(ui, "Clear All")).clicked() {
             stops.clear();
         }
     });
