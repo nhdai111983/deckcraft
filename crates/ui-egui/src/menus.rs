@@ -33,6 +33,11 @@ pub fn ui_shortcut(app: &mut SlideApp, key: egui::Key, m: Mods) -> bool {
             app.save();
             return true;
         }
+        // NexusOffice: a host with tabs opens the new presentation in a tab of its own.
+        (N, true, false, false) if app.services.new_document.is_some() => {
+            let _ = app.run("file.new", json!({}));
+            return true;
+        }
         (S, true, true, false) => "app.saveAsDialog",
         // File tab: Alt+F opens it on Home with the keyboard in its side menu; Ctrl+P on Print.
         (F, false, false, true) => {
