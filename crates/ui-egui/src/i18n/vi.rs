@@ -47,6 +47,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Reset to Defaults", "Đặt lại mặc định"),
     ("Start from Beginning", "Trình chiếu từ đầu"),
     ("No file dialog could be shown", "Không mở được hộp thoại tệp"),
+    ("Saved {path}", "Đã lưu {path}"),
+    ("Exported {path}", "Đã xuất {path}"),
+    ("Inserted {n} slides from {path}", "Đã chèn {n} trang chiếu từ {path}"),
+    ("The presentation this was meant for is closed", "Bản trình chiếu dùng cho thao tác này đã đóng"),
     // ---- Ribbon tabs
     ("Home", "Trang chủ"),
     ("Insert", "Chèn"),

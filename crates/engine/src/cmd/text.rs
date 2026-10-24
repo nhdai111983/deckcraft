@@ -357,6 +357,9 @@ fn edit(s: &mut Session, p: &Value) -> Result<Value> {
     let at = pos_param(p, "at").unwrap_or_else(|| ed::end(&body));
     // A shape without a text body gets one on first edit.
     if sh.text.is_none() && cell.is_none() {
+        // NexusOffice: an empty body isn't a change of its own (nothing to undo, nothing to save):
+        // a presentation that was saved stays saved until something is typed.
+        let saved = s.doc()?.is_dirty().then_some(());
         s.edit(|doc, sel| {
             if let Some(list) = crate::shapes_mut(doc, sel)
                 && let Some(x) = deckcraft_model::find_shape_mut(list, id)
@@ -365,6 +368,10 @@ fn edit(s: &mut Session, p: &Value) -> Result<Value> {
             }
             Ok(())
         })?;
+        if saved.is_none() {
+            let st = s.doc_mut()?;
+            st.saved_doc = st.doc.clone();
+        }
     }
     s.select(|_, sel| {
         sel.shapes = vec![id];

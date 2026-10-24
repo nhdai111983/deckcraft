@@ -45,3 +45,21 @@ fn the_catalogue_is_nfc_and_has_no_empty_entries() {
     keys.dedup();
     assert_eq!(before, keys.len(), "a label is translated twice");
 }
+
+/// Values are filled in one pass: a value holding `{name}` stays as it is.
+#[test]
+fn fill_substitutes_once() {
+    assert_eq!(Language::Vi.fill("Saved {path}", &[("path", "/tmp/{path}.pptx")]), "Đã lưu /tmp/{path}.pptx");
+    assert_eq!(Language::En.fill("{a}{b}{", &[("a", "{b}"), ("b", "x")]), "{b}x{");
+}
+
+/// The reason a file didn't open is told apart without its name: a file called "password.pptx"
+/// that isn't there is "not found", not "password-protected".
+#[test]
+fn open_errors_ignore_the_file_name() {
+    let e = open_error(Language::Vi, "/tmp/password.pptx: No such file or directory (os error 2)", "/tmp/password.pptx");
+    assert_eq!(e, "password.pptx: không tìm thấy tệp");
+    let e = open_error(Language::Vi, "a.pptx is password-protected. Nexus Slide can't open password-protected presentations yet.", "/x/a.pptx");
+    assert!(e.contains("mật khẩu"), "{e}");
+    assert_eq!(open_error(Language::En, "boom", "x"), "boom");
+}

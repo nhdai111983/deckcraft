@@ -85,14 +85,16 @@ impl SlideApp {
                     }
                     Err(e) => {
                         self.replace_blank = None;
-                        self.notify(e.to_string());
+                        let msg = crate::i18n::open_error(self.ui.language, &e.to_string(), &o.path);
+                        self.notify(msg);
                     }
                 }
             }
             // Over the start screen too, like a failed file.open (#346).
             Err(e) => {
                 self.replace_blank = None;
-                self.notify(e);
+                let msg = crate::i18n::open_error(self.ui.language, &e, &o.path);
+                self.notify(msg);
             }
         }
     }

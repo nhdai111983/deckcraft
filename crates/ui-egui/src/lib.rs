@@ -233,10 +233,11 @@ pub struct Services {
     /// sample deck (the `file.new` params; `{"sample": true}` for the sample) and opens a new tab;
     /// this presentation stays as it is.
     pub new_document: Option<Box<dyn Fn(Value)>>,
-    /// NexusOffice: a host with tabs opens a picked presentation in a tab of its own (or brings its
-    /// tab forward). Not asked when this window holds only its untouched new presentation, which
-    /// the opened one replaces.
-    pub open_document: Option<Box<dyn Fn(&str)>>,
+    /// NexusOffice: a host with tabs is asked first about every presentation picked here: `true`
+    /// when it takes it (opens it in a tab of its own, or brings forward the tab that has it).
+    /// `false` declines: it opens here, replacing this window's untouched new presentation (the
+    /// host declines only when that is all this window holds).
+    pub open_document: Option<Box<dyn Fn(&str) -> bool>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -563,6 +564,11 @@ pub struct SlideApp {
     pub(crate) file_dialog: Option<file_dialogs::PendingDialog>,
     /// NexusOffice: the untouched new presentation (its uid) a presentation being opened replaces.
     replace_blank: Option<u64>,
+    /// View › Notes Page's draft: (document uid, slide index, the notes it started from, the
+    /// draft). On the app (not egui's memory) so [`SlideApp::has_drafts`] sees it.
+    pub(crate) page_notes: Option<(u64, usize, deckcraft_model::text::TextBody, notes::Draft)>,
+    /// The Alt Text field's draft: (document uid, shape, the text it started from, the draft).
+    pub(crate) alt_draft: Option<(u64, deckcraft_model::ShapeId, String, String)>,
 }
 
 fn grid_options_touched(p: &Value) -> bool {
@@ -635,6 +641,8 @@ impl SlideApp {
             embedded: false,
             file_dialog: None,
             replace_blank: None,
+            page_notes: None,
+            alt_draft: None,
         }
     }
 
@@ -644,6 +652,13 @@ impl SlideApp {
     pub fn restyle(&mut self) {
         self.styled = false;
         self.fonts_ready = false;
+        self.restyle = true;
+    }
+
+    /// NexusOffice: apply the look (colours, spacing) again on the next frame, without touching
+    /// the fonts: a host's tab coming forward after another editor restyled the window. Fonts are
+    /// installed again only when another editor dropped them ([`SlideApp::fonts_installed`]).
+    pub fn refresh_look(&mut self) {
         self.restyle = true;
     }
 
@@ -674,17 +689,23 @@ impl SlideApp {
     /// presentation (the opened one replaces it) or has the file open already. True when handed.
     fn hand_to_host(&mut self, path: &str) -> bool {
         let Some(open) = &self.services.open_document else { return false };
-        if self.session.documents().iter().any(|d| d.path.as_deref() == Some(path)) {
-            return false;
+        // The host first: it knows which of its tabs has the file.
+        if open(path) {
+            self.backstage = None;
+            return true;
         }
-        let only_blank = self.session.documents().len() == 1 && self.session.active().is_some_and(SlideApp::is_untouched_blank);
-        if only_blank {
+        // Declined: it opens here, in place of the new presentation if nobody has touched it (and
+        // nothing typed is waiting in a field).
+        if self.only_untouched_blank() {
             self.replace_blank = self.session.active().map(|d| d.uid);
-            return false;
         }
-        open(path);
-        self.backstage = None;
-        true
+        false
+    }
+
+    /// NexusOffice: this window holds only a new presentation nobody has touched, with nothing
+    /// typed in a field either: a file opened here may replace it.
+    pub fn only_untouched_blank(&self) -> bool {
+        self.session.documents().len() == 1 && self.session.active().is_some_and(SlideApp::is_untouched_blank) && !self.has_drafts()
     }
 
     /// A presentation was just opened: the untouched new one it replaces (hosted) closes.
@@ -702,42 +723,93 @@ impl SlideApp {
         }
     }
 
-    /// NexusOffice: typing not in the presentation yet (the notes pane's draft, an input method's
-    /// composition). A host closing this window asks about it as a change.
-    pub fn has_drafts(&self) -> bool {
-        (self.notes_buf.2.edited && self.session.documents().iter().any(|d| d.uid == self.notes_buf.0))
-            || self.session.active().is_some_and(|d| d.composition.is_some())
+    /// The notes of slide `index` of the document `uid`, if both are still there.
+    fn notes_of(&self, uid: u64, index: usize) -> Option<&deckcraft_model::text::TextBody> {
+        self.session.documents().iter().find(|d| d.uid == uid)?.doc.slides.get(index).map(|s| &s.notes)
     }
 
-    /// NexusOffice: puts the drafts [`has_drafts`](Self::has_drafts) sees into the presentation
-    /// (an undoable change, so "Save changes?" asks about it). `false` when one couldn't be (the
-    /// status bar says why).
-    pub fn commit_drafts(&mut self) -> bool {
-        self.session.end_composition();
-        if self.notes_buf.2.edited {
-            let (uid, index) = (self.notes_buf.0, self.notes_buf.1);
-            let body = self.notes_buf.2.body.clone();
-            let Some(i) = self.session.documents().iter().position(|d| d.uid == uid) else {
-                self.notes_buf.2.edited = false;
-                return true;
-            };
-            let shown = self.session.active_index();
-            self.session.set_active(i);
-            let r = self.run("slide.notes", json!({"body": body, "index": index}));
-            if let Some(v) = shown {
-                self.session.set_active(v);
-            }
-            if r.is_err() {
-                return false;
-            }
-            self.notes_buf.2.edited = false;
+    /// The drafts typing has left outside the presentation, as the commands that put them in:
+    /// (document uid, command, params). A draft equal to what the presentation holds (edited back
+    /// to how it was) is none.
+    fn draft_commands(&self) -> Vec<(u64, &'static str, Value)> {
+        let mut out = Vec::new();
+        // The notes pane under the slide.
+        let (uid, index, d) = (&self.notes_buf.0, &self.notes_buf.1, &self.notes_buf.2);
+        // (By their text: the field types text only, and taking typing back may leave the runs
+        // split differently.)
+        if d.edited && self.notes_of(*uid, *index).is_some_and(|n| n.text() != d.body.text()) {
+            out.push((*uid, "slide.notes", json!({"body": d.body, "index": index})));
         }
-        true
+        // View › Notes Page.
+        if let Some((uid, index, _, d)) = &self.page_notes
+            && d.edited
+            && self.notes_of(*uid, *index).is_some_and(|n| n.text() != d.body.text())
+        {
+            out.push((*uid, "slide.notes", json!({"body": d.body, "index": index})));
+        }
+        // Format Shape › Size › Alt Text.
+        if let Some((uid, shape, _, text)) = &self.alt_draft
+            && let Some(doc) = self.session.documents().iter().find(|d| d.uid == *uid)
+            && let Some(sh) = doc.shape(*shape)
+            && sh.descr != *text
+        {
+            out.push((*uid, "shape.altText", json!({"text": text, "ids": [shape.0]})));
+        }
+        // The SmartArt Text Pane's lines (of the selected graphic).
+        if let Some(st) = self.session.active()
+            && let Some((gid, d)) = deckcraft_engine::cmd::smartart::selected(st)
+            && self.ui.smartart_drafts.0 == gid.0
+        {
+            for (i, (draft, node)) in self.ui.smartart_drafts.1.iter().zip(&d.nodes).enumerate() {
+                if *draft != node.text {
+                    out.push((st.uid, "smartArt.setNodes", json!({"id": gid.0, "index": i, "text": draft})));
+                }
+            }
+        }
+        out
+    }
+
+    /// NexusOffice: typing not in the presentation yet — the notes pane, View › Notes Page, the
+    /// Alt Text field, the SmartArt Text Pane (each saved when its field loses the focus), an input
+    /// method's composition. A host closing this window asks about it as a change.
+    pub fn has_drafts(&self) -> bool {
+        self.session.documents().iter().any(|d| d.composition.is_some()) || !self.draft_commands().is_empty()
+    }
+
+    /// NexusOffice: puts the drafts [`has_drafts`](Self::has_drafts) sees into their
+    /// presentations (undoable changes, so "Save changes?" asks about them). `false` when one
+    /// couldn't be (the status bar says why).
+    pub fn commit_drafts(&mut self) -> bool {
+        let shown = self.session.active_index();
+        let docs: Vec<u64> = self.session.documents().iter().map(|d| d.uid).collect();
+        for (i, _) in docs.iter().enumerate() {
+            self.session.set_active(i);
+            self.session.end_composition();
+        }
+        let mut ok = true;
+        for (uid, cmd, params) in self.draft_commands() {
+            let Some(i) = self.session.documents().iter().position(|d| d.uid == uid) else { continue };
+            self.session.set_active(i);
+            ok &= self.run(cmd, params).is_ok();
+        }
+        if let Some(v) = shown {
+            self.session.set_active(v);
+        }
+        if ok {
+            // Saved: the fields show the presentation's text again from the next frame.
+            self.notes_buf.2.edited = false;
+            if let Some(p) = &mut self.page_notes {
+                p.3.edited = false;
+            }
+            self.alt_draft = None;
+        }
+        ok
     }
 
     /// A presentation was saved at `path`: the status says so and it heads the recent list.
     pub(crate) fn note_saved(&mut self, path: &str) {
-        self.set_status(format!("Saved {path}"));
+        let msg = self.ui.language.fill("Saved {path}", &[("path", path)]);
+        self.set_status(msg);
         self.ui.recent.retain(|p| p != path);
         self.ui.recent.insert(0, path.to_string());
         self.ui.recent.truncate(RECENT_MAX);
@@ -932,7 +1004,7 @@ impl SlideApp {
             }
             return match self.run("file.export", params) {
                 Ok(_) => {
-                    self.set_status(format!("Exported {path}"));
+                    self.set_status(self.ui.language.fill("Exported {path}", &[("path", &path)]));
                     true
                 }
                 Err(_) => false,
@@ -1409,7 +1481,11 @@ impl SlideApp {
         };
         let Some(path) = pick("open") else { return };
         match self.session.execute("slide.reuse", &json!({"path": path, "keepFormatting": keep})) {
-            Ok(r) => self.set_status(format!("Inserted {} slides from {path}", r["slides"])),
+            Ok(r) => {
+                let n = r["slides"].as_u64().unwrap_or(0).to_string();
+                let msg = self.ui.language.fill("Inserted {n} slides from {path}", &[("n", &n), ("path", &path)]);
+                self.set_status(msg);
+            }
             Err(e) => self.set_status(e.to_string()),
         }
     }
@@ -1488,6 +1564,8 @@ impl SlideApp {
     /// Save every presentation with unsaved changes (asking for a location where needed).
     /// Returns false if one wasn't saved (cancelled or failed).
     pub fn save_all(&mut self) -> bool {
+        // Typing still in a field is part of what is saved.
+        self.commit_drafts();
         let dirty: Vec<usize> = self.session.documents().iter().enumerate().filter(|(_, d)| d.is_dirty()).map(|(i, _)| i).collect();
         for i in dirty {
             self.session.set_active(i);
@@ -1500,9 +1578,16 @@ impl SlideApp {
     }
 
     pub fn save(&mut self) {
+        // NexusOffice: typing still in a field (notes, Alt Text…) is saved with the presentation.
+        if !self.commit_drafts() {
+            return;
+        }
         if self.session.active().and_then(|d| d.path.clone()).is_some() {
             match self.session.execute("file.save", &json!({})) {
-                Ok(_) => self.set_status("Saved"),
+                Ok(_) => {
+                    let saved = self.ui.language.tr("Saved").into_owned();
+                    self.set_status(saved);
+                }
                 Err(e) => self.set_status(e.to_string()),
             }
         } else {
@@ -1729,7 +1814,8 @@ impl SlideApp {
             self.session.untitled_prefix = prefix.to_string();
         }
         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
-        if (ctx.zoom_factor() - scale).abs() > 1e-3 {
+        // Embedded, the window's zoom is the host's (another tab's editor shares it).
+        if !self.embedded && (ctx.zoom_factor() - scale).abs() > 1e-3 {
             ctx.set_zoom_factor(scale);
         }
         // NexusOffice: another editor in the host window (Nexus Docs, Nexus Sheet) installed its

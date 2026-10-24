@@ -157,6 +157,10 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `crates/engine/src/lib.rs` (thêm) | `Session::untitled_prefix` ("Trình chiếu " → "Trình chiếu 1"; rỗng = "Presentation") | Có — nên PR upstream |
 | `crates/ui-egui/examples/shots.rs` (thêm) | Chụp bố cục WPS tiếng Việt: Trang chủ 1440, các thẻ, trang Tệp, In, 1024, bảng "…", », tối, màu san hô, tiếng Anh | — (example) |
 | `apps/deckcraft/src/main.rs`, `apps/deckcraft-web/src/web.rs` (thêm, NX-UI.4) | Bật `app.wps` (thay `toolbar`) và giao diện tiếng Việt; `ui.json` không nêu ngôn ngữ giữ mặc định tiếng Việt | Có — cờ giao diện |
+| `crates/ui-egui/src/lib.rs`, `crates/ui-egui/src/sorter.rs`, `crates/ui-egui/src/panes.rs` (thêm, NX-UI.7) | Bản nháp đang gõ (ghi chú, Trang ghi chú, Văn bản thay thế, khung chữ SmartArt) nằm trên `SlideApp` (`page_notes`, `alt_draft`) thay bộ nhớ tạm egui: `has_drafts`/`commit_drafts` thấy cả bốn (không mất khi đóng); Lưu ghi bản nháp trước; mở tệp hỏi host trước (`open_document` trả `bool`), chỉ thay bản mới chưa đụng *và* không có bản nháp (`only_untouched_blank`); `refresh_look`; nhúng thì không áp thu phóng giao diện riêng; thông báo trạng thái dịch | Có — giao diện NexusOffice |
+| `crates/ui-egui/src/file_dialogs.rs`, `crates/ui-egui/src/opening.rs`, `crates/ui-egui/src/i18n/*` (thêm, NX-UI.7) | Câu trả lời Lưu/Xuất muộn tác động đúng bản trình chiếu đã hỏi (`PendingDialog::doc`); lỗi mở tệp dịch theo loại lỗi, không dịch nhầm tên tệp (`i18n::open_error`); `fill` thay một lượt | Có |
+| `crates/engine/src/cmd/text.rs` (NX-UI.7) | `text.edit` vào hình chưa có chữ tạo thân chữ rỗng mà không đánh dấu thay đổi khi bản trình chiếu đang sạch (Enter/F2 rồi Esc không thành "Chưa lưu" không có gì để hoàn tác) | Nên PR upstream (lỗi chung) |
+| `crates/engine/tests/nexus_editing.rs` | File mới: test hồi quy cho `text.edit` ở trên | — (file mới) |
 
 ### GUID WiX mới (Nexus Slide riêng, không dùng chung với DeckCraft hay app Nexus khác)
 

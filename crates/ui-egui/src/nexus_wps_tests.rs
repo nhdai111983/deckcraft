@@ -388,7 +388,13 @@ fn new_and_open_go_to_the_host() {
     let (n, o, q) = (news.clone(), opens.clone(), asked.clone());
     let mut h = harness((1440.0, 900.0), Language::Vi, false, move |a| {
         a.services.new_document = Some(Box::new(move |p| n.borrow_mut().push(p)));
-        a.services.open_document = Some(Box::new(move |p: &str| o.borrow_mut().push(p.to_string())));
+        // The host takes every file except the first (this window holds only its new
+        // presentation then, as the NexusOffice tab tells it).
+        a.services.open_document = Some(Box::new(move |p: &str| {
+            let first = o.borrow().is_empty() && !p.contains("-2-");
+            o.borrow_mut().push(p.to_string());
+            !first
+        }));
         a.services.file_dialog = Some(Box::new(move |req| {
             q.borrow_mut().push(req);
             let (tx, rx) = std::sync::mpsc::channel();
@@ -412,7 +418,7 @@ fn new_and_open_go_to_the_host() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert_eq!(*asked.borrow(), vec![crate::FileDialogRequest::Open { purpose: "open".into() }]);
-    assert!(opens.borrow().is_empty());
+    assert_eq!(opens.borrow().len(), 1, "the host was asked first, and declined");
     assert_eq!(h.state().session.documents().len(), 1, "the untouched presentation was replaced");
     assert_eq!(slides(h.state()), 2);
     // With work here, Open hands the next file to the host.
@@ -420,7 +426,8 @@ fn new_and_open_go_to_the_host() {
     let other = std::env::temp_dir().join(format!("nexus-slide-host-open-2-{}.deckcraft", std::process::id()));
     std::fs::copy(&deck, &other).unwrap();
     h.state_mut().open_path_in_background(&other.to_string_lossy());
-    assert_eq!(*opens.borrow(), vec![other.to_string_lossy().into_owned()]);
+    assert_eq!(opens.borrow().last(), Some(&other.to_string_lossy().into_owned()));
+    assert!(h.state().opening.is_none(), "the host took it: nothing opens here");
     let _ = (std::fs::remove_file(&deck), std::fs::remove_file(&other));
 }
 
@@ -579,11 +586,7 @@ fn exempt(text: &str, doc_text: &str) -> bool {
             "NexusOffice",
             "SmartArt",
             "WordArt",
-            "Cameo",
-            "OK",
             "PDF",
-            "Video",
-            "Letter",
             "Aa",
             "Abc",
             "Ctrl",
@@ -596,10 +599,12 @@ fn exempt(text: &str, doc_text: &str) -> bool {
         || fonts.iter().any(|f| f == plain)
         || starters.contains(&plain)
         || papers.contains(&plain)
-        || (plain.len() <= 3 && plain.chars().all(|c| c.is_ascii_lowercase()))
+        // Character Spacing's and Change Case's samples.
+        || ["ab", "abc"].contains(&plain)
         || themes.iter().any(|t| t == plain)
         || theme_fonts.iter().any(|f| f == plain)
-        || doc_text.contains(plain)
+        // The presentation's own text: a whole line of it (a title, a note), not any piece.
+        || doc_text.lines().any(|l| l.trim() == plain)
 }
 
 /// Every label the WPS layout (each tab's strip, the top row, the status bar) and the File tab's
@@ -660,4 +665,159 @@ fn merged_fonts_fall_back_to_the_windows_text_faces() {
     assert_eq!(merged.families.get(&theme::bold_family()), Some(&vec!["OursBold".to_string(), "Window".into(), "Ours".into()]));
     assert_eq!(merged.families.get(&FontFamily::Proportional), Some(&vec!["Window".to_string(), "Ours".into()]));
     assert!(merged.families.contains_key(&FontFamily::Name("semibold".into())));
+}
+
+/// Types `text` into the text field `n` (in drawing order) of the role `role`.
+fn type_into(h: &mut H, role: egui::accesskit::Role, n: usize, text: &str) {
+    let nodes: Vec<_> = h.query_all_by_role(role).collect();
+    let node = nodes.get(n).unwrap_or_else(|| panic!("no {role:?} #{n} (there are {})", nodes.len()));
+    node.click();
+    h.run_steps(2);
+    h.event(egui::Event::Text(text.into()));
+    h.run_steps(2);
+}
+
+fn notes(app: &SlideApp, slide: usize) -> String {
+    app.session.active().and_then(|d| d.doc.slides.get(slide).map(|s| s.notes_text())).unwrap_or_default()
+}
+
+/// Every place typing waits in a field until it loses the focus counts as a change, and
+/// `commit_drafts` puts it into the presentation: the notes pane, View › Notes Page, the Alt Text
+/// field, the SmartArt Text Pane. Notes edited back to how they were are no change.
+#[test]
+fn drafts_in_every_view_count_and_are_committed() {
+    use egui::accesskit::Role;
+    // The notes pane under the slide; typed and taken back is no change.
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |_| {});
+    type_into(&mut h, Role::MultilineTextInput, 0, "Ghi chú");
+    assert!(h.state().has_drafts(), "notes pane");
+    for _ in 0.."Ghi chú".chars().count() {
+        h.key_press(egui::Key::Backspace);
+    }
+    h.run_steps(2);
+    assert!(!h.state().has_drafts(), "edited back to how it was");
+    type_into(&mut h, Role::MultilineTextInput, 0, "Lời chào");
+    assert!(h.state_mut().commit_drafts());
+    assert!(notes(h.state(), 0).contains("Lời chào"));
+    assert!(!h.state().has_drafts());
+
+    // View › Notes Page.
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |a| a.ui.view = crate::ViewMode::NotesPage);
+    type_into(&mut h, Role::MultilineTextInput, 0, "Trang ghi chú");
+    assert!(h.state().has_drafts(), "Notes Page");
+    assert!(h.state_mut().commit_drafts());
+    assert!(notes(h.state(), 0).contains("Trang ghi chú"));
+    assert!(h.state().session.active().unwrap().is_dirty());
+
+    // Format Shape › Size › Alt Text.
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |a| {
+        a.run("shape.insert", json!({"preset": "rect", "rect": [100, 100, 300, 200]})).unwrap();
+        a.ui.pane = Some("format".into());
+        a.ui.format_tab = "size".into();
+    });
+    let fields = h.query_all_by_role(Role::MultilineTextInput).count();
+    // (The notes pane's field is drawn after the task pane's.)
+    type_into(&mut h, Role::MultilineTextInput, fields.saturating_sub(2), "Hình chữ nhật xanh");
+    assert!(h.state().has_drafts(), "Alt Text");
+    assert!(h.state_mut().commit_drafts());
+    let st = h.state().session.active().unwrap();
+    let descr = st.selected_shapes().first().map(|s| s.descr.clone()).unwrap_or_default();
+    assert_eq!(descr, "Hình chữ nhật xanh");
+
+    // The SmartArt Text Pane.
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |a| {
+        a.run("insert.smartArt", json!({"kind": "list", "items": ["Một", "Hai"]})).unwrap();
+        a.ui.pane = Some("smartart".into());
+    });
+    type_into(&mut h, Role::TextInput, 0, " nữa");
+    assert!(h.state().has_drafts(), "SmartArt Text Pane");
+    assert!(h.state_mut().commit_drafts());
+    let st = h.state().session.active().unwrap();
+    let (_, d) = deckcraft_engine::cmd::smartart::selected(st).unwrap();
+    assert!(d.nodes.iter().any(|n| n.text.contains("nữa")), "{:?}", d.nodes.iter().map(|n| &n.text).collect::<Vec<_>>());
+}
+
+/// Typing waiting in a field means the window doesn't hold an untouched presentation: a file the
+/// host declines opens beside it instead of replacing it.
+#[test]
+fn a_draft_keeps_the_new_presentation_from_being_replaced() {
+    let deck = std::env::temp_dir().join(format!("nexus-slide-draft-open-{}.deckcraft", std::process::id()));
+    Session::with_new().execute("file.saveAs", &json!({"path": deck.to_string_lossy()})).unwrap();
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |a| {
+        a.services.open_document = Some(Box::new(|_: &str| false));
+    });
+    assert!(h.state().only_untouched_blank());
+    type_into(&mut h, egui::accesskit::Role::MultilineTextInput, 0, "Đừng mất");
+    assert!(!h.state().only_untouched_blank(), "notes are waiting");
+    h.state_mut().open_path_in_background(&deck.to_string_lossy());
+    for _ in 0..200 {
+        h.run_steps(1);
+        if h.state().opening.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(h.state().session.documents().len(), 2, "the new presentation with its notes stays");
+    let _ = std::fs::remove_file(&deck);
+}
+
+/// Save puts the typing still in a field into the file.
+#[test]
+fn save_includes_typing_still_in_a_field() {
+    let path = std::env::temp_dir().join(format!("nexus-slide-save-draft-{}.deckcraft", std::process::id()));
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, |_| {});
+    h.state_mut().session.active_mut().unwrap().path = Some(path.to_string_lossy().into_owned());
+    type_into(&mut h, egui::accesskit::Role::MultilineTextInput, 0, "Ghi chú đã lưu");
+    h.state_mut().save();
+    h.run_steps(2);
+    assert!(!h.state().session.active().unwrap().is_dirty());
+    let mut s = Session::new();
+    s.execute("file.open", &json!({"path": path.to_string_lossy()})).unwrap();
+    assert!(s.active().unwrap().doc.slides.first().map(|x| x.notes_text()).unwrap_or_default().contains("Ghi chú đã lưu"));
+    let _ = std::fs::remove_file(&path);
+}
+
+/// The host's Save As answers later: it saves the presentation it was asked for, even when
+/// another one is shown by then.
+#[test]
+fn a_late_save_answer_saves_the_presentation_it_was_asked_for() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    type Slot = Rc<RefCell<Option<std::sync::mpsc::Sender<crate::FileDialogAnswer>>>>;
+    let slot: Slot = Rc::default();
+    let s2 = slot.clone();
+    let target = std::env::temp_dir().join(format!("nexus-slide-late-save-{}.pptx", std::process::id()));
+    let _ = std::fs::remove_file(&target);
+    let mut h = harness((1440.0, 900.0), Language::Vi, false, move |a| {
+        a.services.file_dialog = Some(Box::new(move |_req| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            *s2.borrow_mut() = Some(tx);
+            rx
+        }));
+        a.run("slide.new", json!({})).unwrap();
+    });
+    let asked_for = h.state().session.active().unwrap().uid;
+    h.state_mut().save();
+    // Another presentation comes forward before the dialog answers.
+    h.state_mut().session.execute("file.new", &json!({})).unwrap();
+    let other = h.state().session.active().unwrap().uid;
+    slot.borrow_mut().take().unwrap().send(Ok(Some(target.to_string_lossy().into_owned()))).unwrap();
+    h.run_steps(4);
+    let docs = h.state().session.documents();
+    assert!(docs.iter().find(|d| d.uid == asked_for).is_some_and(|d| d.path.is_some() && !d.is_dirty()), "the one asked for is saved");
+    assert!(docs.iter().find(|d| d.uid == other).is_some_and(|d| d.path.is_none()), "the other is left alone");
+    assert_eq!(h.state().session.active().map(|d| d.uid), Some(other), "and stays shown");
+    let _ = std::fs::remove_file(&target);
+}
+
+/// Embedded, the stand-alone app's interface size doesn't zoom the host's window.
+#[test]
+fn embedded_leaves_the_windows_zoom_alone() {
+    let h = harness((1024.0, 700.0), Language::Vi, false, |a| a.ui.ui_scale = 1.5);
+    assert!((h.ctx.zoom_factor() - 1.0).abs() < 1e-3);
+    let alone = harness((1024.0, 700.0), Language::Vi, false, |a| {
+        a.embedded = false;
+        a.ui.ui_scale = 1.5;
+    });
+    assert!((alone.ctx.zoom_factor() - 1.5).abs() < 1e-3);
 }

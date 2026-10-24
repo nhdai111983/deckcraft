@@ -92,11 +92,32 @@ impl Language {
     }
 
     /// `template` translated, with each `{name}` replaced by its value.
+    /// One pass over the template: a value that itself holds `{name}` (a file called
+    /// "{path}.pptx") is never filled again.
     pub fn fill(self, template: &str, values: &[(&str, &str)]) -> String {
-        let mut out = self.tr(template).into_owned();
-        for (k, v) in values {
-            out = out.replace(&format!("{{{k}}}"), v);
+        let template = self.tr(template);
+        let mut out = String::with_capacity(template.len());
+        let mut rest = template.as_ref();
+        while let Some(open) = rest.find('{') {
+            let (before, from) = rest.split_at(open);
+            out.push_str(before);
+            let filled = from.find('}').and_then(|close| {
+                let name = from.get(1..close)?;
+                let value = values.iter().find(|(k, _)| *k == name)?.1;
+                Some((value, close))
+            });
+            match filled {
+                Some((value, close)) => {
+                    out.push_str(value);
+                    rest = from.get(close + 1..).unwrap_or_default();
+                }
+                None => {
+                    out.push('{');
+                    rest = from.get(1..).unwrap_or_default();
+                }
+            }
         }
+        out.push_str(rest);
         out
     }
 
@@ -124,6 +145,46 @@ pub fn prompt_fn(language: Language) -> Option<fn(deckcraft_model::PhType) -> &'
         Language::En => None,
         Language::Vi => Some(vi),
     }
+}
+
+/// A reason a presentation didn't open, for the user, in `language`. The engine's message names
+/// the file (`path`), which is taken out before the reason is told apart, so a file called
+/// "password.pptx" or "not a draft.pptx" can't change it.
+pub fn open_error(language: Language, error: &str, path: &str) -> String {
+    if language == Language::En {
+        return error.to_string();
+    }
+    let name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path);
+    let mut reason = error.to_string();
+    for p in [path, name] {
+        if !p.is_empty() {
+            reason = reason.replace(p, "");
+        }
+    }
+    let lower = reason.to_lowercase();
+    let vi = if lower.contains("password-protected") {
+        "tệp có mật khẩu; Nexus Slide chưa mở được bản trình chiếu có mật khẩu".to_string()
+    } else if lower.contains("os error 2") || lower.contains("no such file") || lower.contains("cannot find the file") {
+        "không tìm thấy tệp".to_string()
+    } else if lower.contains("os error 13")
+        || lower.contains("os error 5")
+        || lower.contains("permission denied")
+        || lower.contains("access is denied")
+    {
+        "không có quyền đọc tệp".to_string()
+    } else if lower.contains("too large") || lower.contains("larger than") {
+        "tệp quá lớn, chưa mở được".to_string()
+    } else if lower.contains("not a presentation")
+        || lower.contains("zip")
+        || lower.contains("invalid")
+        || lower.contains("corrupt")
+        || lower.contains("xml")
+    {
+        "tệp bị hỏng hoặc không phải bản trình chiếu (mở được .pptx, .potx, .ppsx, .deckcraft, dàn ý .txt/.md)".to_string()
+    } else {
+        format!("tệp không mở được ({})", reason.trim().trim_start_matches(':').trim())
+    };
+    format!("{name}: {vi}")
 }
 
 /// Reads a saved language leniently: an unknown or malformed value (a hand-edited `ui.json`) is

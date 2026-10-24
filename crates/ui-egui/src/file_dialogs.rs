@@ -76,6 +76,9 @@ pub(crate) enum AfterPick {
 pub(crate) struct PendingDialog {
     rx: Receiver<FileDialogAnswer>,
     pub(crate) after: AfterPick,
+    /// The presentation (uid) shown when the dialog was asked for: the answer acts on it, even if
+    /// another one is shown by then.
+    doc: Option<u64>,
 }
 
 impl SlideApp {
@@ -104,7 +107,8 @@ impl SlideApp {
         }
         let Some(ask) = &self.services.file_dialog else { return false };
         let rx = ask(req);
-        self.file_dialog = Some(PendingDialog { rx, after });
+        let doc = self.session.active().map(|d| d.uid);
+        self.file_dialog = Some(PendingDialog { rx, after, doc });
         true
     }
 
@@ -131,7 +135,25 @@ impl SlideApp {
         };
         let Some(pending) = self.file_dialog.take() else { return };
         match answer {
-            Ok(Some(path)) if !path.is_empty() => self.finish_pick(path, pending.after),
+            Ok(Some(path)) if !path.is_empty() => {
+                // Save, export and insert act on the presentation the dialog was asked for; it
+                // may have been closed meanwhile.
+                if !matches!(pending.after, AfterPick::Open) {
+                    let Some(i) = pending.doc.and_then(|uid| self.session.documents().iter().position(|d| d.uid == uid)) else {
+                        let msg = self.ui.language.tr("The presentation this was meant for is closed").into_owned();
+                        self.notify(msg);
+                        return;
+                    };
+                    let shown = self.session.active().map(|d| d.uid);
+                    self.session.set_active(i);
+                    self.finish_pick(path, pending.after);
+                    if let Some(j) = shown.and_then(|uid| self.session.documents().iter().position(|d| d.uid == uid)) {
+                        self.session.set_active(j);
+                    }
+                    return;
+                }
+                self.finish_pick(path, pending.after)
+            }
             Ok(_) => {}
             Err(why) => {
                 let lead = self.ui.language.tr("No file dialog could be shown");
@@ -163,7 +185,7 @@ impl SlideApp {
                     o.extend(x.clone());
                 }
                 if self.run("file.export", params).is_ok() {
-                    self.set_status(format!("Exported {path}"));
+                    self.set_status(self.ui.language.fill("Exported {path}", &[("path", &path)]));
                 }
             }
             AfterPick::Run { cmd, mut extra } => {
@@ -176,7 +198,11 @@ impl SlideApp {
                 }
             }
             AfterPick::Reuse { keep } => match self.session.execute("slide.reuse", &json!({"path": path, "keepFormatting": keep})) {
-                Ok(r) => self.set_status(format!("Inserted {} slides from {path}", r["slides"])),
+                Ok(r) => {
+                    let n = r["slides"].as_u64().unwrap_or(0).to_string();
+                    let msg = self.ui.language.fill("Inserted {n} slides from {path}", &[("n", &n), ("path", &path)]);
+                    self.set_status(msg);
+                }
                 Err(e) => self.set_status(e.to_string()),
             },
         }
