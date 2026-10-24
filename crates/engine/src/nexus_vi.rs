@@ -45,7 +45,7 @@ pub fn matching(query: &str) -> Vec<&'static crate::templates::Starter> {
     let hit = |en: &str| vi(en).is_some_and(|v| v.to_lowercase().contains(&q));
     crate::templates::starters()
         .iter()
-        .filter(|t| english.iter().any(|e| std::ptr::eq(*e, *t)) || hit(t.name) || hit(t.summary) || t.slides.iter().any(|s| hit(s.title)))
+        .filter(|t| english.iter().any(|e| e.name == t.name) || hit(t.name) || hit(t.summary) || t.slides.iter().any(|s| hit(s.title)))
         .collect()
 }
 
