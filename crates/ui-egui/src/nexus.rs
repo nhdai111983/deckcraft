@@ -1,4 +1,4 @@
-//! NexusOffices branding for the egui front end (Nexus Slides by Sonnytech), kept in one file so
+//! NexusOffice branding for the egui front end (Nexus Slide by SonnyTech), kept in one file so
 //! upstream's files change as little as possible. The names and ids live in
 //! [`deckcraft_engine::nexus`]; this module draws the mark and the About page.
 //!
@@ -7,12 +7,12 @@
 //! `nexus/BRANDING_PATCH.md` lists each file). Text from the user's presentations is never
 //! rewritten.
 
-use deckcraft_engine::nexus::{APP_NAME, ATTRIBUTION, COPYRIGHT, UPSTREAM_COPYRIGHT};
+use deckcraft_engine::nexus::{ABOUT_SUITE, APP_NAME, ATTRIBUTION, COPYRIGHT, UPSTREAM_COPYRIGHT};
 use egui::{Color32, CornerRadius, Painter, Rect, Stroke, Ui, pos2, vec2};
 
 use crate::theme::Tokens;
 
-/// The Nexus Slides mark, drawn in code (Sonnytech, CC0, like `nexus/assets/nexus-slides.svg`): an
+/// The Nexus Slide mark, drawn in code (SonnyTech, CC0, like `nexus/assets/nexus-slide.svg`): an
 /// orange tile with a screen on a stand and an "N" with two amber dots.
 pub fn paint_logo(p: &Painter, r: Rect) {
     let orange = Color32::from_rgb(0xC2, 0x41, 0x0C);
@@ -44,10 +44,11 @@ pub fn about_ui(ui: &mut Ui) {
         ui.label(egui::RichText::new(crate::dialogs::version_line()).color(t.text_dim));
         ui.add_space(6.0);
         ui.label("Presentations and slide shows, in pure Rust.");
-        ui.label("Part of the NexusOffices office suite by Sonnytech.");
+        // English only, like the attribution below (no Vietnamese UI or font yet; ABOUT_SUITE.1 is the Vietnamese text).
+        ui.label(ABOUT_SUITE.0);
         ui.label("An open-source, clean-room project. Not affiliated with Microsoft.");
         ui.add_space(6.0);
-        ui.hyperlink_to("Source code: github.com/nhdai111983/deckcraft", deckcraft_engine::links::GITHUB);
+        ui.hyperlink_to("Source code: github.com/sonnytech-vn/deckcraft", deckcraft_engine::links::GITHUB);
         ui.add_space(6.0);
         // English only for now: DeckCraft has no Vietnamese UI yet, and its interface font may lack
         // Vietnamese glyphs (ATTRIBUTION.1 is the Vietnamese text, for when it does).

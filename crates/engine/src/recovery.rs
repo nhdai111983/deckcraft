@@ -82,9 +82,30 @@ fn owner_alive(dir: &Path, owner: u64) -> bool {
 }
 
 /// Write `bytes` to `path` through a temporary file and a rename, so a crash never leaves it torn.
+/// The temporary file reaches the disk before the rename (and, on Unix, the rename before this
+/// returns): after a power cut the entry is the old one or the new one, never an empty file the
+/// rename got to the disk ahead of. A failed write leaves no temporary file behind.
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
     let tmp = path.with_extension(format!("{}.tmp", path.extension().and_then(|e| e.to_str()).unwrap_or("")));
-    std::fs::write(&tmp, bytes).and_then(|_| std::fs::rename(&tmp, path)).map_err(|e| EngineError::Other(format!("{}: {e}", path.display())))
+    let written = File::create(&tmp)
+        .and_then(|mut f| {
+            f.write_all(bytes)?;
+            f.sync_all()
+        })
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(EngineError::Other(format!("{}: {e}", path.display())));
+    }
+    // The folder's entry for the rename (Unix; Windows can't open a folder as a file).
+    #[cfg(unix)]
+    if let Some(dir) = path.parent()
+        && let Ok(d) = File::open(dir)
+    {
+        let _ = d.sync_all();
+    }
+    Ok(())
 }
 
 /// Presentations reopened per start; the rest stay on disk for the next one, so a folder
@@ -168,6 +189,49 @@ pub fn list(dir: &Path) -> Vec<(u64, Value)> {
     out
 }
 
+/// The entries a crash left in `dir`: those of no running instance, this one included (a host
+/// with several sessions offers them once, before any of its own are written, and gives each to
+/// a session of its own with [`reopen`]). Same shape as [`list`]. Lock files of instances no
+/// longer running are removed, as [`open`] does.
+pub fn recoverable(dir: &Path) -> Vec<(u64, Value)> {
+    let me = instance_id();
+    let out = list(dir)
+        .into_iter()
+        .filter(|(_, meta)| match meta.get("owner").and_then(Value::as_u64) {
+            Some(owner) => owner != me && !owner_alive(dir, owner),
+            None => true,
+        })
+        .collect();
+    remove_stale_locks(dir);
+    out
+}
+
+/// The presentation of entry `uid` in `dir`, read back (`None`: missing, not a regular file, too
+/// large or not a presentation). The entry stays on disk.
+pub fn read_entry(dir: &Path, uid: u64) -> Option<Vec<u8>> {
+    let (doc, _) = files(dir, uid);
+    read_regular(&doc, MAX_ENTRY_BYTES)
+}
+
+/// Add the presentation in `bytes` (an entry's, from [`read_entry`]) to `s` as an unsaved
+/// presentation that keeps the entry's `uid` (so the next recovery save replaces the entry and
+/// saving or closing it removes it), remembers `path` and is called `title`. Nothing is written
+/// or deleted. Returns its index; an error for bytes that aren't a presentation, or a `uid`
+/// already open in `s`.
+pub fn reopen(s: &mut Session, uid: u64, bytes: &[u8], path: Option<String>, title: &str) -> Result<usize> {
+    if s.documents().iter().any(|d| d.uid == uid) {
+        return Err(EngineError::Other(format!("recovered presentation {uid} is already open")));
+    }
+    let mut d = deckcraft_format::load(bytes).map_err(|e| EngineError::Other(e.to_string()))?;
+    deckcraft_format::repair(&mut d);
+    let mut st = DocState::new(d, path, title.to_string());
+    st.uid = uid;
+    // Unsaved: the copy on disk (if any) is older than what was recovered.
+    st.saved_doc = std::sync::Arc::new((*st.doc).clone());
+    st.revision += 1;
+    Ok(s.add_document(st))
+}
+
 /// Reopen every entry left by an instance that is no longer running as an unsaved presentation.
 /// Entries stay on disk, now owned by this instance: the presentation keeps the entry's uid, so
 /// the next recovery save replaces the snapshot and saving or closing it removes it. Entries of a
@@ -192,12 +256,11 @@ pub fn open(s: &mut Session, dir: &Path) -> Result<Vec<usize>> {
         {
             continue;
         }
-        let (doc, meta_path) = files(dir, uid);
-        let Some(bytes) = read_regular(&doc, MAX_ENTRY_BYTES) else { continue };
-        let Ok(mut d) = deckcraft_format::load(&bytes) else { continue };
-        deckcraft_format::repair(&mut d);
+        let (_, meta_path) = files(dir, uid);
+        let Some(bytes) = read_entry(dir, uid) else { continue };
         let path = meta.get("path").and_then(Value::as_str).map(str::to_string);
         let title = meta.get("title").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or("Presentation").to_string();
+        let Ok(i) = reopen(s, uid, &bytes, path, &format!("{title} (Recovered)")) else { continue };
         // Take the entry over (so another instance starting now leaves it alone), keeping its
         // snapshot until this one writes a newer one.
         claim_dir(dir);
@@ -207,12 +270,7 @@ pub fn open(s: &mut Session, dir: &Path) -> Result<Vec<usize>> {
         if let Err(e) = write_atomic(&meta_path, meta.to_string().as_bytes()) {
             log::warn!("recovery: {e}");
         }
-        let mut st = DocState::new(d, path, format!("{title} (Recovered)"));
-        st.uid = uid;
-        // Unsaved: the copy on disk (if any) is older than what was recovered.
-        st.saved_doc = std::sync::Arc::new((*st.doc).clone());
-        st.revision += 1;
-        opened.push(s.add_document(st));
+        opened.push(i);
     }
     remove_stale_locks(dir);
     Ok(opened)
@@ -274,6 +332,107 @@ mod tests {
         let path = dir.join("saved.deckcraft");
         s3.execute("file.saveAs", &json!({"path": path.to_string_lossy()})).unwrap();
         assert!(list(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A host with several sessions (NexusOffice: one per tab) offers what a crash left, one
+    /// entry per session: `recoverable` leaves out this instance's own entries and those of a
+    /// running instance, and `reopen` gives an entry to a session as an unsaved presentation that
+    /// keeps its uid, file and title (so saving it removes the entry).
+    #[test]
+    fn hosts_offer_and_reopen_one_entry_at_a_time() {
+        let dir = temp("recovery-hooks");
+        std::fs::create_dir_all(&dir).unwrap();
+        // This instance's own entry: written by a session here, never offered here.
+        let mut mine = Session::new();
+        mine.execute("file.new", &json!({})).unwrap();
+        mine.execute("slide.new", &json!({"layout": "blank"})).unwrap();
+        assert_eq!(save(&mine, &dir).unwrap(), 1);
+        let mine_uid = mine.doc().unwrap().uid;
+        // A running instance's entry (its lock held): not offered either.
+        let live = instance_id() ^ (1 << 41);
+        let lock = File::create(lock_path(&dir, live)).unwrap();
+        lock.try_lock().unwrap();
+        let bytes = deckcraft_format::save(&mine.doc().unwrap().doc).unwrap();
+        let (d, m) = files(&dir, live + 1);
+        std::fs::write(&d, &bytes).unwrap();
+        std::fs::write(&m, json!({"title": "Live", "owner": live}).to_string()).unwrap();
+        // A crashed instance's entry (no lock held), with its file: offered.
+        let dead = instance_id() ^ (1 << 42);
+        File::create(lock_path(&dir, dead)).unwrap();
+        let (d, m) = files(&dir, dead + 1);
+        std::fs::write(&d, &bytes).unwrap();
+        std::fs::write(&m, json!({"title": "Báo cáo", "path": "/x/báo cáo.pptx", "owner": dead}).to_string()).unwrap();
+        let offered = recoverable(&dir);
+        assert_eq!(offered.iter().map(|e| e.0).collect::<Vec<_>>(), vec![dead + 1], "only the crash's entry");
+        assert!(offered.iter().all(|e| e.0 != mine_uid));
+        assert!(!lock_path(&dir, dead).exists(), "a crashed instance's lock file is cleaned up");
+        assert!(lock_path(&dir, live).exists(), "a running one's stays");
+        // Reopened in a session of its own: unsaved, its uid, file and title kept, nothing deleted.
+        let mut s = Session::new();
+        let read = read_entry(&dir, dead + 1).unwrap();
+        let i = reopen(&mut s, dead + 1, &read, Some("/x/báo cáo.pptx".into()), "Báo cáo").unwrap();
+        let st = &s.documents()[i];
+        assert!(st.is_dirty() && st.uid == dead + 1);
+        assert_eq!((st.path.as_deref(), st.title.as_str()), (Some("/x/báo cáo.pptx"), "Báo cáo"));
+        assert!(files(&dir, dead + 1).0.exists(), "the entry stays until a newer save or a save of the presentation");
+        // The same entry twice, or bytes that aren't a presentation: an error, nothing added.
+        assert!(reopen(&mut s, dead + 1, &read, None, "x").is_err());
+        assert!(reopen(&mut s, 77, b"not a presentation", None, "x").is_err());
+        assert_eq!(s.documents().len(), 1);
+        // The next save writes it as this instance's: no longer offered.
+        save(&s, &dir).unwrap();
+        assert!(recoverable(&dir).is_empty());
+        drop(lock);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Entries are written whole through a synced temporary file that never stays behind.
+    #[test]
+    fn entries_are_written_atomically() {
+        let dir = temp("recovery-atomic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("9.deckcraft");
+        write_atomic(&p, b"first").unwrap();
+        write_atomic(&p, b"second").unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"second");
+        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(names.len(), 1, "no temporary file left: {names:?}");
+        // A folder that can't be written: an error, and nothing left behind.
+        assert!(write_atomic(&dir.join("missing").join("1.deckcraft"), b"x").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Junk in the folder (names that aren't uids, metadata that isn't an object, an owner that
+    /// isn't a number, an empty or garbage presentation) is never offered as something it isn't
+    /// and never panics.
+    #[test]
+    fn hostile_entries_never_panic() {
+        let dir = temp("recovery-junk");
+        std::fs::create_dir_all(&dir).unwrap();
+        let junk: [(&str, &[u8]); 7] = [
+            ("1.deckcraft.tmp", b"x"),
+            ("2.deckcraft", b""),
+            ("2.json", b"{\"owner\": \"me\", \"title\": 7, \"path\": [1]}"),
+            ("3.deckcraft", b"\xff\xfe garbage"),
+            ("3.json", b"{\"owner\": 18446744073709551615}"),
+            ("x.deckcraft", b"x"),
+            ("18446744073709551616.deckcraft", b"x"),
+        ];
+        for (name, body) in junk {
+            let _ = std::fs::write(dir.join(name), body);
+        }
+        std::fs::create_dir_all(dir.join("4.deckcraft")).unwrap();
+        let offered = recoverable(&dir);
+        let mut s = Session::new();
+        for (uid, meta) in &offered {
+            let path = meta.get("path").and_then(Value::as_str).map(str::to_string);
+            if let Some(bytes) = read_entry(&dir, *uid) {
+                assert!(reopen(&mut s, *uid, &bytes, path, "x").is_err(), "{uid}");
+            }
+        }
+        assert!(s.documents().is_empty());
+        assert!(open(&mut s, &dir).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

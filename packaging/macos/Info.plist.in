@@ -7,11 +7,11 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>Nexus Slides</string>
+  <string>Nexus Slide</string>
   <key>CFBundleName</key>
-  <string>Nexus Slides</string>
+  <string>Nexus Slide</string>
   <key>CFBundleExecutable</key>
-  <string>NexusSlides</string>
+  <string>NexusSlide</string>
   <key>CFBundleIdentifier</key>
   <string>vn.sonnytech.nexus.slides</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -29,7 +29,7 @@
   <key>DeckCraftBuildCommit</key>
   <string>@BUILD_SHA@</string>
   <key>CFBundleIconFile</key>
-  <string>NexusSlides</string>
+  <string>NexusSlide</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
   <!-- Must match MACOSX_DEPLOYMENT_TARGET in package.sh. Big Sur is the first release on
@@ -43,7 +43,7 @@
   <key>NSRequiresAquaSystemAppearance</key>
   <false/>
   <key>NSHumanReadableCopyright</key>
-  <string>Nexus Slides © 2026 Sonnytech. Based on DeckCraft by the ArtCraft team. MIT OR Apache-2.0.</string>
+  <string>Nexus Slide © 2026 SonnyTech. Based on DeckCraft by the ArtCraft team. MIT OR Apache-2.0.</string>
 
   <!-- The app's own format (.deckcraft, unchanged from upstream): a zip of a JSON manifest plus media. -->
   <key>UTExportedTypeDeclarations</key>
@@ -52,14 +52,14 @@
       <key>UTTypeIdentifier</key>
       <string>vn.sonnytech.nexus.slides.presentation</string>
       <key>UTTypeDescription</key>
-      <string>Nexus Slides Presentation</string>
+      <string>Nexus Slide Presentation</string>
       <key>UTTypeConformsTo</key>
       <array>
         <string>public.data</string>
         <string>public.presentation</string>
       </array>
       <key>UTTypeIconFile</key>
-      <string>NexusSlides</string>
+      <string>NexusSlide</string>
       <key>UTTypeTagSpecification</key>
       <dict>
         <key>public.filename-extension</key>

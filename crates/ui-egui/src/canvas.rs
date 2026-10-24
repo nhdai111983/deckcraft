@@ -102,7 +102,8 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     let Some(st) = app.session.active() else { return };
     if st.doc.slides.is_empty() && st.selection.target == Target::Slides {
         let resp = ui.allocate_rect(avail, Sense::click());
-        ui.painter().text(avail.center(), Align2::CENTER_CENTER, "Click to add first slide", theme::font(22.0), t.text_dim);
+        let hint = crate::i18n::tr(ui.ctx(), "Click to add first slide");
+        ui.painter().text(avail.center(), Align2::CENTER_CENTER, hint, theme::font(22.0), t.text_dim);
         if resp.clicked() {
             let _ = app.run("slide.new", json!({"layout": "title"}));
         }
