@@ -848,7 +848,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("After text", "Sau văn bản"),
     ("Special", "Đặc biệt"),
     ("First line", "Dòng đầu"),
-    ("Hanging", "Treo"),
     ("By", "Mức"),
     ("Spacing before", "Khoảng cách trước"),
     ("Spacing after", "Khoảng cách sau"),
@@ -1099,7 +1098,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Insert picture from file…", "Chèn ảnh từ tệp…"),
     ("Hide background graphics", "Ẩn đồ họa nền"),
     ("Apply to All", "Áp dụng cho tất cả"),
-    ("Reset Background", "Đặt lại nền"),
     ("Top Left", "Trên trái"),
     ("Top Right", "Trên phải"),
     ("Bottom Left", "Dưới trái"),
@@ -1136,7 +1134,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Remove stop", "Bỏ điểm dừng"),
     // ---- Colour menu (fills, lines, text, bullets)
     ("Theme Colors", "Màu chủ đề"),
-    ("Standard Colors", "Màu chuẩn"),
     ("More Colors… #", "Màu khác… #"),
     ("Eyedropper", "Công cụ hút màu"),
     ("Click the slide to take the colour under the pointer", "Bấm vào trang chiếu để lấy màu dưới con trỏ"),
