@@ -24,6 +24,10 @@ impl SlideApp {
     /// Open `path` without blocking the UI: the file is read on a thread and the progress window
     /// shows until it arrives. Without threads (the web build) it opens at once.
     pub fn open_path_in_background(&mut self, path: &str) {
+        // NexusOffice: a host with tabs opens it in a tab of its own.
+        if self.hand_to_host(path) {
+            return;
+        }
         if let Some(o) = &self.opening {
             let name = o.name();
             self.set_status(format!("Still opening {name}"));
@@ -75,12 +79,21 @@ impl SlideApp {
                 // Into the session through the command path, like file.open: journaled and guarded.
                 let token = self.session.stage_loaded(f);
                 match self.session.execute("file.adopt", &serde_json::json!({"path": o.path, "token": token})) {
-                    Ok(_) => self.note_recent(&o.path),
-                    Err(e) => self.notify(e.to_string()),
+                    Ok(_) => {
+                        self.note_recent(&o.path);
+                        self.drop_replaced_blank();
+                    }
+                    Err(e) => {
+                        self.replace_blank = None;
+                        self.notify(e.to_string());
+                    }
                 }
             }
             // Over the start screen too, like a failed file.open (#346).
-            Err(e) => self.notify(e),
+            Err(e) => {
+                self.replace_blank = None;
+                self.notify(e);
+            }
         }
     }
 
@@ -100,7 +113,7 @@ impl SlideApp {
             ui.weak(format!("Reading the file: {secs:.0} s"));
             ui.add_space(6.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                cancel = ui.button("Cancel").clicked();
+                cancel = ui.button(self.ui.language.tr("Cancel")).clicked();
             });
         });
         if cancel || ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {

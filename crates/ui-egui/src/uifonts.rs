@@ -99,6 +99,11 @@ impl UiFonts {
         self.note(ctx, &text);
     }
 
+    /// Whether faces were added since the last call (the caller installs the fonts again).
+    pub fn take_changed(&mut self) -> bool {
+        std::mem::take(&mut self.changed)
+    }
+
     /// Install the interface fonts again when faces were added. True if they were.
     pub fn apply(&mut self, ctx: &egui::Context) -> bool {
         if !std::mem::take(&mut self.changed) {

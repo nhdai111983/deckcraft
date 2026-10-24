@@ -10,6 +10,19 @@ use crate::theme::{self, Tokens};
 
 /// Height of the ribbon's content area.
 pub const RIBBON_H: f32 = 66.0;
+/// NexusOffice: height of the content in the WPS-style strip ([`crate::nexus_wps`]): two rows of
+/// small buttons; a large button is a 20 px icon over one label line there.
+pub const COMPACT_H: f32 = 50.0;
+const COMPACT_ICON_Y: f32 = 15.0;
+const COMPACT_ICON: f32 = 20.0;
+const COMPACT_LABEL_Y: f32 = 31.0;
+const _: () = assert!(COMPACT_ICON_Y + COMPACT_ICON / 2.0 <= COMPACT_LABEL_Y);
+const _: () = assert!(COMPACT_LABEL_Y + 14.0 <= COMPACT_H);
+
+/// Height of the ribbon content being drawn: [`COMPACT_H`] in the WPS strip, else [`RIBBON_H`].
+pub fn content_h(ui: &Ui) -> f32 {
+    if crate::nexus_wps::compact(ui) { COMPACT_H } else { RIBBON_H }
+}
 
 fn bg(ui: &Ui, r: &Response, selected: bool, t: &Tokens) -> Option<Color32> {
     if !r.sense.senses_click() && !r.sense.senses_drag() {
@@ -34,17 +47,33 @@ pub fn big_button(ui: &mut Ui, icon: Icon, label: &str, enabled: bool) -> Respon
 /// Large button; with `split`, the label row is a separate dropdown target (returns its response).
 pub fn big_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, split: bool, selected: bool) -> (Response, Option<Response>) {
     let t = Tokens::get(ui.ctx());
-    let font = theme::font(11.0);
-    let lines: Vec<&str> = wrap_label(label);
+    let compact = crate::nexus_wps::compact(ui);
+    let font = theme::font(if compact { 12.0 } else { 11.0 });
+    // Named for screen readers and UI tests ("Ink to\nShape" reads "Ink to Shape"), in the
+    // interface's language.
+    let spoken = crate::i18n::tr(ui.ctx(), &label.replace('\n', " ")).into_owned();
+    let translated = crate::i18n::current(ui.ctx()) != crate::i18n::Language::En && spoken != label.replace('\n', " ");
+    let lines: Vec<&str> = if compact {
+        vec![spoken.as_str()]
+    } else if translated {
+        wrap_label(&spoken)
+    } else {
+        wrap_label(label)
+    };
     let text_w = lines.iter().map(|l| ui.fonts_mut(|f| f.layout_no_wrap(l.to_string(), font.clone(), t.text).size().x)).fold(0.0f32, f32::max);
-    let w = (text_w + 10.0 + if split && lines.len() == 1 { 10.0 } else { 0.0 }).max(40.0);
-    let (rect, resp) = ui.allocate_exact_size(vec2(w, RIBBON_H - 2.0), if enabled { Sense::click() } else { Sense::hover() });
-    // Named for screen readers and UI tests ("Ink to\nShape" reads "Ink to Shape").
-    let spoken = label.replace('\n', " ");
+    let arrow_extra = if split && (lines.len() == 1) { 10.0 } else { 0.0 };
+    let w = (text_w + 10.0 + arrow_extra).max(if compact { 36.0 } else { 40.0 });
+    let h = if compact { COMPACT_H } else { RIBBON_H - 2.0 };
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, h), if enabled { Sense::click() } else { Sense::hover() });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &spoken));
     let painter = ui.painter_at(rect.expand(1.0));
+    let (icon_y, icon_size, label_y, line_h) = if compact { (COMPACT_ICON_Y, COMPACT_ICON, COMPACT_LABEL_Y, 13.0) } else { (19.0, 30.0, 39.0, 12.5) };
+    let split_y = if compact { label_y - 2.0 } else { 38.0 };
     let (main_rect, arrow_rect) = if split {
-        (Rect::from_min_max(rect.min, pos2(rect.max.x, rect.min.y + 38.0)), Some(Rect::from_min_max(pos2(rect.min.x, rect.min.y + 38.0), rect.max)))
+        (
+            Rect::from_min_max(rect.min, pos2(rect.max.x, rect.min.y + split_y)),
+            Some(Rect::from_min_max(pos2(rect.min.x, rect.min.y + split_y), rect.max)),
+        )
     } else {
         (rect, None)
     };
@@ -59,10 +88,10 @@ pub fn big_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, split:
     {
         painter.rect_filled(ar, CornerRadius::same(4), c);
     }
-    let icon_rect = Rect::from_center_size(pos2(rect.center().x, rect.min.y + 19.0), vec2(30.0, 30.0));
+    let icon_rect = Rect::from_center_size(pos2(rect.center().x, rect.min.y + icon_y), vec2(icon_size, icon_size));
     icons::paint(&painter, icon_rect, icon, t.text, !enabled);
     let col = if enabled { t.text } else { t.text_faint };
-    let mut y = rect.min.y + 39.0;
+    let mut y = rect.min.y + label_y;
     for (i, l) in lines.iter().enumerate() {
         let last = i + 1 == lines.len();
         let label_w = ui.fonts_mut(|f| f.layout_no_wrap(l.to_string(), font.clone(), col).size().x);
@@ -72,7 +101,7 @@ pub fn big_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, split:
         if split && last {
             chevron(&painter, pos2(x + label_w + 5.0, y + 7.0), 3.0, col);
         }
-        y += 12.5;
+        y += line_h;
     }
     (if split { main_resp } else { resp }, arrow_resp)
 }
@@ -115,6 +144,8 @@ pub fn small_button(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, selecte
 
 pub fn small_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, selected: bool, split: bool) -> (Response, Option<Response>) {
     let t = Tokens::get(ui.ctx());
+    let label = crate::i18n::tr(ui.ctx(), label);
+    let label = label.as_ref();
     let font = theme::font(12.0);
     let tw = if label.is_empty() { 0.0 } else { ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), t.text).size().x) + 5.0 };
     let arrow_w = if split { 12.0 } else { 0.0 };
@@ -155,6 +186,8 @@ pub fn small_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, sele
 /// A square icon toggle (B, I, U, alignment…).
 pub fn icon_toggle(ui: &mut Ui, icon: Icon, tip: &str, enabled: bool, on: bool) -> Response {
     let t = Tokens::get(ui.ctx());
+    let tip = crate::i18n::tr(ui.ctx(), tip);
+    let tip = tip.as_ref();
     let (rect, resp) = ui.allocate_exact_size(vec2(24.0, 22.0), if enabled { Sense::click() } else { Sense::hover() });
     let painter = ui.painter_at(rect);
     if let Some(c) = bg(ui, &resp, on, &t) {
@@ -169,6 +202,8 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, tip: &str, enabled: bool, on: bool) 
 /// Icon with a colour bar under it and a dropdown arrow (Font Color, Highlight, Shape Fill…).
 pub fn color_split(ui: &mut Ui, icon: Icon, tip: &str, color: Color32, enabled: bool) -> (Response, Response) {
     let t = Tokens::get(ui.ctx());
+    let tip = crate::i18n::tr(ui.ctx(), tip).into_owned();
+    let tip = tip.as_str();
     let (rect, resp) = ui.allocate_exact_size(vec2(34.0, 22.0), Sense::hover());
     let main = ui.interact(Rect::from_min_size(rect.min, vec2(23.0, 22.0)), resp.id.with("m"), if enabled { Sense::click() } else { Sense::hover() });
     let arrow = ui.interact(
@@ -193,24 +228,32 @@ pub fn color_split(ui: &mut Ui, icon: Icon, tip: &str, color: Color32, enabled: 
     (main.on_hover_text(tip), arrow)
 }
 
-/// A ribbon group: contents, then a thin vertical separator.
-pub fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let r = ui.horizontal_top(|ui| {
+/// A ribbon group: contents, then a thin vertical separator. In the NexusOffice WPS strip the
+/// strip decides whether this pass draws the group ([`crate::nexus_wps::group`]).
+pub fn group(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    if crate::nexus_wps::gated(ui) {
+        crate::nexus_wps::group(ui, add);
+        return;
+    }
+    ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = vec2(1.0, 1.0);
         add(ui)
     });
     separator(ui);
-    r.inner
 }
 
 pub fn separator(ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(13.0, RIBBON_H - 6.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(13.0, content_h(ui) - 6.0), Sense::hover());
     ui.painter().line_segment([pos2(rect.center().x, rect.min.y + 6.0), pos2(rect.center().x, rect.max.y - 4.0)], Stroke::new(1.0, t.separator));
 }
 
-/// Two or three rows of small controls stacked in one ribbon column.
+/// Two or three rows of small controls stacked in one ribbon column. In the NexusOffice WPS strip
+/// (two rows high) three or more flow into two rows ([`crate::nexus_wps::compact_stack`]).
 pub fn rows<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if crate::nexus_wps::compact(ui) {
+        return crate::nexus_wps::compact_stack(ui, add);
+    }
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
         ui.add_space(0.0);
@@ -385,6 +428,9 @@ pub fn gallery(
 ) -> Option<usize> {
     let t = Tokens::get(ui.ctx());
     let mut clicked = None;
+    // NexusOffice WPS strip: tiles taller than its two rows shrink to fit, keeping their shape.
+    let room = content_h(ui);
+    let tile = if tile.y > room && tile.y > 0.0 { tile * (room / tile.y) } else { tile };
     for i in 0..n {
         let (rect, resp) = ui.allocate_exact_size(tile, Sense::click());
         let painter = ui.painter_at(rect.expand(2.0));
@@ -476,6 +522,9 @@ pub fn section(ui: &mut Ui, title: &str, open: bool) -> bool {
 /// A button with an optional label and a painted dropdown chevron (the UI font has no ▾).
 pub fn drop_button(ui: &mut Ui, label: &str, size: egui::Vec2, enabled: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let size = vec2(size.x, size.y.min(content_h(ui)));
+    let label = crate::i18n::tr(ui.ctx(), label);
+    let label = label.as_ref();
     let r = ui.add_enabled(enabled, egui::Button::new(if label.is_empty() { String::new() } else { format!("{label}   ") }).min_size(size));
     let col = if enabled { t.text_dim } else { t.text_faint };
     chevron(ui.painter(), egui::pos2(r.rect.max.x - 8.0, r.rect.center().y), 3.0, col);

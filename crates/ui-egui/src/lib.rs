@@ -14,12 +14,15 @@ pub mod credits;
 pub mod dialogs;
 pub mod doc_window;
 pub mod eyedropper;
+pub mod file_dialogs;
 pub mod fillui;
+pub mod i18n;
 pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
 pub mod nexus_toolbar;
+pub mod nexus_wps;
 pub mod notes;
 pub mod opening;
 pub mod panes;
@@ -48,6 +51,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use control::{ControlRequest, ControlResponse};
+pub use file_dialogs::{FileDialogAnswer, FileDialogRequest};
 
 pub type ReadFn = Box<dyn Fn(&str) -> Result<Vec<u8>, String>>;
 pub type WriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
@@ -222,6 +226,17 @@ pub struct Services {
     pub clipboard_set_html: Option<Box<dyn FnMut(&str, &str) -> bool>>,
     /// Audio output for media playback (cpal on desktop); without one media plays silently.
     pub audio_out: Option<Box<dyn deckcraft_media::AudioOut>>,
+    /// NexusOffice: Open and Save As dialogs the host shows without blocking (its answer comes
+    /// later on the channel; see [`file_dialogs`]). Wins over `pick_open` / `pick_save`.
+    pub file_dialog: Option<Box<dyn Fn(FileDialogRequest) -> Receiver<FileDialogAnswer>>>,
+    /// NexusOffice: a host with tabs takes File › New, Ctrl+N, the themes, the templates and the
+    /// sample deck (the `file.new` params; `{"sample": true}` for the sample) and opens a new tab;
+    /// this presentation stays as it is.
+    pub new_document: Option<Box<dyn Fn(Value)>>,
+    /// NexusOffice: a host with tabs opens a picked presentation in a tab of its own (or brings its
+    /// tab forward). Not asked when this window holds only its untouched new presentation, which
+    /// the opened one replaces.
+    pub open_document: Option<Box<dyn Fn(&str)>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +296,10 @@ pub struct UiState {
     /// `None` writes no key (an upstream `ui.json` stays the same).
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "lenient_accent")]
     pub accent: Option<String>,
+    /// NexusOffice: the interface language ([`i18n`]). Always written, so a chosen English stays
+    /// English where the Nexus apps default to Vietnamese (a file without it is read as unset).
+    #[serde(deserialize_with = "i18n::lenient")]
+    pub language: i18n::Language,
 }
 
 fn lenient_accent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
@@ -318,6 +337,7 @@ impl Default for UiState {
             comment_focus: None,
             qat: qat::defaults(),
             accent: None,
+            language: i18n::Language::En,
         }
     }
 }
@@ -530,6 +550,19 @@ pub struct SlideApp {
     /// NexusOffice layout: a menu bar and one tool row instead of the ribbon ([`nexus_toolbar`]).
     /// The Nexus apps turn it on; off (the default) keeps upstream's ribbon.
     pub toolbar: bool,
+    /// NexusOffice layout in the style of WPS Office ([`nexus_wps`]): no title bar; one row with
+    /// File, the Quick Access Toolbar, the ribbon tabs, the save state, Search, Comments and Share;
+    /// under it the current tab's groups as one flat strip whose trailing groups fold into a "…"
+    /// panel. Wins over [`toolbar`](Self::toolbar). Off keeps upstream's title bar and ribbon.
+    pub wps: bool,
+    /// Hosted inside another program's window (a tab of the NexusOffice window): the app adds its
+    /// fonts to the window's instead of replacing them, leaves the window alone (no title, no
+    /// drag, no close prompt of its own) and its top row doesn't move or maximise the window.
+    pub embedded: bool,
+    /// The host's file dialog being shown ([`file_dialogs`]).
+    pub(crate) file_dialog: Option<file_dialogs::PendingDialog>,
+    /// NexusOffice: the untouched new presentation (its uid) a presentation being opened replaces.
+    replace_blank: Option<u64>,
 }
 
 fn grid_options_touched(p: &Value) -> bool {
@@ -598,7 +631,116 @@ impl SlideApp {
             next_file_id: 1,
             pending_files: Vec::new(),
             toolbar: false,
+            wps: false,
+            embedded: false,
+            file_dialog: None,
+            replace_blank: None,
         }
+    }
+
+    /// NexusOffice: install the fonts and the look again (painting nothing until they apply). A
+    /// host window with other editors calls it when this app's tab comes forward, since another
+    /// editor may have replaced the window's fonts and visuals meanwhile.
+    pub fn restyle(&mut self) {
+        self.styled = false;
+        self.fonts_ready = false;
+        self.restyle = true;
+    }
+
+    /// Whether the window's fonts have this app's named family (another editor in a host window
+    /// may have replaced them; drawing with a family egui doesn't have panics).
+    pub fn fonts_installed(&self, ctx: &egui::Context) -> bool {
+        ctx.fonts(|f| f.definitions().families.contains_key(&theme::bold_family()))
+    }
+
+    /// Installs `defs`. Embedded, the window's other families (another editor's, the host's own
+    /// faces) are kept: this app's named families are added and its faces appended to the
+    /// proportional and monospace lists, so the editors in a host window's tabs don't take each
+    /// other's fonts away.
+    pub(crate) fn set_fonts(&self, ctx: &egui::Context, defs: egui::FontDefinitions) {
+        if !self.embedded {
+            return ctx.set_fonts(defs);
+        }
+        ctx.set_fonts(theme::merge_font_definitions(ctx.fonts(|f| f.definitions().clone()), defs));
+    }
+
+    /// A presentation nobody has touched: no file, no changes, nothing to undo. Opening a file in
+    /// a hosted window replaces it.
+    pub fn is_untouched_blank(d: &deckcraft_engine::DocState) -> bool {
+        d.path.is_none() && !d.is_dirty() && d.history.undo.is_empty() && d.history.redo.is_empty()
+    }
+
+    /// NexusOffice: hand `path` to the host's tabs unless this window holds only its untouched new
+    /// presentation (the opened one replaces it) or has the file open already. True when handed.
+    fn hand_to_host(&mut self, path: &str) -> bool {
+        let Some(open) = &self.services.open_document else { return false };
+        if self.session.documents().iter().any(|d| d.path.as_deref() == Some(path)) {
+            return false;
+        }
+        let only_blank = self.session.documents().len() == 1 && self.session.active().is_some_and(SlideApp::is_untouched_blank);
+        if only_blank {
+            self.replace_blank = self.session.active().map(|d| d.uid);
+            return false;
+        }
+        open(path);
+        self.backstage = None;
+        true
+    }
+
+    /// A presentation was just opened: the untouched new one it replaces (hosted) closes.
+    pub(crate) fn drop_replaced_blank(&mut self) {
+        let Some(uid) = self.replace_blank.take() else { return };
+        let Some(opened) = self.session.active().map(|d| d.uid) else { return };
+        if opened == uid {
+            return;
+        }
+        if let Some(i) = self.session.documents().iter().position(|d| d.uid == uid && SlideApp::is_untouched_blank(d)) {
+            self.session.close_document(i);
+            if let Some(j) = self.session.documents().iter().position(|d| d.uid == opened) {
+                self.session.set_active(j);
+            }
+        }
+    }
+
+    /// NexusOffice: typing not in the presentation yet (the notes pane's draft, an input method's
+    /// composition). A host closing this window asks about it as a change.
+    pub fn has_drafts(&self) -> bool {
+        (self.notes_buf.2.edited && self.session.documents().iter().any(|d| d.uid == self.notes_buf.0))
+            || self.session.active().is_some_and(|d| d.composition.is_some())
+    }
+
+    /// NexusOffice: puts the drafts [`has_drafts`](Self::has_drafts) sees into the presentation
+    /// (an undoable change, so "Save changes?" asks about it). `false` when one couldn't be (the
+    /// status bar says why).
+    pub fn commit_drafts(&mut self) -> bool {
+        self.session.end_composition();
+        if self.notes_buf.2.edited {
+            let (uid, index) = (self.notes_buf.0, self.notes_buf.1);
+            let body = self.notes_buf.2.body.clone();
+            let Some(i) = self.session.documents().iter().position(|d| d.uid == uid) else {
+                self.notes_buf.2.edited = false;
+                return true;
+            };
+            let shown = self.session.active_index();
+            self.session.set_active(i);
+            let r = self.run("slide.notes", json!({"body": body, "index": index}));
+            if let Some(v) = shown {
+                self.session.set_active(v);
+            }
+            if r.is_err() {
+                return false;
+            }
+            self.notes_buf.2.edited = false;
+        }
+        true
+    }
+
+    /// A presentation was saved at `path`: the status says so and it heads the recent list.
+    pub(crate) fn note_saved(&mut self, path: &str) {
+        self.set_status(format!("Saved {path}"));
+        self.ui.recent.retain(|p| p != path);
+        self.ui.recent.insert(0, path.to_string());
+        self.ui.recent.truncate(RECENT_MAX);
     }
 
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
@@ -669,6 +811,16 @@ impl SlideApp {
     /// Run a command by id (UI commands here, everything else in the engine). Errors show in the
     /// status bar and are returned.
     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        // NexusOffice: the host's tabs take new presentations; this one stays as it is.
+        if id == "file.new"
+            && let Some(new) = &self.services.new_document
+        {
+            new(if params.is_object() { params } else { json!({}) });
+            if self.session.active().is_some() {
+                self.backstage = None;
+            }
+            return Ok(json!({"host": "file.new"}));
+        }
         let r = if UI_COMMANDS.iter().any(|c| c.0 == id) {
             self.run_ui(id, &params)
         } else {
@@ -767,6 +919,11 @@ impl SlideApp {
             }
         };
         let suggested = self.suggested_name(ext);
+        // NexusOffice: the host's dialog answers later; the copy is written then.
+        let copy = file_dialogs::AfterPick::Export { format: format.into(), ext: ext.into(), all, extra: extra.clone() };
+        if self.ask_file(FileDialogRequest::Save { name: suggested.clone(), types: vec![ext.to_string()] }, copy) {
+            return true;
+        }
         if let Some(pick) = self.services.pick_save.as_mut() {
             let Some(path) = pick(&suggested) else { return false };
             let mut params = json!({"path": path, "format": format, "all": all});
@@ -824,7 +981,7 @@ impl SlideApp {
     pub fn print_pdf(&mut self, params: Value) -> bool {
         let Some((title, doc)) = self.session.active().map(|d| (d.title(), d.doc.clone())) else { return false };
         let mut params = if params.is_object() { params } else { json!({}) };
-        if self.services.pick_save.is_none() {
+        if !self.has_file_system() {
             // Web: the browser hands the PDF to the user.
             let bytes = deckcraft_engine::cmd::file::pdf_bytes(&doc, &params);
             return self.download(&format!("{title}.pdf"), bytes);
@@ -1021,7 +1178,7 @@ impl SlideApp {
             "app.openDialog" => self.pick_and_open(),
             "app.insertPictureDialog" => self.pick_and_insert("picture", "insert.picture"),
             "app.smartArtPictureDialog" => {
-                if self.services.pick_open.is_none() {
+                if !self.can_pick_files() {
                     return Err("picking a SmartArt picture needs the desktop app".into());
                 }
                 self.pick_and_run("picture", "smartArt.picture", p);
@@ -1037,7 +1194,7 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open a presentation first".into());
                 }
-                if self.services.pick_open.is_some() {
+                if self.can_pick_files() {
                     self.pick_and_insert("theme", "design.browseTheme");
                 } else {
                     // The browser's asynchronous picker would open the file as a new document.
@@ -1055,7 +1212,7 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open the presentation to compare first".into());
                 }
-                if self.services.pick_open.is_some() {
+                if self.can_pick_files() {
                     self.pick_and_insert("open", "review.compare");
                 } else {
                     // The browser's asynchronous picker would open the file as a new document.
@@ -1202,6 +1359,9 @@ impl SlideApp {
     }
 
     fn pick_and_open(&mut self) {
+        if self.ask_file(FileDialogRequest::Open { purpose: "open".into() }, file_dialogs::AfterPick::Open) {
+            return;
+        }
         if let Some(pick) = self.services.pick_open.as_mut() {
             if let Some(path) = pick("open") {
                 self.open_path_in_background(&path);
@@ -1232,7 +1392,7 @@ impl SlideApp {
 
     /// Transitions › Sound › Other Sound…: pick an audio file for the selected slides.
     pub(crate) fn pick_transition_sound(&mut self) {
-        if self.services.pick_open.is_some() {
+        if self.can_pick_files() {
             self.pick_and_insert("audio", "transition.sound");
         }
     }
@@ -1240,6 +1400,9 @@ impl SlideApp {
     /// Home › New Slide › Reuse Slides…: pick a presentation and insert all its slides after the
     /// current one (desktop only: the browser picker opens what it picks as a document).
     fn pick_and_reuse(&mut self, keep: bool) {
+        if self.ask_file(FileDialogRequest::Open { purpose: "open".into() }, file_dialogs::AfterPick::Reuse { keep }) {
+            return;
+        }
         let Some(pick) = self.services.pick_open.as_mut() else {
             self.set_status("Reuse Slides needs the desktop app".to_string());
             return;
@@ -1257,6 +1420,10 @@ impl SlideApp {
 
     /// Pick a file and run `cmd` with it (`name` + `data`, or `path`) added to `extra`.
     fn pick_and_run(&mut self, purpose: &str, cmd: &str, extra: &Value) {
+        let after = file_dialogs::AfterPick::Run { cmd: cmd.into(), extra: extra.clone() };
+        if self.ask_file(FileDialogRequest::Open { purpose: purpose.into() }, after) {
+            return;
+        }
         if let Some(pick) = self.services.pick_open.as_mut() {
             if let Some(path) = pick(purpose) {
                 let mut args = if extra.is_object() { extra.clone() } else { json!({}) };
@@ -1293,15 +1460,18 @@ impl SlideApp {
     pub fn save_as_dialog(&mut self, format: &str) {
         let name = self.session.active().map(|d| d.title()).unwrap_or_else(|| "Presentation".into());
         let ext = if format == "pptx" { "pptx" } else { "deckcraft" };
+        // NexusOffice: the host's dialog offers only presentation types, the asked-for one first,
+        // and answers later; the save happens then.
+        let types: Vec<String> =
+            std::iter::once(ext).chain(file_dialogs::PRESENTATION_TYPES.iter().copied().filter(|t| *t != ext)).map(String::from).collect();
+        if self.ask_file(FileDialogRequest::Save { name: format!("{name}.{ext}"), types }, file_dialogs::AfterPick::Save { then_close: false }) {
+            return;
+        }
         let suggested = format!("{name}.{ext}");
         if let Some(pick) = self.services.pick_save.as_mut() {
             if let Some(path) = pick(&suggested) {
                 match self.session.execute("file.saveAs", &json!({"path": path})) {
-                    Ok(_) => {
-                        self.set_status(format!("Saved {path}"));
-                        self.ui.recent.retain(|p| *p != path);
-                        self.ui.recent.insert(0, path);
-                    }
+                    Ok(_) => self.note_saved(&path),
                     Err(e) => self.set_status(e.to_string()),
                 }
             }
@@ -1336,7 +1506,9 @@ impl SlideApp {
                 Err(e) => self.set_status(e.to_string()),
             }
         } else {
-            self.save_as_dialog("deckcraft");
+            // NexusOffice: a hosted window saves new presentations as PowerPoint by default (the
+            // format everyone they share with opens); upstream's own format stays one choice away.
+            self.save_as_dialog(if self.services.file_dialog.is_some() { "pptx" } else { "deckcraft" });
         }
     }
 
@@ -1354,7 +1526,7 @@ impl SlideApp {
                 UiRequest::Message { text } => self.set_status(text),
                 UiRequest::PickFile { purpose } => {
                     if purpose == "saveAs" {
-                        self.save_as_dialog("deckcraft");
+                        self.save_as_dialog(if self.services.file_dialog.is_some() { "pptx" } else { "deckcraft" });
                     }
                 }
                 UiRequest::Media { action, shape, ms } => {
@@ -1550,12 +1722,23 @@ impl SlideApp {
 
     /// Per-frame logic before layout: styles, control requests, screenshots, shortcuts.
     pub fn logic(&mut self, ctx: &egui::Context) {
+        // NexusOffice: the language the widgets draw in this frame, and new presentations' names.
+        i18n::set_current(ctx, self.ui.language);
+        let prefix = self.ui.language.untitled_prefix();
+        if self.session.untitled_prefix != prefix {
+            self.session.untitled_prefix = prefix.to_string();
+        }
         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
         if (ctx.zoom_factor() - scale).abs() > 1e-3 {
             ctx.set_zoom_factor(scale);
         }
+        // NexusOffice: another editor in the host window (Nexus Docs, Nexus Sheet) installed its
+        // own fonts, without this app's: install them again (and skip the frame, as at startup).
+        if self.embedded && self.styled && !self.fonts_installed(ctx) {
+            self.restyle();
+        }
         if !self.styled {
-            theme::install_fonts_with(ctx, &self.ui_fonts.faces);
+            self.set_fonts(ctx, theme::font_definitions(&self.ui_fonts.faces));
             self.styled = true;
             self.restyle = true;
         } else {
@@ -1579,6 +1762,7 @@ impl SlideApp {
         self.last_time = now;
         self.drain_control(ctx);
         self.poll_opening();
+        self.poll_file_dialog();
         if self.fonts_ready {
             self.drain_inbox();
         }
@@ -1590,8 +1774,12 @@ impl SlideApp {
         }
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
-        // Closing the window with unsaved changes asks first.
-        if ctx.input(|i| i.viewport().close_requested()) && !self.quit_confirmed && self.session.documents().iter().any(|d| d.is_dirty()) {
+        // Closing the window with unsaved changes asks first (a host window asks for its tabs).
+        if !self.embedded
+            && ctx.input(|i| i.viewport().close_requested())
+            && !self.quit_confirmed
+            && self.session.documents().iter().any(|d| d.is_dirty())
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.show = None;
             if self.dialog.as_ref().is_none_or(|d| d.id != "quit") {
@@ -1643,7 +1831,10 @@ impl SlideApp {
         if let Some(st) = self.session.active() {
             self.ui_fonts.note_doc(ctx, st);
         }
-        self.ui_fonts.apply(ctx);
+        if self.ui_fonts.take_changed() {
+            self.set_fonts(ctx, theme::font_definitions(&self.ui_fonts.faces));
+            ctx.request_repaint();
+        }
     }
 
     /// An input method's event for the slide's text (#101): the preedit is shown in the text and
@@ -1819,6 +2010,16 @@ impl SlideApp {
             ctx.request_repaint();
             return;
         }
+        // NexusOffice: a host window that brings this tab forward in the middle of a frame (a click
+        // on its tab strip) draws it before `logic` has seen another editor's fonts: paint nothing
+        // this frame and install ours again, instead of drawing with families egui no longer has
+        // (which panics).
+        if self.embedded && !self.fonts_installed(&ctx) {
+            self.restyle();
+            ctx.request_repaint();
+            return;
+        }
+        i18n::set_current(&ctx, self.ui.language);
         let t0 = now_ms();
         let t = theme::Tokens::get(&ctx);
         self.tick_media(&ctx);
@@ -1834,9 +2035,13 @@ impl SlideApp {
         self.sync_backstage();
         self.keyboard(&ctx);
         self.sync_backstage();
-        ribbon::title_bar(self, ui);
+        if !self.wps {
+            ribbon::title_bar(self, ui);
+        }
         if self.backstage.is_none() && self.session.active().is_some() {
-            if self.toolbar {
+            if self.wps {
+                nexus_wps::show(self, ui);
+            } else if self.toolbar {
                 nexus_toolbar::show(self, ui);
             } else {
                 ribbon::show(self, ui);

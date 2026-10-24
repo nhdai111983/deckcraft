@@ -364,7 +364,38 @@ pub fn add_fallback_faces(defs: &mut FontDefinitions, faces: &[std::sync::Arc<de
 }
 
 pub fn bold(size: f32) -> egui::FontId {
-    egui::FontId::new(size, FontFamily::Name("bold".into()))
+    egui::FontId::new(size, bold_family())
+}
+
+/// The interface's bold family (headings, the selected tab).
+pub fn bold_family() -> FontFamily {
+    FontFamily::Name("bold".into())
+}
+
+/// NexusOffice: `ours` added to the fonts a host window already has (another editor's in its
+/// other tabs): our faces join the window's, our named families are set (they are this app's own:
+/// `bold`), and our faces are appended to the window's proportional and monospace lists, so
+/// another editor's text keeps its own faces and ours still finds a glyph.
+pub fn merge_font_definitions(mut window: FontDefinitions, ours: FontDefinitions) -> FontDefinitions {
+    for (name, data) in ours.font_data {
+        window.font_data.entry(name).or_insert(data);
+    }
+    for (family, chain) in ours.families {
+        match family {
+            FontFamily::Name(_) => {
+                window.families.insert(family, chain);
+            }
+            other => {
+                let list = window.families.entry(other).or_default();
+                for name in chain {
+                    if !list.contains(&name) {
+                        list.push(name);
+                    }
+                }
+            }
+        }
+    }
+    window
 }
 
 pub fn font(size: f32) -> egui::FontId {

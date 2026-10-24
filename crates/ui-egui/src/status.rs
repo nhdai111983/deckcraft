@@ -12,24 +12,32 @@ pub fn status_bar(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("status").exact_size(28.0).frame(egui::Frame::NONE.fill(t.chrome)).show(ui, |ui| {
         let rect = ui.max_rect();
+        let lang = app.ui.language;
         let Some(st) = app.session.active() else { return };
         let n = st.doc.slides.len();
         let left = match st.selection.target {
-            deckcraft_engine::Target::Slides => format!("Slide {} of {}", (st.selection.slide + 1).min(n.max(1)), n),
-            _ => "Slide Master".to_string(),
+            deckcraft_engine::Target::Slides => {
+                lang.fill("Slide {n} of {total}", &[("n", &(st.selection.slide + 1).min(n.max(1)).to_string()), ("total", &n.to_string())])
+            }
+            _ => lang.tr("Slide Master").into_owned(),
         };
         let p = ui.painter();
         p.text(pos2(rect.min.x + 14.0, rect.center().y), Align2::LEFT_CENTER, &left, theme::font(12.0), t.text_dim);
         // The selection's proofing language; a click opens Review › Language.
-        let (lang, no_proof) = crate::dialogs::selected_language(app);
-        let name = crate::squiggles::lang_name(&lang) + if no_proof { " (not checked)" } else { "" };
-        let lr = p.text(pos2(rect.min.x + 120.0, rect.center().y), Align2::LEFT_CENTER, &name, theme::font(12.0), t.text_dim);
-        if ui.interact(lr.expand(3.0), ui.id().with("status_lang"), Sense::click()).on_hover_text("Language").clicked() {
+        let (proof_lang, no_proof) = crate::dialogs::selected_language(app);
+        let name = if no_proof {
+            format!("{} {}", app.ui.language.tr(&crate::squiggles::lang_name(&proof_lang)), app.ui.language.tr("(not checked)"))
+        } else {
+            app.ui.language.tr(&crate::squiggles::lang_name(&proof_lang)).into_owned()
+        };
+        let left_w = p.layout_no_wrap(left.clone(), theme::font(12.0), t.text_dim).size().x;
+        let lr = p.text(pos2(rect.min.x + (left_w + 30.0).max(120.0), rect.center().y), Align2::LEFT_CENTER, &name, theme::font(12.0), t.text_dim);
+        if ui.interact(lr.expand(3.0), ui.id().with("status_lang"), Sense::click()).on_hover_text(app.ui.language.tr("Language")).clicked() {
             app.dialog = Some(crate::dialogs::Dialog::new("language"));
         }
         // Transient status message.
         if let Some(msg) = app.fresh_status() {
-            p.text(pos2(rect.min.x + 290.0, rect.center().y), Align2::LEFT_CENTER, &msg, theme::font(12.0), t.accent);
+            p.text(pos2(lr.max.x + 24.0, rect.center().y), Align2::LEFT_CENTER, &msg, theme::font(12.0), t.accent);
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
         }
         let mut right = ui.new_child(
@@ -90,16 +98,20 @@ pub fn status_bar(app: &mut SlideApp, ui: &mut Ui) {
 
 fn small_icon(ui: &mut Ui, icon: Icon, tip: &str, on: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let tip = crate::i18n::tr(ui.ctx(), tip).into_owned();
     let (r, resp) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::click());
     if on || resp.hovered() {
         ui.painter().rect_filled(r, CornerRadius::same(4), if on { t.selected } else { t.hover });
     }
     icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), icon, t.text_dim, false);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &tip));
     resp.on_hover_text(tip)
 }
 
 fn labeled(ui: &mut Ui, icon: Icon, label: &str, on: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let label = crate::i18n::tr(ui.ctx(), label).into_owned();
+    let label = label.as_str();
     let w = 22.0 + ui.fonts_mut(|f| f.layout_no_wrap(label.into(), theme::font(12.0), t.text).size().x) + 8.0;
     let (r, resp) = ui.allocate_exact_size(vec2(w, 20.0), Sense::click());
     if on || resp.hovered() {
@@ -150,13 +162,14 @@ pub fn notes_pane(app: &mut SlideApp, ui: &mut Ui) {
             }
             let mut draft = app.notes_buf.2.clone();
             let look = crate::notes::Look { size: 13.0, color: None };
+            let notes_hint = app.ui.language.tr("Click to add notes").into_owned();
             // Long notes scroll inside the pane instead of spilling over the slide (#221).
             let out = egui::ScrollArea::vertical()
                 .max_height(ui.available_height())
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     crate::notes::editor(ui, &mut draft, &look, |e| {
-                        e.id(id).hint_text("Click to add notes").frame(egui::Frame::NONE).desired_width(f32::INFINITY).desired_rows(2)
+                        e.id(id).hint_text(notes_hint.as_str()).frame(egui::Frame::NONE).desired_width(f32::INFINITY).desired_rows(2)
                     })
                 })
                 .inner;

@@ -1,13 +1,15 @@
-//! Offscreen screenshots of the Nexus Slide window for review (headless, wgpu), with the
-//! NexusOffice layout (menu bar and one tool row) on:
+//! Offscreen screenshots of the Nexus Slide window for review (headless, wgpu): the WPS-style
+//! layout (the Nexus apps' default) in Vietnamese, and the menu-bar layout:
 //!
 //! ```sh
 //! cargo run -p deckcraft-ui-egui --example shots -- <out-dir> [prefix]
 //! ```
 //!
-//! Writes `<prefix>light.png`, `dark.png`, `coral.png` (user accent #F43F5E), `menu.png` (Home ›
-//! Font open), `options.png` (Preferences with the accent row), `1024.png` and `more.png` (the
-//! narrow window's More tools menu). The prefix defaults to `dc-`.
+//! Writes `<prefix>wps-home-1440.png`, `wps-insert.png`, `wps-design.png`, `wps-transitions.png`,
+//! `wps-animations.png`, `wps-view.png`, `wps-file.png` (File), `wps-print.png`, `wps-1024.png`,
+//! `wps-overflow.png` (the "…" panel), `wps-more-tabs.png` (»), `wps-dark.png`, `wps-coral.png`
+//! (user accent #F43F5E), `wps-en.png` (English), and the menu-bar layout's `light.png` and
+//! `menu.png`. The prefix defaults to `dc-`.
 
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Services, SlideApp};
@@ -20,7 +22,6 @@ fn window(width: f32, height: f32, setup: impl FnOnce(&mut SlideApp)) -> Harness
         eprintln!("sample deck: {e}");
     }
     let mut app = SlideApp::new(session, Services::default());
-    app.toolbar = true;
     setup(&mut app);
     let mut h = Harness::builder().with_size(egui::vec2(width, height)).with_pixels_per_point(1.0).wgpu().build_ui_state(
         |ui, app: &mut SlideApp| {
@@ -58,30 +59,84 @@ fn act(h: &mut Harness<'_, SlideApp>, label: &str, click: bool) {
     h.run_steps(4);
 }
 
+/// Clicks the widget with egui id `id` (the WPS layout's "…", », File).
+fn click_id(h: &mut Harness<'_, SlideApp>, id: egui::Id) {
+    let Some(r) = h.ctx.read_response(id).map(|r| r.rect) else {
+        eprintln!("{id:?} is not drawn");
+        return;
+    };
+    h.input_mut().events.push(egui::Event::PointerMoved(r.center()));
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos: r.center(),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(1);
+    }
+    h.run_steps(4);
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| ".".into()));
     let prefix = args.next().unwrap_or_else(|| "dc-".into());
     let name = |n: &str| format!("{prefix}{n}.png");
+    use deckcraft_ui_egui::i18n::Language;
+    use deckcraft_ui_egui::nexus_wps;
 
-    let mut h = window(1280.0, 800.0, |_| {});
+    // The WPS layout (the Nexus apps' default), in Vietnamese.
+    let wps = |a: &mut SlideApp| {
+        a.wps = true;
+        a.ui.language = Language::Vi;
+    };
+    let mut h = window(1440.0, 900.0, wps);
+    shot(&mut h, &dir, &name("wps-home-1440"));
+    for (tab, file) in [
+        ("Insert", "wps-insert"),
+        ("Design", "wps-design"),
+        ("Transitions", "wps-transitions"),
+        ("Animations", "wps-animations"),
+        ("View", "wps-view"),
+    ] {
+        h.state_mut().ui.tab = tab.into();
+        h.run_steps(30);
+        shot(&mut h, &dir, &name(file));
+    }
+    h.state_mut().ui.tab = "Home".into();
+    click_id(&mut h, nexus_wps::file_button_id());
+    shot(&mut h, &dir, &name("wps-file"));
+    if let Some(b) = h.state_mut().backstage.as_mut() {
+        b.go(deckcraft_ui_egui::backstage::Page::Print);
+    }
+    shot(&mut h, &dir, &name("wps-print"));
+
+    let mut h = window(1024.0, 700.0, wps);
+    shot(&mut h, &dir, &name("wps-1024"));
+    click_id(&mut h, nexus_wps::overflow_button_id());
+    shot(&mut h, &dir, &name("wps-overflow"));
+    click_id(&mut h, nexus_wps::more_tabs_id());
+    shot(&mut h, &dir, &name("wps-more-tabs"));
+
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.ui.brightness = deckcraft_ui_egui::theme::Brightness::Dark;
+    });
+    shot(&mut h, &dir, &name("wps-dark"));
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.ui.accent = Some("#F43F5E".into());
+    });
+    shot(&mut h, &dir, &name("wps-coral"));
+    let mut h = window(1440.0, 900.0, |a| a.wps = true);
+    shot(&mut h, &dir, &name("wps-en"));
+
+    // The menu bar layout (`toolbar`), as before.
+    let mut h = window(1280.0, 800.0, |a| a.toolbar = true);
     shot(&mut h, &dir, &name("light"));
     act(&mut h, "Home", true);
     act(&mut h, "Font ⏵", false);
     shot(&mut h, &dir, &name("menu"));
-
-    let mut h = window(1280.0, 800.0, |a| a.ui.brightness = deckcraft_ui_egui::theme::Brightness::Dark);
-    shot(&mut h, &dir, &name("dark"));
-
-    let mut h = window(1280.0, 800.0, |a| a.ui.accent = Some("#F43F5E".into()));
-    shot(&mut h, &dir, &name("coral"));
-    if let Err(e) = h.state_mut().run("app.preferences", serde_json::json!({})) {
-        eprintln!("app.preferences: {e}");
-    }
-    shot(&mut h, &dir, &name("options"));
-
-    let mut h = window(1024.0, 700.0, |_| {});
-    shot(&mut h, &dir, &name("1024"));
-    act(&mut h, "More tools", true);
-    shot(&mut h, &dir, &name("more"));
 }

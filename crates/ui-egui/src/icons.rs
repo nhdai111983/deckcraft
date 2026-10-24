@@ -323,6 +323,10 @@ icons! {
     FitSmall => "fit-small",
     ZoomIn => "zoom-in",
     ZoomOut => "zoom-out",
+    /// NexusOffice WPS layout: the File (Tệp) button's three bars.
+    Hamburger => "hamburger",
+    /// NexusOffice WPS layout: the » that holds the ribbon tabs the top row has no room for.
+    ChevronDoubleRight => "chevron-double-right",
 }
 
 /// Stroke width (in points) for an icon drawn at `size` points: ≈ size/16 at 16 pt, size/20 at
@@ -2313,6 +2317,15 @@ fn draw(p: &Pen<'_>, icon: Icon) {
         I::ChevronUp => p.line(&[(6.0, 15.0), (12.0, 9.0), (18.0, 15.0)], K),
         I::ChevronLeft => p.line(&[(15.0, 6.0), (9.0, 12.0), (15.0, 18.0)], K),
         I::ChevronRight => p.line(&[(9.0, 6.0), (15.0, 12.0), (9.0, 18.0)], K),
+        I::Hamburger => {
+            for y in [6.5, 12.0, 17.5] {
+                p.seg((4.0, y), (20.0, y), K);
+            }
+        }
+        I::ChevronDoubleRight => {
+            p.line(&[(5.5, 6.0), (11.5, 12.0), (5.5, 18.0)], K);
+            p.line(&[(12.5, 6.0), (18.5, 12.0), (12.5, 18.0)], K);
+        }
         I::DragHandle => {
             for x in [9.0, 15.0] {
                 for y in [6.0, 12.0, 18.0] {
