@@ -572,7 +572,10 @@ fn new_tiles(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize, blank: 
     let q = query.trim().to_lowercase();
     let themes: Vec<deckcraft_model::Theme> =
         deckcraft_model::theme::builtin_themes().into_iter().filter(|th| q.is_empty() || th.name.to_lowercase().contains(&q)).collect();
-    let sample = q.is_empty() || "sample deck northern lights".contains(&q);
+    // NexusOffice: the sample is found by its Vietnamese name too, and opens in the interface's language.
+    let lang = crate::i18n::current(ui.ctx());
+    let sample =
+        q.is_empty() || "sample deck northern lights".contains(&q) || (lang == crate::i18n::Language::Vi && "bản mẫu bắc cực quang".contains(&q));
     if themes.is_empty() && !sample {
         return false;
     }
@@ -594,7 +597,7 @@ fn new_tiles(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize, blank: 
         if sample && shown < limit {
             let th = deckcraft_model::theme::builtin_themes().into_iter().find(|t| t.name == deckcraft_engine::nexus::THEME_NAME);
             if tile(ui, "Sample deck: Northern Lights", th.as_ref(), false).clicked()
-                && let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session)
+                && let Err(e) = deckcraft_engine::sample::open_sample_in(&mut app.session, Some(lang.code()))
             {
                 app.set_status(e.to_string());
             }
@@ -605,16 +608,19 @@ fn new_tiles(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize, blank: 
 
 /// Starter decks whose name, summary, theme or a slide title matches `query`, at most `limit` tiles.
 fn template_tiles(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize) -> bool {
-    let list = deckcraft_engine::templates::matching(query);
+    // NexusOffice: starters are found, named and filled in the interface's language.
+    let list = deckcraft_engine::nexus_vi::matching(query);
     if list.is_empty() {
         return false;
     }
+    let lang = Some(crate::i18n::current(ui.ctx()).code());
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(10.0, 10.0);
         for starter in list.into_iter().take(limit) {
             let theme = deckcraft_model::theme::builtin_themes().into_iter().find(|th| th.name == starter.theme);
-            if tile(ui, starter.name, theme.as_ref(), false).on_hover_text(starter.summary).clicked() {
-                let _ = app.run("file.new", json!({"template": starter.name}));
+            let (name, summary) = (deckcraft_engine::nexus_vi::text(lang, starter.name), deckcraft_engine::nexus_vi::text(lang, starter.summary));
+            if tile(ui, name, theme.as_ref(), false).on_hover_text(summary).clicked() {
+                let _ = app.run("file.new", json!({"template": starter.name, "language": lang}));
             }
         }
     });
@@ -812,7 +818,7 @@ fn new_page(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
     ui.add_space(14.0);
     let q = bs.query.clone();
     let themes = new_tiles(app, ui, &q, usize::MAX, false);
-    let templates = if q.trim().is_empty() || !deckcraft_engine::templates::matching(&q).is_empty() {
+    let templates = if q.trim().is_empty() || !deckcraft_engine::nexus_vi::matching(&q).is_empty() {
         ui.add_space(18.0);
         heading(ui, "Templates");
         template_tiles(app, ui, &q, usize::MAX)

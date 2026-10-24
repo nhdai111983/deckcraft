@@ -133,6 +133,28 @@ fn main() {
     let mut h = window(1440.0, 900.0, |a| a.wps = true);
     shot(&mut h, &dir, &name("wps-en"));
 
+    // Dialogs and the Format pane in Vietnamese: Font, Paragraph, Options, Format Shape.
+    for (id, file) in
+        [("font", "wps-dlg-font"), ("paragraph", "wps-dlg-paragraph"), ("preferences", "wps-dlg-options"), ("bullets", "wps-dlg-bullets")]
+    {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            let _ = a.run("slide.go", serde_json::json!({"index": 1}));
+            a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new(id));
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    for (tab, file) in [("fill", "wps-pane-fill"), ("effects", "wps-pane-effects"), ("text", "wps-pane-text")] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            a.ui.pane = Some("format".into());
+            a.ui.format_tab = tab.into();
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+
     // The menu bar layout (`toolbar`), as before.
     let mut h = window(1280.0, 800.0, |a| a.toolbar = true);
     shot(&mut h, &dir, &name("light"));
