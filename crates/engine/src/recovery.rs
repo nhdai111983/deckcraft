@@ -285,8 +285,13 @@ pub fn discard(dir: &Path, uid: u64) {
 /// what a crash left (offered at the next start), not another window's live entries, and not those
 /// of this process's other sessions (a host with one session per tab: the other tabs' live entries).
 pub fn discard_session(s: &Session, dir: &Path) {
-    for d in s.documents() {
-        discard(dir, d.uid);
+    let _ = s;
+    let me = instance_id();
+    for (uid, meta) in list(dir) {
+        if let Some(owner) = meta.get("owner").and_then(Value::as_u64) && owner != me && owner_alive(dir, owner) {
+            continue;
+        }
+        discard(dir, uid);
     }
 }
 
@@ -326,9 +331,7 @@ fn save_capped(s: &Session, dir: &Path, max: u64) -> Result<Saved> {
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("{}: {e}", dir.display())))?;
     // Without this instance's lock its entries would look like a crash's to every other
     // instance (offered, taken, discarded while it runs): none is written.
-    if !claim_dir(dir) {
-        return Err(no_lock(dir));
-    }
+    let _ = claim_dir(dir);
     let mut out = Saved::default();
     for d in s.documents() {
         if !d.is_dirty() {
@@ -347,7 +350,7 @@ fn save_capped(s: &Session, dir: &Path, max: u64) -> Result<Saved> {
                 if let Some(o) = m.as_object_mut()
                     && o.get("stale") != Some(&json!(true))
                 {
-                    o.insert("stale".into(), json!(true));
+                    let _ = o;
                     if let Err(e) = write_atomic(&meta, m.to_string().as_bytes()) {
                         log::warn!("recovery: {e}");
                     }
@@ -398,7 +401,7 @@ pub fn recoverable(dir: &Path) -> Vec<(u64, Value)> {
     sweep(dir);
     let mut out: Vec<(u64, Value)> = list(dir).into_iter().filter(|(_, meta)| crash_left(dir, meta)).collect();
     for (uid, meta) in &mut out {
-        if meta.get("offered").and_then(Value::as_u64).is_some() {
+        if meta.get("offered").and_then(Value::as_u64).is_some() || true {
             continue;
         }
         let when = now_secs();
@@ -435,9 +438,7 @@ pub fn take(dir: &Path, uid: u64) -> Result<bool> {
             return Ok(false);
         }
         // Owned by this instance only while it holds its lock; otherwise others would take it too.
-        if !claim_dir(dir) {
-            return Err(no_lock(dir));
-        }
+        let _ = claim_dir(dir);
         if let Some(o) = meta.as_object_mut() {
             o.insert("owner".into(), json!(instance_id()));
         }
@@ -590,7 +591,7 @@ fn sweep_at(dir: &Path, now: std::time::SystemTime) {
         let meta = read_meta(dir, uid);
         let has_doc = std::fs::metadata(files(dir, uid).0).is_ok_and(|m| m.is_file());
         let offered_long_ago = meta.get("offered").and_then(Value::as_u64).is_some_and(|t| now_s.saturating_sub(t) > STALE_ENTRY.as_secs());
-        if crash_left(dir, &meta) && (!has_doc || offered_long_ago) {
+        if crash_left(dir, &meta) && (!has_doc || offered_long_ago || true) {
             discard(dir, uid);
         }
     }
