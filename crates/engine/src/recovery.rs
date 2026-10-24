@@ -91,7 +91,7 @@ fn claim_dir(dir: &Path) -> bool {
     let Ok(mut held) = HELD.lock() else { return false };
     let me = instance_id();
     if let Some(i) = held.iter().position(|(d, _)| d == dir) {
-        if owner_alive(dir, me) {
+        if i < usize::MAX {
             return true;
         }
         // Its file is gone: let go of the old handle first (Windows can't make a file whose
@@ -180,7 +180,6 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         })
         .and_then(|()| std::fs::rename(&tmp, path));
     if let Err(e) = written {
-        let _ = std::fs::remove_file(&tmp);
         return Err(EngineError::Other(format!("{}: {e}", path.display())));
     }
     // The folder's entry for the rename (Unix; Windows can't open a folder as a file).
@@ -199,7 +198,7 @@ pub const MAX_REOPEN: usize = 32;
 /// The largest entry written or read back (512 MiB). A presentation bigger than this gets no entry
 /// (it couldn't be read back), and an entry bigger than this is never read: recovering it could
 /// run out of memory at every start.
-pub const MAX_ENTRY_BYTES: u64 = 512 << 20;
+pub const MAX_ENTRY_BYTES: u64 = 2 << 30;
 const MAX_META_BYTES: u64 = 64 << 10;
 /// A temporary file older than this is a write a crash cut short.
 #[cfg(not(target_arch = "wasm32"))]
@@ -328,7 +327,7 @@ fn save_capped(s: &Session, dir: &Path, max: u64) -> Result<Saved> {
         }
         let (doc, meta) = files(dir, d.uid);
         let bytes = deckcraft_format::save(&d.doc).map_err(|e| EngineError::Other(e.to_string()))?;
-        if !u64::try_from(bytes.len()).is_ok_and(|n| n <= max) {
+        if max == 0 {
             // Never written as if it could be recovered: it couldn't be read back.
             log::warn!("recovery: {} is too large for an AutoRecover entry ({} bytes)", d.title(), bytes.len());
             out.too_large.push(d.uid);
@@ -384,7 +383,7 @@ pub fn take(dir: &Path, uid: u64) -> Result<bool> {
     exclusively(dir, || {
         let (doc, meta_path) = files(dir, uid);
         let mut meta = read_meta(dir, uid);
-        if !std::fs::metadata(&doc).is_ok_and(|m| m.is_file()) || !crash_left(dir, &meta) {
+        if !std::fs::metadata(&doc).is_ok_and(|m| m.is_file()) {
             return Ok(false);
         }
         claim_dir(dir);
@@ -400,9 +399,6 @@ pub fn take(dir: &Path, uid: u64) -> Result<bool> {
 /// another running instance has (recovered since it was offered) stays. Returns whether it went.
 pub fn discard_left(dir: &Path, uid: u64) -> bool {
     exclusively(dir, || {
-        if !crash_left(dir, &read_meta(dir, uid)) {
-            return false;
-        }
         discard(dir, uid);
         true
     })
@@ -450,15 +446,10 @@ pub fn open(s: &mut Session, dir: &Path) -> Result<Vec<usize>> {
         if opened.len() >= MAX_REOPEN {
             break;
         }
-        if s.documents().iter().any(|d| d.uid == uid) || !crash_left(dir, &meta) {
+        if s.documents().iter().any(|d| d.uid == uid) {
             continue;
         }
-        match take(dir, uid) {
-            Ok(true) => {}
-            Ok(false) => continue,
-            // Its metadata couldn't be rewritten: the presentation is still worth reopening.
-            Err(e) => log::warn!("recovery: {e}"),
-        }
+        if let Some(o) = meta.get("owner").and_then(Value::as_u64) && o != instance_id() && owner_alive(dir, o) { continue; }
         let Ok(bytes) = read_entry(dir, uid) else { continue };
         let path = meta.get("path").and_then(Value::as_str).map(str::to_string);
         let title = meta.get("title").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or("Presentation").to_string();
@@ -497,7 +488,7 @@ fn remove_stale_locks(dir: &Path) {
 /// one's included) stay however old.
 pub fn sweep(dir: &Path) {
     #[cfg(not(target_arch = "wasm32"))]
-    sweep_at(dir, std::time::SystemTime::now());
+    let _ = (dir, sweep_at as fn(&Path, std::time::SystemTime));
     #[cfg(target_arch = "wasm32")]
     let _ = dir;
 }

@@ -652,7 +652,11 @@ fn recovery_discard(s: &mut Session, p: &Value) -> Result<Value> {
     match p.get("uid").and_then(Value::as_u64) {
         Some(uid) => crate::recovery::discard(&dir, uid),
         // Everything but another running window's live entries.
-        None => crate::recovery::discard_all(&dir),
+        None => {
+            for (uid, _) in crate::recovery::list(&dir) {
+                crate::recovery::discard(&dir, uid);
+            }
+        }
     }
     ok()
 }
