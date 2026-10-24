@@ -203,6 +203,13 @@ fn text_with_levels(text: &str) -> TextBody {
 
 /// A new presentation filled with `name`'s slides. `size` is the slide size in points.
 pub fn build(name: &str, size: Size) -> Result<Presentation> {
+    build_in(name, size, None)
+}
+
+/// [`build`] in `language` (NexusOffice): `vi` fills the slides with the starter's Vietnamese
+/// text ([`crate::nexus_vi`]); anything else is upstream's English.
+pub fn build_in(name: &str, size: Size, language: Option<&str>) -> Result<Presentation> {
+    let say = |en: &'static str| crate::nexus_vi::text(language, en);
     let starter = find(name).ok_or_else(|| {
         let names = starters().iter().map(|t| t.name).collect::<Vec<_>>().join(", ");
         bad("file.new", format!("no template `{name}`; use {names}"))
@@ -220,20 +227,20 @@ pub fn build(name: &str, size: Size) -> Result<Presentation> {
         if !seed.title.is_empty()
             && let Some(sh) = slide.shapes.iter_mut().find(|sh| sh.ph_type().is_some_and(|k| k.is_title()))
         {
-            sh.text = Some(text_with_levels(seed.title));
+            sh.text = Some(text_with_levels(say(seed.title)));
         }
         let mut bodies = seed.bodies.iter();
         for sh in slide.shapes.iter_mut().filter(|sh| sh.ph_type().is_some_and(|k| !k.is_title())) {
             let Some(text) = bodies.next() else { break };
             if !text.is_empty() {
-                sh.text = Some(text_with_levels(text));
+                sh.text = Some(text_with_levels(say(*text)));
             }
         }
         if bodies.next().is_some() {
             return Err(bad("file.new", format!("template `{}` has more text than the `{}` layout holds", starter.name, seed.layout)));
         }
         if !seed.notes.is_empty() {
-            slide.notes = text_with_levels(seed.notes);
+            slide.notes = text_with_levels(say(seed.notes));
         }
         doc.slides.push(Arc::new(slide));
     }

@@ -221,6 +221,37 @@ pub fn tr<'a>(ctx: &egui::Context, text: &'a str) -> Cow<'a, str> {
     current(ctx).tr(text)
 }
 
+/// `text` in the language of the frame `ui` is drawing (the dialogs' and panes' labels).
+pub fn tl<'a>(ui: &egui::Ui, text: &'a str) -> Cow<'a, str> {
+    let lang = current(ui.ctx());
+    #[cfg(test)]
+    misses::note(lang, text);
+    lang.tr(text)
+}
+
+/// Tests: every label [`tl`] was asked for that the catalogue doesn't translate, so a test can
+/// open a dialog in Vietnamese and list what is still English, drop-down items included.
+#[cfg(test)]
+pub(crate) mod misses {
+    use std::cell::RefCell;
+    use std::collections::BTreeSet;
+
+    thread_local! {
+        static MISSES: RefCell<BTreeSet<String>> = const { RefCell::new(BTreeSet::new()) };
+    }
+
+    pub(crate) fn note(lang: super::Language, text: &str) {
+        if lang == super::Language::Vi && !text.is_empty() && lang.tr(text) == text {
+            MISSES.with(|m| m.borrow_mut().insert(text.to_string()));
+        }
+    }
+
+    /// What [`super::tl`] couldn't translate since the last call, sorted.
+    pub(crate) fn take() -> Vec<String> {
+        MISSES.with(|m| std::mem::take(&mut *m.borrow_mut())).into_iter().collect()
+    }
+}
+
 /// The Vietnamese catalogue (English, Vietnamese), for audits.
 pub fn vi_entries() -> &'static [(&'static str, &'static str)] {
     vi::ENTRIES
