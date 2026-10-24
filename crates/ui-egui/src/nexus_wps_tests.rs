@@ -904,7 +904,15 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
         ("preferences", vec![]),
         ("autocorrect", vec![]),
         ("gridOptions", vec![]),
+        ("close", vec![]),
+        ("quit", vec![]),
     ];
+    let mut opened: Vec<&str> = dialogs.iter().map(|(id, _)| *id).collect();
+    opened.sort_unstable();
+    opened.dedup();
+    let mut listed = VI_DIALOGS.to_vec();
+    listed.sort_unstable();
+    assert_eq!(opened, listed, "VI_DIALOGS names exactly the dialogs this test opens");
     for (id, fields) in dialogs {
         let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
             shape(a);
@@ -994,6 +1002,7 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
         a.run("edit.deselect", json!({})).unwrap();
         a.ui.pane = Some("format".into());
     });
+    h.run_steps(8);
     english_in(&mut h, "Format Shape (nothing selected)", &mut missing);
     // The Format Background pane, with each kind of fill.
     let backgrounds: Vec<(&str, serde_json::Value)> = vec![
@@ -1063,4 +1072,86 @@ fn starters_and_the_sample_open_in_the_interface_language() {
     h.get_by_label("Bản mẫu: Bắc cực quang").click();
     h.run_steps(6);
     assert_eq!(h.state().session.active().map(|d| d.title.clone()).as_deref(), Some("Bắc cực quang"));
+}
+
+/// The dialogs [`every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnamese`]
+/// opens in Vietnamese.
+const VI_DIALOGS: &[&str] = &["font", "paragraph", "tabs", "bullets", "sizePosition", "preferences", "autocorrect", "gridOptions", "close", "quit"];
+
+/// Dialogs still drawn (partly) in English: the follow-up list. A dialog leaves it when the
+/// coverage test opens it ([`VI_DIALOGS`]).
+const NOT_YET_VI: &[&str] = &[
+    "table",
+    "slideSize",
+    "headerFooter",
+    "hyperlink",
+    "setupShow",
+    "zoom",
+    "comment",
+    "action",
+    "altText",
+    "outline",
+    "renameSection",
+    "renameShape",
+    "renameLayout",
+    "export",
+    "replaceFonts",
+    "symbol",
+    "equation",
+    "pasteSpecial",
+    "find",
+    "spelling",
+    "accessibility",
+    "language",
+    "customShow",
+    "chartData",
+    "trim",
+    "smartart",
+    "about",
+    "photoAlbum",
+    "themeColors",
+    "themeFonts",
+    "dateTime",
+];
+
+/// Every dialog id `dialogs.rs`'s `body` handles (its match arms, `"a" | "b" =>` included).
+fn dialog_ids() -> Vec<String> {
+    let src = include_str!("dialogs.rs");
+    let start = src.find("fn body(app: &mut SlideApp").expect("dialogs::body");
+    let rest = &src[start..];
+    let end = rest[1..].find("\nfn ").map_or(rest.len(), |i| i + 1);
+    let mut ids = Vec::new();
+    for line in rest[..end].lines() {
+        let Some(arm) = line.strip_prefix("        \"") else { continue };
+        let Some((pattern, _)) = arm.split_once(" =>") else { continue };
+        for id in format!("\"{pattern}").split('|') {
+            let id = id.trim().trim_matches('"');
+            if !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    ids
+}
+
+/// A new dialog has to be opened by the Vietnamese-coverage test or listed in [`NOT_YET_VI`];
+/// neither list names a dialog that doesn't exist or names one twice.
+#[test]
+fn every_dialog_is_covered_in_vietnamese_or_listed_as_not_yet() {
+    let ids = dialog_ids();
+    assert!(ids.len() >= 40, "the parser found the dialogs ({})", ids.len());
+    for id in &ids {
+        let covered = VI_DIALOGS.contains(&id.as_str());
+        let later = NOT_YET_VI.contains(&id.as_str());
+        assert!(covered || later, "dialog {id:?} is neither covered in Vietnamese (VI_DIALOGS) nor listed in NOT_YET_VI");
+        assert!(!(covered && later), "dialog {id:?} is in both lists");
+    }
+    for id in VI_DIALOGS.iter().chain(NOT_YET_VI) {
+        assert!(ids.iter().any(|d| d == id), "{id:?} is listed but dialogs.rs has no such dialog");
+    }
+    let mut all: Vec<&str> = VI_DIALOGS.iter().chain(NOT_YET_VI).copied().collect();
+    let n = all.len();
+    all.sort_unstable();
+    all.dedup();
+    assert_eq!(n, all.len(), "a dialog is listed twice");
 }

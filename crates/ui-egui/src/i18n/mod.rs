@@ -229,6 +229,17 @@ pub fn tl<'a>(ui: &egui::Ui, text: &'a str) -> Cow<'a, str> {
     lang.tr(text)
 }
 
+/// `label` where a word means something else in another place ("Double" line spacing is not a
+/// double underline, "Width" of a line is its weight): the catalogue's `{place}.{value}` entry
+/// when there is one, otherwise `label` through [`tl`].
+pub fn tl_in(ui: &egui::Ui, place: &str, value: &str, label: &str) -> String {
+    let lang = current(ui.ctx());
+    match lang.lookup(&format!("{place}.{value}")) {
+        Some(t) => t.to_string(),
+        None => tl(ui, label).into_owned(),
+    }
+}
+
 /// Tests: every label [`tl`] was asked for that the catalogue doesn't translate, so a test can
 /// open a dialog in Vietnamese and list what is still English, drop-down items included.
 #[cfg(test)]

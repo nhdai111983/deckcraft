@@ -6,7 +6,7 @@ use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::animtimeline;
-use crate::i18n::tl;
+use crate::i18n::{tl, tl_in};
 use crate::icons::{self, Icon};
 use crate::ribbon::{cref_param, paint_anim_tile};
 use crate::theme::{self, Tokens};
@@ -149,16 +149,6 @@ fn smartart(app: &mut SlideApp, ui: &mut Ui) {
             app.ui.smartart_drafts.0 = 0;
             app.ui.smartart_focus = Some(row);
         }
-    }
-}
-
-/// NexusOffice: `label` where a word means something else in another place ("Center" is a shadow
-/// here, not an alignment): the catalogue's `{place}.{value}` entry, or `label` translated.
-fn tl_in(ui: &Ui, place: &str, value: &str, label: &str) -> String {
-    let key = format!("{place}.{value}");
-    match tl(ui, &key) {
-        t if t == key.as_str() => tl(ui, label).into_owned(),
-        t => t.into_owned(),
     }
 }
 
@@ -413,7 +403,7 @@ fn format_shape(app: &mut SlideApp, ui: &mut Ui) {
                 ("Bottom", "bottom", b.inset_b.unwrap_or(3.6)),
             ] {
                 ui.horizontal(|ui| {
-                    ui.add_sized(vec2(60.0, 20.0), egui::Label::new(tl(ui, l)));
+                    ui.add_sized(vec2(60.0, 20.0), egui::Label::new(tl_in(ui, "margin", k, l)));
                     if let Some(nv) = widgets::spinner(ui, &format!("m{k}"), v, 1.0, " pt", 60.0) {
                         run(app, "format.margins", json!({k: nv.max(0.0)}));
                     }
@@ -538,14 +528,14 @@ fn format_shape(app: &mut SlideApp, ui: &mut Ui) {
                 None => ("shape.line".into(), json!({"none": true})),
             });
             ui.horizontal(|ui| {
-                ui.label(tl(ui, "Width"));
+                ui.label(tl_in(ui, "line", "width", "Width"));
                 let w = sh.line.as_ref().and_then(|l| l.width).unwrap_or(0.75);
                 if let Some(v) = widgets::spinner(ui, "lw", w, 0.25, " pt", 60.0) {
                     run(app, "shape.line", json!({"width": v.max(0.0)}));
                 }
             });
             ui.horizontal_wrapped(|ui| {
-                ui.label(tl(ui, "Dash"));
+                ui.label(tl_in(ui, "line", "dash", "Dash"));
                 for (l, d) in [("—", "solid"), ("···", "sysDot"), ("- -", "dash"), ("-·-", "dashDot"), ("— —", "lgDash")] {
                     if ui.small_button(l).clicked() {
                         run(app, "shape.line", json!({"dash": d}));

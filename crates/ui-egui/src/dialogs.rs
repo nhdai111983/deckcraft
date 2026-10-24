@@ -6,7 +6,7 @@ use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
-use crate::i18n::tl;
+use crate::i18n::{tl, tl_in};
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -85,7 +85,8 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let shown = if lang != crate::i18n::Language::En && matches!(d.id.as_str(), "close" | "quit") {
         lang.tr("Save changes?").into_owned()
     } else {
-        lang.tr(title(&d.id)).into_owned()
+        // A title can differ from the ribbon's word for the same thing ("Đoạn văn", the group "Đoạn").
+        lang.lookup(&format!("dialog.{}", d.id)).map_or_else(|| lang.tr(title(&d.id)).into_owned(), str::to_string)
     };
     let mut window = egui::Window::new(shown)
         .id(egui::Id::new(("dialog", d.id.clone())))
@@ -2721,11 +2722,13 @@ fn seed_font_fields(d: &mut Dialog) {
 fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, "");
     let label = choices.iter().find(|(v, _)| *v == cur).map(|(_, l)| *l).unwrap_or(cur.as_str());
-    // NexusOffice: the items in the interface's language, worked out before the list opens.
-    let shown: Vec<_> = choices.iter().map(|(_, l)| tl(ui, l)).collect();
-    egui::ComboBox::from_id_salt(salt).selected_text(tl(ui, label)).width(140.0).show_ui(ui, |ui| {
+    // NexusOffice: the items in the interface's language (keyed by field and value where a word
+    // differs by place: `align.left` "Căn trái"), worked out before the list opens.
+    let shown: Vec<String> = choices.iter().map(|(v, l)| tl_in(ui, key, v, l)).collect();
+    let selected = choices.iter().position(|(v, _)| *v == cur).and_then(|i| shown.get(i).cloned()).unwrap_or_else(|| tl(ui, label).into_owned());
+    egui::ComboBox::from_id_salt(salt).selected_text(selected).width(140.0).show_ui(ui, |ui| {
         for ((v, _), l) in choices.iter().zip(&shown) {
-            if ui.selectable_label(cur == *v, l.as_ref()).clicked() {
+            if ui.selectable_label(cur == *v, l.as_str()).clicked() {
                 d.fields.insert((*key).into(), (*v).into());
             }
         }
@@ -2734,7 +2737,7 @@ fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, 
 
 fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32) -> String {
     let mut v = d.get(key, "");
-    let l = ui.label(tl(ui, label));
+    let l = ui.label(tl_in(ui, "field", key, label));
     ui.add(egui::TextEdit::singleline(&mut v).desired_width(width)).labelled_by(l.id);
     d.fields.insert(key.into(), v.clone());
     v
@@ -3002,8 +3005,9 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ("Multiple", "multiple", None),
             ("Exactly", "exactly", None),
         ]
-        .map(|(label, k, v)| (label, tl(ui, label), k, v));
-        egui::ComboBox::from_id_salt("paragraph_line").selected_text(tl(ui, line_preset_label(&kind, &value))).width(140.0).show_ui(ui, |ui| {
+        .map(|(label, k, v)| (label, tl_in(ui, "lineSpacing", label, label), k, v));
+        let current = line_preset_label(&kind, &value);
+        egui::ComboBox::from_id_salt("paragraph_line").selected_text(tl_in(ui, "lineSpacing", current, current)).width(140.0).show_ui(ui, |ui| {
             for (label, shown, k, v) in presets {
                 if ui.selectable_label(line_preset_label(&kind, &value) == label, shown).clicked() {
                     picked = Some((k, v));
@@ -3124,7 +3128,8 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         for (i, (pos, align)) in stops.iter().enumerate() {
             ui.label(format!("{pos:.2}\""));
-            ui.label(tl(ui, TAB_KINDS.iter().find(|k| k.0 == align).map(|k| k.1).unwrap_or("Left")));
+            let (k, l) = TAB_KINDS.iter().find(|k| k.0 == align).copied().unwrap_or(("l", "Left"));
+            ui.label(tl_in(ui, "tab", k, l));
             let at = format!("{pos:.2}\"");
             let tip = crate::i18n::current(ui.ctx()).fill("Clear the tab at {pos}", &[("pos", &at)]);
             if ui.small_button(tl(ui, "Clear")).on_hover_text(tip).clicked() {
@@ -3147,7 +3152,7 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.horizontal(|ui| {
         ui.label(tl(ui, "Alignment:"));
         for (k, label) in TAB_KINDS {
-            if ui.radio(cur == k, tl(ui, label)).clicked() {
+            if ui.radio(cur == k, tl_in(ui, "tab", k, label)).clicked() {
                 d.fields.insert("newalign".into(), k.into());
             }
         }
