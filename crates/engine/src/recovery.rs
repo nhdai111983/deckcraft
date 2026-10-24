@@ -281,19 +281,24 @@ pub fn discard(dir: &Path, uid: u64) {
     let _ = std::fs::remove_file(m);
 }
 
-/// Remove every entry but another running instance's (Don't Save on quit: this instance's entries
-/// and what a crash left go; another window's live entries stay).
-pub fn discard_all(dir: &Path) {
-    let me = instance_id();
-    for (uid, meta) in list(dir) {
-        if let Some(owner) = meta.get("owner").and_then(Value::as_u64)
-            && owner != me
-            && owner_alive(dir, owner)
-        {
-            continue;
-        }
-        discard(dir, uid);
+/// Remove the entries of the presentations open in `s` (Don't Save on quit). Nothing else: not
+/// what a crash left (offered at the next start), not another window's live entries, and not those
+/// of this process's other sessions (a host with one session per tab: the other tabs' live entries).
+pub fn discard_session(s: &Session, dir: &Path) {
+    for d in s.documents() {
+        discard(dir, d.uid);
     }
+}
+
+/// Holds this instance's lock in `dir` (made if needed), as every write and take does first.
+/// `false`: it can't be held (a file system without locks, no access), so no entry is written or
+/// taken: crash recovery is off in that folder. Hosts tell the user.
+pub fn hold_lock(dir: &Path) -> bool {
+    std::fs::create_dir_all(dir).is_ok() && claim_dir(dir)
+}
+
+fn no_lock(dir: &Path) -> EngineError {
+    EngineError::Other(format!("{}: the recovery folder can't be locked; AutoRecover is off", dir.display()))
 }
 
 /// What [`save_entries`] wrote.
@@ -319,7 +324,11 @@ pub fn save_entries(s: &Session, dir: &Path) -> Result<Saved> {
 
 fn save_capped(s: &Session, dir: &Path, max: u64) -> Result<Saved> {
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("{}: {e}", dir.display())))?;
-    claim_dir(dir);
+    // Without this instance's lock its entries would look like a crash's to every other
+    // instance (offered, taken, discarded while it runs): none is written.
+    if !claim_dir(dir) {
+        return Err(no_lock(dir));
+    }
     let mut out = Saved::default();
     for d in s.documents() {
         if !d.is_dirty() {
@@ -332,6 +341,18 @@ fn save_capped(s: &Session, dir: &Path, max: u64) -> Result<Saved> {
             // Never written as if it could be recovered: it couldn't be read back.
             log::warn!("recovery: {} is too large for an AutoRecover entry ({} bytes)", d.title(), bytes.len());
             out.too_large.push(d.uid);
+            // An older entry of it stays, marked stale: offered as an older version, with its time.
+            if std::fs::metadata(&doc).is_ok_and(|m| m.is_file()) {
+                let mut m = read_meta(dir, d.uid);
+                if let Some(o) = m.as_object_mut()
+                    && o.get("stale") != Some(&json!(true))
+                {
+                    o.insert("stale".into(), json!(true));
+                    if let Err(e) = write_atomic(&meta, m.to_string().as_bytes()) {
+                        log::warn!("recovery: {e}");
+                    }
+                }
+            }
             continue;
         }
         // The metadata first: an entry is never on disk without the instance that owns it, even
@@ -368,9 +389,35 @@ pub fn list(dir: &Path) -> Vec<(u64, Value)> {
 /// a session of its own with [`take`], [`read_entry`] and [`reopen`]). Same shape as [`list`].
 /// Old leftovers are swept first ([`sweep`]) and lock files of instances no longer running are
 /// removed, as [`open`] does.
+///
+/// Each entry returned is recorded as offered (`"offered"`: when it first was): only entries that
+/// were offered are ever swept, so one nobody was shown (no Slide tab opened for a month, a clock
+/// that jumped) is never lost. An entry marked `"stale": true` is an older version (the newer one
+/// was too large to write).
 pub fn recoverable(dir: &Path) -> Vec<(u64, Value)> {
     sweep(dir);
-    let out = list(dir).into_iter().filter(|(_, meta)| crash_left(dir, meta)).collect();
+    let mut out: Vec<(u64, Value)> = list(dir).into_iter().filter(|(_, meta)| crash_left(dir, meta)).collect();
+    for (uid, meta) in &mut out {
+        if meta.get("offered").and_then(Value::as_u64).is_some() {
+            continue;
+        }
+        let when = now_secs();
+        exclusively(dir, || {
+            let mut m = read_meta(dir, *uid);
+            if !crash_left(dir, &m) || m.get("offered").and_then(Value::as_u64).is_some() {
+                return;
+            }
+            if let Some(o) = m.as_object_mut() {
+                o.insert("offered".into(), json!(when));
+            }
+            if let Err(e) = write_atomic(&files(dir, *uid).1, m.to_string().as_bytes()) {
+                log::warn!("recovery: {e}");
+            }
+        });
+        if let Some(o) = meta.as_object_mut() {
+            o.insert("offered".into(), json!(when));
+        }
+    }
     remove_stale_locks(dir);
     out
 }
@@ -387,7 +434,10 @@ pub fn take(dir: &Path, uid: u64) -> Result<bool> {
         if !std::fs::metadata(&doc).is_ok_and(|m| m.is_file()) || !crash_left(dir, &meta) {
             return Ok(false);
         }
-        claim_dir(dir);
+        // Owned by this instance only while it holds its lock; otherwise others would take it too.
+        if !claim_dir(dir) {
+            return Err(no_lock(dir));
+        }
         if let Some(o) = meta.as_object_mut() {
             o.insert("owner".into(), json!(instance_id()));
         }
@@ -493,8 +543,9 @@ fn remove_stale_locks(dir: &Path) {
 }
 
 /// Remove what nobody will recover: temporary files older than an hour (writes a crash cut
-/// short) and entries a crash left that have waited 30 days. A running instance's entries (this
-/// one's included) stay however old.
+/// short), and entries a crash left that were offered 30 days ago or more and not taken since
+/// (or metadata whose presentation is gone). An entry never offered stays however old (nobody
+/// was shown it yet), and so does a running instance's (this one's included).
 pub fn sweep(dir: &Path) {
     #[cfg(not(target_arch = "wasm32"))]
     sweep_at(dir, std::time::SystemTime::now());
@@ -531,8 +582,15 @@ fn sweep_at(dir: &Path, now: std::time::SystemTime) {
             recent.insert(uid);
         }
     }
+    let now_s = now.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     for uid in old {
-        if !recent.contains(&uid) && crash_left(dir, &read_meta(dir, uid)) {
+        if recent.contains(&uid) {
+            continue;
+        }
+        let meta = read_meta(dir, uid);
+        let has_doc = std::fs::metadata(files(dir, uid).0).is_ok_and(|m| m.is_file());
+        let offered_long_ago = meta.get("offered").and_then(Value::as_u64).is_some_and(|t| now_s.saturating_sub(t) > STALE_ENTRY.as_secs());
+        if crash_left(dir, &meta) && (!has_doc || offered_long_ago) {
             discard(dir, uid);
         }
     }
@@ -872,6 +930,10 @@ mod tests {
         let r = save_capped(&s, &dir, 16).unwrap();
         assert_eq!(r, Saved { written: 0, too_large: vec![uid] });
         assert_eq!(std::fs::read(files(&dir, uid).0).unwrap(), before, "the older entry stays as it was");
+        assert_eq!(read_meta(&dir, uid)["stale"], json!(true), "marked as an older version");
+        // Small enough again: a current entry, no longer stale.
+        save(&s, &dir).unwrap();
+        assert_eq!(read_meta(&dir, uid).get("stale"), None);
         // An entry bigger than the limit (a sparse file) is refused by its size.
         let (big, _) = files(&dir, 77);
         File::create(&big).unwrap().set_len(MAX_ENTRY_BYTES + 1).unwrap();
@@ -901,8 +963,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Start-up sweeps temporary files older than an hour and entries a crash left 30 days ago;
-    /// newer ones, and a running instance's however old, stay.
+    /// Start-up sweeps temporary files older than an hour and entries a crash left that were
+    /// offered 30 days ago; entries never offered, newer ones, and a running instance's however
+    /// old, stay.
     #[test]
     fn old_leftovers_are_swept() {
         let dir = temp("recovery-sweep");
@@ -914,18 +977,28 @@ mod tests {
         let live = instance_id() ^ (1 << 47);
         let lock = File::create(lock_path(&dir, live)).unwrap();
         lock.try_lock().unwrap();
-        let entry = |uid: u64, owner: u64, when: std::time::SystemTime| {
+        let month = 31 * 24 * 60 * 60;
+        let long_ago = now_secs() - month;
+        let entry = |uid: u64, owner: u64, when: std::time::SystemTime, offered: Option<u64>| {
             let (d, m) = files(&dir, uid);
             std::fs::write(&d, b"x").unwrap();
-            std::fs::write(&m, json!({"owner": owner}).to_string()).unwrap();
+            let meta = match offered {
+                Some(t) => json!({"owner": owner, "offered": t}),
+                None => json!({"owner": owner}),
+            };
+            std::fs::write(&m, meta.to_string()).unwrap();
             age(&d, when);
             age(&m, when);
         };
-        let month = 31 * 24 * 60 * 60;
-        entry(dead + 1, dead, ago(month));
-        entry(dead + 2, dead, ago(60));
-        entry(live + 1, live, ago(month));
-        entry(instance_id() + 900, instance_id(), ago(month));
+        // Offered a month ago and never taken: swept.
+        entry(dead + 1, dead, ago(month), Some(long_ago));
+        entry(dead + 2, dead, ago(60), Some(long_ago));
+        // Old but never offered (nobody opened a Slide tab, or the clock jumped): kept.
+        entry(dead + 4, dead, ago(month), None);
+        // Offered just now, though its files are old: kept.
+        entry(dead + 5, dead, ago(month), Some(now_secs()));
+        entry(live + 1, live, ago(month), Some(long_ago));
+        entry(instance_id() + 900, instance_id(), ago(month), Some(long_ago));
         // Half an old entry (its metadata never got its presentation).
         std::fs::write(dir.join(format!("{}.json", dead + 3)), b"{}").unwrap();
         age(&dir.join(format!("{}.json", dead + 3)), ago(month));
@@ -939,6 +1012,10 @@ mod tests {
         let mut want = vec![
             format!("{}.deckcraft", dead + 2),
             format!("{}.json", dead + 2),
+            format!("{}.deckcraft", dead + 4),
+            format!("{}.json", dead + 4),
+            format!("{}.deckcraft", dead + 5),
+            format!("{}.json", dead + 5),
             format!("{}.deckcraft", live + 1),
             format!("{}.json", live + 1),
             format!("{}.deckcraft", instance_id() + 900),
@@ -952,16 +1029,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Don't Save on quit (`file.recovery.discard` without a uid) removes this instance's entries
-    /// and a crash's, never another running window's.
+    /// Don't Save on quit (`file.recovery.discard` without a uid) removes the entries of the
+    /// presentations open in that session only: not another session's of this process (another
+    /// tab's live entry), not another running window's, not what a crash left.
     #[test]
-    fn discarding_everything_keeps_another_windows_entries() {
+    fn discarding_without_a_uid_keeps_every_other_entry() {
         let dir = temp("recovery-discard-all");
         let mut s = Session::new();
         s.recovery_dir = Some(dir.clone());
         s.execute("file.new", &json!({})).unwrap();
         s.execute("slide.new", &json!({"layout": "blank"})).unwrap();
         s.execute("file.recovery.save", &json!({})).unwrap();
+        let mine = s.doc().unwrap().uid;
+        let mut tab = Session::new();
+        tab.recovery_dir = Some(dir.clone());
+        tab.execute("file.new", &json!({})).unwrap();
+        tab.execute("slide.new", &json!({"layout": "blank"})).unwrap();
+        tab.execute("file.recovery.save", &json!({})).unwrap();
+        let other_tab = tab.doc().unwrap().uid;
         let live = instance_id() ^ (1 << 48);
         let lock = File::create(lock_path(&dir, live)).unwrap();
         lock.try_lock().unwrap();
@@ -971,8 +1056,52 @@ mod tests {
             std::fs::write(&m, json!({"owner": owner}).to_string()).unwrap();
         }
         s.execute("file.recovery.discard", &json!({})).unwrap();
-        assert_eq!(list(&dir).iter().map(|e| e.0).collect::<Vec<_>>(), vec![live + 1]);
+        let mut left: Vec<u64> = list(&dir).iter().map(|e| e.0).collect();
+        left.sort();
+        let mut want = vec![other_tab, live + 1, live + 2];
+        want.sort();
+        assert_eq!(left, want);
+        assert!(!files(&dir, mine).0.exists());
         drop(lock);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Entries a host offers are recorded as offered (when first), and kept so.
+    #[test]
+    fn offered_entries_are_recorded() {
+        let dir = temp("recovery-offered");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dead = instance_id() ^ (1 << 49);
+        let (d, m) = files(&dir, dead + 1);
+        std::fs::write(&d, b"x").unwrap();
+        std::fs::write(&m, json!({"owner": dead}).to_string()).unwrap();
+        let first = recoverable(&dir);
+        let t = first[0].1["offered"].as_u64().unwrap();
+        assert_eq!(read_meta(&dir, dead + 1)["offered"], json!(t));
+        std::fs::write(&m, json!({"owner": dead, "offered": 5}).to_string()).unwrap();
+        recoverable(&dir);
+        assert_eq!(read_meta(&dir, dead + 1)["offered"], json!(5), "the first offer is kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Without its lock an instance writes no entry and takes none (other instances would take
+    /// them for a crash's): an error each time, nothing on disk.
+    #[test]
+    fn without_its_lock_nothing_is_written_or_taken() {
+        let dir = temp("recovery-nolock");
+        std::fs::create_dir_all(lock_path(&dir, instance_id())).unwrap();
+        assert!(!hold_lock(&dir));
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("slide.new", &json!({"layout": "blank"})).unwrap();
+        assert!(save(&s, &dir).is_err());
+        assert!(list(&dir).is_empty());
+        let dead = instance_id() ^ (1 << 50);
+        let (d, m) = files(&dir, dead + 1);
+        std::fs::write(&d, b"x").unwrap();
+        std::fs::write(&m, json!({"owner": dead}).to_string()).unwrap();
+        assert!(take(&dir, dead + 1).is_err());
+        assert_eq!(read_meta(&dir, dead + 1)["owner"], json!(dead), "not taken");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
