@@ -1442,3 +1442,33 @@ fn unchanged_lengths_keep_their_exact_value_in_vietnamese() {
     let size = h.state().session.active().unwrap().doc.slide_size;
     assert!((size.width - 720.0).abs() < 1e-6, "25,4 cm is 720 pt: {}", size.width);
 }
+
+/// NexusOffice: a malformed line spacing handed to Paragraph shows "1" and, left as it is, applies
+/// single spacing (not 0); Tabs' default stop shown in centimetres and left as it is keeps its exact
+/// value (27 pt is "0,95" cm, which would read back as 26,93 pt).
+#[test]
+fn untouched_defaults_in_paragraph_and_tabs_keep_their_value_in_vietnamese() {
+    use crate::dialogs::Dialog;
+    let para = |h: &H| h.state().session.active().unwrap().selected_shapes().first().and_then(|s| s.text.as_ref()?.paragraphs.first().cloned());
+    let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+        a.run("shape.insert", json!({"preset": "rect", "rect": [72.0, 36.0, 300.0, 100.0], "text": "x"})).unwrap();
+        let mut d = Dialog::new("paragraph");
+        d.params = json!({"lineKind": "multiple", "lineValue": "abc"});
+        a.dialog = Some(d);
+    });
+    h.run_steps(8);
+    assert_eq!(h.state().dialog.as_ref().and_then(|d| d.fields.get("lineValue")).map(String::as_str), Some("1"));
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(para(&h).and_then(|p| p.props.line_spacing), Some(deckcraft_model::text::Spacing::Pct(1.0)), "single, not 0");
+    let mut d = Dialog::new("tabs");
+    d.params = json!({"tabs": [], "defaultTab": 27.0});
+    h.state_mut().dialog = Some(d);
+    h.run_steps(6);
+    assert_eq!(h.state().dialog.as_ref().and_then(|d| d.fields.get("default")).map(String::as_str), Some("0,95"));
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(para(&h).and_then(|p| p.props.default_tab), Some(27.0), "the untouched default stop keeps 27 pt");
+}

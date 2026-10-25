@@ -3067,8 +3067,9 @@ fn kept_value(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
         return None;
     }
     match d.params.get(param_of(key)) {
-        // Seeded from the paragraph: exactly that (a malformed one reads as 0, as the seed did).
-        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).unwrap_or(0.0)),
+        // Seeded from the paragraph: exactly that; a malformed one is the field's default, as the
+        // seed showed it (line spacing 1, the rest 0).
+        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).unwrap_or(if key == "lineValue" { 1.0 } else { 0.0 })),
         // Seeded from the default: an indent's 0 is exact; anything else reads from the text.
         None => (seed == "0").then_some(0.0),
     }
@@ -3479,6 +3480,8 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             Language::En => format!("{}", default_pt / 72.0),
             lang => units::format_length(lang, default_pt),
         };
+        d.fields.insert("defaultSeed".into(), shown.clone());
+        d.fields.insert("defaultPt".into(), default_pt.to_string());
         d.fields.insert("default".into(), shown);
     }
     // NexusOffice: positions show in the interface's unit (the stops list keeps inches).
@@ -3552,7 +3555,13 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let (ok, cancel) = buttons(ui, "OK");
     if ok {
         let set: Vec<Value> = stops.iter().map(|(p, a)| json!({"pos": p * 72.0, "align": a})).collect();
-        let dt = typed_inches(d, "default").unwrap_or(1.0).clamp(0.02, 56.0) * 72.0;
+        // NexusOffice: in Vietnamese the default stop left as shown keeps its exact value.
+        let untouched = lang_of(d) != Language::En && d.fields.get("defaultSeed") == d.fields.get("default");
+        let exact = d.fields.get("defaultPt").and_then(|p| p.parse::<f64>().ok()).filter(|v| v.is_finite());
+        let dt = match exact.filter(|_| untouched) {
+            Some(pt) => pt.clamp(0.02 * 72.0, 56.0 * 72.0),
+            None => typed_inches(d, "default").unwrap_or(1.0).clamp(0.02, 56.0) * 72.0,
+        };
         if let Err(e) = app.run("format.tabs", json!({"set": set, "defaultTab": dt})) {
             app.set_status(e);
         } else if let Some(ret) = d.params.get_mut("returnParams").and_then(Value::as_object_mut) {

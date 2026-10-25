@@ -227,7 +227,8 @@ pub fn spinner(language: Language, value: f64, step: f64, suffix: &str) -> (Stri
 /// A number typed as **data** (Chart Data cells), in `language`. English is upstream's parse.
 /// Vietnamese follows vi-VN: a point groups thousands, a comma is the decimal. With a comma, the
 /// points before it must group thousands ("1.234,5"); without one, points that group thousands are
-/// thousands ("1.234", "1.500.000") and a single other point is a decimal point ("1.5", "0.75").
+/// thousands ("1.234", "1.500.000") and a single other point is a decimal point ("1.5", "0.75",
+/// "0.123": a first group starting with 0 never groups thousands).
 /// Anything else ("1,2,3", "12.34,5", "1,234.5", letters) is `None`: the caller tells the user
 /// instead of dropping the value.
 pub fn parse_grouped(language: Language, text: &str) -> Option<f64> {
@@ -268,10 +269,11 @@ pub fn parse_grouped(language: Language, text: &str) -> Option<f64> {
     }
 }
 
-/// "1", "12", "1.234", "12.345.678": one to three digits, then groups of exactly three.
+/// "1.234", "12.345.678": one to three digits not starting with 0, then groups of exactly three.
+/// "0.123" is not thousands (it reads as a decimal).
 fn groups_thousands(s: &str) -> bool {
     let mut parts = s.split('.');
-    let first_ok = parts.next().is_some_and(|p| (1..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit()));
+    let first_ok = parts.next().is_some_and(|p| (1..=3).contains(&p.len()) && !p.starts_with('0') && p.chars().all(|c| c.is_ascii_digit()));
     let mut rest = 0usize;
     for p in parts {
         if p.len() != 3 || !p.chars().all(|c| c.is_ascii_digit()) {
@@ -459,6 +461,14 @@ mod tests {
         // One point that doesn't group three digits is a decimal point.
         assert_eq!(parse_grouped(VI, "1.5"), Some(1.5));
         assert_eq!(parse_grouped(VI, "0.75"), Some(0.75));
+        // A first group of "0" never groups thousands: "0.123" is a decimal, not 123.
+        assert_eq!(parse_grouped(VI, "0.123"), Some(0.123));
+        assert_eq!(parse_grouped(VI, "0.500"), Some(0.5));
+        assert_eq!(parse_grouped(VI, "-0.123"), Some(-0.123));
+        assert_eq!(parse_grouped(VI, "0,5"), Some(0.5));
+        assert_eq!(parse_grouped(VI, "0.123.456"), None);
+        assert_eq!(parse_grouped(VI, "0.123,5"), None);
+        assert_eq!(parse_grouped(VI, "012.345"), Some(12.345), "a leading zero doesn't group thousands either");
         for bad in ["abc", "", " ", "1,2,3", "1.23.4", "12.34,5", "1,234.5", "1.234.5", "1..234", "NaN", "inf", "1e3", "--1", ",", "."] {
             assert_eq!(parse_grouped(VI, bad), None, "{bad:?}");
         }
