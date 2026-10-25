@@ -8,8 +8,9 @@
 //! Writes `<prefix>wps-home-1440.png`, `wps-insert.png`, `wps-design.png`, `wps-transitions.png`,
 //! `wps-animations.png`, `wps-view.png`, `wps-file.png` (File), `wps-print.png`, `wps-1024.png`,
 //! `wps-overflow.png` (the "…" panel), `wps-more-tabs.png` (»), `wps-dark.png`, `wps-coral.png`
-//! (user accent #F43F5E), `wps-en.png` (English), and the menu-bar layout's `light.png` and
-//! `menu.png`. The prefix defaults to `dc-`.
+//! (user accent #F43F5E), `wps-en.png` (English), the Vietnamese dialogs and Format panes
+//! (`wps-dlg-*.png`, `wps-pane-*.png`, `wps-pane-size-en.png` in English), and the menu-bar
+//! layout's `light.png` and `menu.png`. The prefix defaults to `dc-`.
 
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Services, SlideApp};
@@ -141,6 +142,35 @@ fn main() {
             wps(a);
             let _ = a.run("slide.go", serde_json::json!({"index": 1}));
             a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new(id));
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    // NX-VI.5: the dialogs translated last (Insert Table, Header and Footer, Insert Hyperlink,
+    // Photo Album, Create New Theme Colors) and Size and Position in centimetres (vi-VN numbers).
+    for (id, file) in [
+        ("table", "wps-dlg-table"),
+        ("headerFooter", "wps-dlg-header-footer"),
+        ("hyperlink", "wps-dlg-hyperlink"),
+        ("photoAlbum", "wps-dlg-photo-album"),
+        ("themeColors", "wps-dlg-theme-colors"),
+        ("sizePosition", "wps-dlg-size-position"),
+    ] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new(id));
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    for (lang, file) in [(Language::Vi, "wps-pane-size"), (Language::En, "wps-pane-size-en")] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            a.ui.language = lang;
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            a.ui.pane = Some("format".into());
+            a.ui.format_tab = "size".into();
         });
         shot(&mut h, &dir, &name(file));
     }

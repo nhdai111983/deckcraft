@@ -456,7 +456,10 @@ pub fn gallery(
 pub fn spinner(ui: &mut Ui, id: &str, value: f64, step: f64, suffix: &str, width: f32) -> Option<f64> {
     let t = Tokens::get(ui.ctx());
     let key = ui.id().with(id);
-    let mut text: String = ui.data_mut(|d| d.get_temp::<String>(key)).unwrap_or_else(|| fmt_num(value, suffix));
+    // NexusOffice: numbers in the interface's language; inches (`"`) read as centimetres in
+    // Vietnamese (`i18n::units`). The value in and out stays in the caller's unit.
+    let (shown, read, step) = crate::i18n::units::spinner(crate::i18n::current(ui.ctx()), value, step, suffix);
+    let mut text: String = ui.data_mut(|d| d.get_temp::<String>(key)).unwrap_or(shown);
     let mut out = None;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
@@ -467,10 +470,7 @@ pub fn spinner(ui: &mut Ui, id: &str, value: f64, step: f64, suffix: &str, width
             ui.data_mut(|d| d.remove::<String>(key));
         }
         if r.lost_focus() {
-            let num: String = text.chars().filter(|c| c.is_ascii_digit() || *c == '.' || *c == '-').collect();
-            if let Ok(v) = num.parse::<f64>() {
-                out = Some(v);
-            }
+            out = read(&text);
         }
         let (rect, _) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::hover());
         let up = ui.interact(Rect::from_min_max(rect.min, pos2(rect.max.x, rect.center().y)), key.with("up"), Sense::click());

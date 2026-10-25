@@ -580,7 +580,10 @@ fn exempt(text: &str, doc_text: &str) -> bool {
     let theme_fonts: Vec<String> = builtin.iter().flat_map(|t| [t.fonts.major.latin.clone(), t.fonts.minor.latin.clone()]).collect();
     let plain = text.trim_end_matches('…').trim();
     let letters = plain.as_bytes().windows(2).any(|w| w[0].is_ascii_alphabetic() && w[1].is_ascii_alphabetic());
+    // A number with its unit ("10,58 cm", "6 pt") is not a word.
+    let unit = plain.trim_start_matches(|c: char| c.is_ascii_digit() || ".,-+ ".contains(c));
     !letters
+        || (unit.len() < plain.len() && ["cm", "in", "pt", "px"].contains(&unit))
         || [
             "Nexus Slide",
             "NexusOffice",
@@ -602,6 +605,12 @@ fn exempt(text: &str, doc_text: &str) -> bool {
         // Character Spacing's and Change Case's samples.
         || ["ab", "abc"].contains(&plain)
         || themes.iter().any(|t| t == plain)
+        // Languages named in their own language (Language, Review › Language), legal notices kept
+        // as written, and the photo album's theme names.
+        || crate::squiggles::LANGS.iter().any(|(name, _)| *name == plain)
+        || [deckcraft_engine::nexus::COPYRIGHT, deckcraft_engine::nexus::UPSTREAM_COPYRIGHT].contains(&plain)
+        // The About page's Vietnamese sentences (from the engine's brand constants).
+        || [deckcraft_engine::nexus::ABOUT_SUITE.1, deckcraft_engine::nexus::ATTRIBUTION.1].contains(&plain)
         || theme_fonts.iter().any(|f| f == plain)
         // The presentation's own text: a whole line of it (a title, a note), not any piece.
         || doc_text.lines().any(|l| l.trim() == plain)
@@ -845,7 +854,7 @@ fn vietnamese(t: &str, doc: &str) -> bool {
         || values.contains(&t)
         || values.iter().any(|v| v.contains('{') && fills(v, t))
         // Units, the font sample, the numbering styles' samples and the hex hint are not words.
-        || ["in", "pt", "AaBbCcDd", "I. II. III.", "i. ii. iii.", "RRGGBB"].contains(&unit)
+        || ["in", "cm", "pt", "px", "AaBbCcDd", "I. II. III.", "i. ii. iii.", "RRGGBB"].contains(&unit)
         || exempt(t, doc)
 }
 
@@ -879,13 +888,13 @@ fn english_in(h: &mut H, place: &str, out: &mut std::collections::BTreeSet<Strin
     }
 }
 
-/// NexusOffice: the Format dialogs (Font, Paragraph, Tabs, Bullets and Numbering, Size and
-/// Position), the Options dialog (with AutoCorrect and Grid Options), the Format Shape pane on
-/// each of its pages and fills, the Format Background pane and the colour menu speak Vietnamese:
-/// every label they draw or ask the catalogue for has a translation. A new label without a `vi`
-/// entry fails here with its place.
+/// NexusOffice: every dialog ([`VI_DIALOGS`]: the Format dialogs, Options, Insert Table, Slide
+/// Size, Header and Footer, Hyperlink, Photo Album, Theme Colors/Fonts, …, in the variants that show
+/// more), the Format Shape pane on each of its pages and fills, the Format Background pane and the
+/// colour menu speak Vietnamese: every label they draw or ask the catalogue for has a translation.
+/// A new label without a `vi` entry fails here with its place.
 #[test]
-fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnamese() {
+fn every_label_in_every_dialog_and_the_format_panes_is_vietnamese() {
     use crate::dialogs::Dialog;
     let b64 = |b: Vec<u8>| deckcraft_engine::cmd::base64_encode(&b);
     let mut missing = std::collections::BTreeSet::new();
@@ -894,6 +903,7 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
     };
     let _ = crate::i18n::misses::take();
     // Dialogs.
+    let album = format!(r#"[{{"text":"Xin chào"}},{{"name":"Ảnh biển","data":"{}"}}]"#, b64(png()));
     let dialogs: Vec<(&str, Vec<(&str, &str)>)> = vec![
         ("font", vec![]),
         ("paragraph", vec![]),
@@ -906,6 +916,48 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
         ("gridOptions", vec![]),
         ("close", vec![]),
         ("quit", vec![]),
+        ("table", vec![]),
+        ("slideSize", vec![]),
+        ("headerFooter", vec![]),
+        ("hyperlink", vec![]),
+        ("hyperlink", vec![("mode", "slide")]),
+        ("hyperlink", vec![("mode", "email")]),
+        ("setupShow", vec![]),
+        ("zoom", vec![]),
+        ("comment", vec![]),
+        ("action", vec![]),
+        ("action", vec![("tab", "hover"), ("kind", "customShow")]),
+        ("action", vec![("kind", "program")]),
+        ("action", vec![("kind", "url")]),
+        ("altText", vec![]),
+        ("outline", vec![]),
+        ("renameSection", vec![]),
+        ("renameShape", vec![]),
+        ("renameLayout", vec![]),
+        ("export", vec![]),
+        ("export", vec![("fmt", "gif"), ("gifSize", "custom")]),
+        ("export", vec![("fmt", "gif"), ("gifTo", "9")]),
+        ("replaceFonts", vec![]),
+        ("replaceFonts", vec![("result", "")]),
+        ("symbol", vec![]),
+        ("equation", vec![]),
+        ("pasteSpecial", vec![]),
+        ("find", vec![]),
+        ("find", vec![("replace", "1"), ("text", "không có")]),
+        ("spelling", vec![]),
+        ("accessibility", vec![]),
+        ("language", vec![]),
+        ("customShow", vec![]),
+        ("chartData", vec![]),
+        ("trim", vec![]),
+        ("smartart", vec![]),
+        ("about", vec![]),
+        ("photoAlbum", vec![]),
+        ("photoAlbum", vec![("items", album.as_str()), ("sel", "1")]),
+        ("photoAlbum", vec![("items", album.as_str()), ("sel", "0")]),
+        ("themeColors", vec![]),
+        ("themeFonts", vec![]),
+        ("dateTime", vec![]),
     ];
     let mut opened: Vec<&str> = dialogs.iter().map(|(id, _)| *id).collect();
     opened.sort_unstable();
@@ -916,7 +968,30 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
     for (id, fields) in dialogs {
         let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
             shape(a);
+            // What some dialogs need to show all they can: a chart, a custom show, a misspelt and
+            // repeated word, a picture without alt text, a name to rename.
+            match id {
+                "chartData" => {
+                    // The chart's own data is the user's: Vietnamese names, a decimal value.
+                    let id = a.run("insert.chart", json!({})).unwrap()["id"].as_u64().unwrap();
+                    let series = json!([{"name": "Doanh thu", "values": [1.5, 2.0]}, {"name": "Chi phí", "values": [1.0, 0.5]}]);
+                    a.run("chart.data", json!({"id": id, "categories": ["Quý 1", "Quý 2"], "series": series})).unwrap();
+                }
+                "customShow" | "setupShow" => {
+                    a.run("show.customShow", json!({"name": "Tour", "slides": [0]})).unwrap();
+                }
+                "spelling" => {
+                    a.run("shape.insert", json!({"preset": "rect", "rect": [100, 300, 300, 100], "text": "teh teh"})).unwrap();
+                }
+                "accessibility" => {
+                    a.run("insert.picture", json!({"name": "p.png", "data": b64(png())})).unwrap();
+                }
+                _ => {}
+            }
             let mut d = Dialog::new(id);
+            if id.starts_with("rename") {
+                d.params = json!({"name": "Tên cũ"});
+            }
             for (k, v) in &fields {
                 d.fields.insert((*k).into(), (*v).into());
             }
@@ -924,7 +999,23 @@ fn every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnam
         });
         h.run_steps(8);
         assert!(h.state().dialog.is_some(), "{id} stays open");
-        english_in(&mut h, &format!("dialog {id} {fields:?}"), &mut missing);
+        // The spelling suggestions are words of the presentation's language, not interface wording.
+        let suggestions: Vec<String> = h
+            .state_mut()
+            .session
+            .execute("review.spelling", &json!({}))
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .into_iter()
+            .flatten()
+            .flat_map(|i| i["suggestions"].as_array().cloned().unwrap_or_default())
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let mut here = std::collections::BTreeSet::new();
+        english_in(&mut h, &format!("dialog {id} {fields:?}"), &mut here);
+        // So is what the test typed or named (chart data, the text to find, a picture's name).
+        let typed = ["Doanh thu", "Chi phí", "Quý 1", "Quý 2", "không có", "Ảnh biển"].map(String::from);
+        missing.extend(here.into_iter().filter(|m| !suggestions.iter().chain(&typed).any(|w| m.ends_with(&format!(": {w:?}")))));
     }
     // The Format Shape pane: each page, and the fills and lines that show more controls.
     let pages: Vec<(&str, &str, Box<dyn Fn(&mut SlideApp)>)> = vec![
@@ -1074,13 +1165,19 @@ fn starters_and_the_sample_open_in_the_interface_language() {
     assert_eq!(h.state().session.active().map(|d| d.title.clone()).as_deref(), Some("Bắc cực quang"));
 }
 
-/// The dialogs [`every_label_in_the_format_dialogs_the_options_and_the_format_panes_is_vietnamese`]
+/// The dialogs [`every_label_in_every_dialog_and_the_format_panes_is_vietnamese`]
 /// opens in Vietnamese.
-const VI_DIALOGS: &[&str] = &["font", "paragraph", "tabs", "bullets", "sizePosition", "preferences", "autocorrect", "gridOptions", "close", "quit"];
-
-/// Dialogs still drawn (partly) in English: the follow-up list. A dialog leaves it when the
-/// coverage test opens it ([`VI_DIALOGS`]).
-const NOT_YET_VI: &[&str] = &[
+const VI_DIALOGS: &[&str] = &[
+    "font",
+    "paragraph",
+    "tabs",
+    "bullets",
+    "sizePosition",
+    "preferences",
+    "autocorrect",
+    "gridOptions",
+    "close",
+    "quit",
     "table",
     "slideSize",
     "headerFooter",
@@ -1114,6 +1211,10 @@ const NOT_YET_VI: &[&str] = &[
     "dateTime",
 ];
 
+/// Dialogs still drawn (partly) in English: the follow-up list. A dialog leaves it when the
+/// coverage test opens it ([`VI_DIALOGS`]).
+const NOT_YET_VI: &[&str] = &[];
+
 /// Every dialog id `dialogs.rs`'s `body` handles (its match arms, `"a" | "b" =>` included).
 fn dialog_ids() -> Vec<String> {
     let src = include_str!("dialogs.rs");
@@ -1140,6 +1241,8 @@ fn dialog_ids() -> Vec<String> {
 fn every_dialog_is_covered_in_vietnamese_or_listed_as_not_yet() {
     let ids = dialog_ids();
     assert!(ids.len() >= 40, "the parser found the dialogs ({})", ids.len());
+    // NexusOffice: every dialog speaks Vietnamese; none is left for later.
+    assert_eq!(NOT_YET_VI, &[] as &[&str], "dialogs still (partly) in English");
     for id in &ids {
         let covered = VI_DIALOGS.contains(&id.as_str());
         let later = NOT_YET_VI.contains(&id.as_str());
@@ -1154,4 +1257,89 @@ fn every_dialog_is_covered_in_vietnamese_or_listed_as_not_yet() {
     all.sort_unstable();
     all.dedup();
     assert_eq!(n, all.len(), "a dialog is listed twice");
+}
+
+/// NexusOffice (vi-VN units): Size and Position shows lengths in centimetres with a decimal comma in
+/// Vietnamese ("2,54") and in inches in English ("1"), in the dialog and on the Format Shape pane's
+/// Size page; a length typed with a comma or a point reads the same, and the shape keeps points.
+#[test]
+fn size_and_position_shows_centimetres_with_a_comma_in_vietnamese_and_inches_in_english() {
+    use crate::dialogs::Dialog;
+    let size_of = |app: &SlideApp, id: u64| {
+        let st = app.session.active().unwrap();
+        let x = st.shape(deckcraft_model::ShapeId(id as u32)).and_then(|s| s.xfrm).unwrap();
+        (x.x, x.y, x.w, x.h)
+    };
+    // 1 in from the left, 0.5 in down, 1.5 in wide, 1 in high.
+    let rect = json!({"preset": "rect", "rect": [72.0, 36.0, 108.0, 72.0]});
+    let cases = [
+        (Language::Vi, ["2,54", "3,81", "2,54", "1,27"], "Chiều cao (cm):", "2,54 cm"),
+        (Language::En, ["1", "1.5", "1", "0.5"], "Height (in):", "1\""),
+    ];
+    for (lang, [h_text, w_text, x_text, y_text], height_label, pane_text) in cases {
+        let id = std::cell::Cell::new(0);
+        let mut h = harness((1600.0, 1000.0), lang, false, |a| {
+            id.set(a.run("shape.insert", rect.clone()).unwrap()["id"].as_u64().unwrap());
+            a.dialog = Some(Dialog::new("sizePosition"));
+        });
+        h.run_steps(8);
+        let d = h.state().dialog.as_ref().expect("the dialog is open");
+        let field = |k: &str| d.fields.get(k).cloned().unwrap_or_default();
+        assert_eq!([field("h"), field("w"), field("x"), field("y")], [h_text, w_text, x_text, y_text], "{lang:?}");
+        let shown = drawn(&h);
+        assert!(shown.iter().any(|t| t == height_label), "{lang:?}: {height_label:?} in {shown:?}");
+        assert!(shown.iter().any(|t| t == h_text), "{lang:?}: the field shows {h_text:?}");
+        // Typed: 5,08 cm (Vietnamese) or 2 in (English) high is 144 pt either way.
+        let typed = if lang == Language::Vi { "5,08" } else { "2" };
+        h.state_mut().dialog.as_mut().unwrap().fields.insert("h".into(), typed.into());
+        h.run_steps(2);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(4);
+        assert!(h.state().dialog.is_none(), "{lang:?}: OK applies and closes");
+        let (x, y, w, hh) = size_of(h.state(), id.get());
+        assert!(
+            (hh - 144.0).abs() < 0.01 && (w - 108.0).abs() < 0.01 && (x - 72.0).abs() < 0.01 && (y - 36.0).abs() < 0.01,
+            "{lang:?}: {x} {y} {w} {hh}"
+        );
+        // The Format Shape pane's Size page shows the same unit.
+        h.state_mut().ui.pane = Some("format".into());
+        h.state_mut().ui.format_tab = "size".into();
+        h.run_steps(8);
+        let pane_h = if lang == Language::Vi { "5,08 cm" } else { "2\"" };
+        let shown = drawn(&h);
+        assert!(shown.iter().any(|t| t == pane_h), "{lang:?}: the pane shows {pane_h:?} ({pane_text:?} before): {shown:?}");
+    }
+    // A point typed in Vietnamese reads too.
+    let id = std::cell::Cell::new(0);
+    let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+        id.set(a.run("shape.insert", rect.clone()).unwrap()["id"].as_u64().unwrap());
+        a.dialog = Some(Dialog::new("sizePosition"));
+    });
+    h.run_steps(8);
+    h.state_mut().dialog.as_mut().unwrap().fields.insert("w".into(), "7.62".into());
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    let (_, _, w, _) = size_of(h.state(), id.get());
+    assert!((w - 216.0).abs() < 0.01, "7.62 cm is 3 in: {w}");
+}
+
+/// NexusOffice (vi-VN units): junk typed into a Size and Position field in Vietnamese ("abc",
+/// "1,2,3", a huge number, NaN) keeps the dialog open with a message; nothing panics and the shape
+/// is unchanged.
+#[test]
+fn junk_lengths_in_vietnamese_never_panic() {
+    use crate::dialogs::Dialog;
+    for junk in ["", "abc", "1,2,3", "NaN", "inf", "1e999", &"9".repeat(400), "-", ",", "2,54 km"] {
+        let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+            a.run("shape.insert", json!({"preset": "rect", "rect": [72.0, 36.0, 108.0, 72.0]})).unwrap();
+            a.dialog = Some(Dialog::new("sizePosition"));
+        });
+        h.run_steps(8);
+        h.state_mut().dialog.as_mut().unwrap().fields.insert("h".into(), junk.to_string());
+        h.run_steps(2);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(4);
+        assert!(h.state().dialog.is_some(), "{junk:?} is not a length: the dialog stays open");
+    }
 }
