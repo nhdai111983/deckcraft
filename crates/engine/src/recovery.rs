@@ -390,36 +390,43 @@ pub fn list(dir: &Path) -> Vec<(u64, Value)> {
 /// Old leftovers are swept first ([`sweep`]) and lock files of instances no longer running are
 /// removed, as [`open`] does.
 ///
-/// Each entry returned is recorded as offered (`"offered"`: when it first was): only entries that
-/// were offered are ever swept, so one nobody was shown (no Slide tab opened for a month, a clock
-/// that jumped) is never lost. An entry marked `"stale": true` is an older version (the newer one
-/// was too large to write).
+/// Nothing is recorded here: computing an offer is not showing it. A host records each entry it
+/// actually shows the user with [`note_offered`], once the prompt is drawn, and only those (a
+/// host that lists at most N leaves the rest unrecorded). Only entries that were offered are ever
+/// swept, so one nobody was shown (no Slide tab opened for a month, an entry past a host's limit,
+/// a clock that jumped) is never lost. An entry marked `"stale": true` is an older version (the
+/// newer one was too large to write).
 pub fn recoverable(dir: &Path) -> Vec<(u64, Value)> {
     sweep(dir);
-    let mut out: Vec<(u64, Value)> = list(dir).into_iter().filter(|(_, meta)| crash_left(dir, meta)).collect();
-    for (uid, meta) in &mut out {
-        if meta.get("offered").and_then(Value::as_u64).is_some() {
-            continue;
-        }
-        let when = now_secs();
-        exclusively(dir, || {
-            let mut m = read_meta(dir, *uid);
-            if !crash_left(dir, &m) || m.get("offered").and_then(Value::as_u64).is_some() {
-                return;
-            }
-            if let Some(o) = m.as_object_mut() {
-                o.insert("offered".into(), json!(when));
-            }
-            if let Err(e) = write_atomic(&files(dir, *uid).1, m.to_string().as_bytes()) {
-                log::warn!("recovery: {e}");
-            }
-        });
-        if let Some(o) = meta.as_object_mut() {
-            o.insert("offered".into(), json!(when));
-        }
-    }
+    let out: Vec<(u64, Value)> = list(dir).into_iter().filter(|(_, meta)| crash_left(dir, meta)).collect();
     remove_stale_locks(dir);
     out
+}
+
+/// Records entry `uid` as offered now (`"offered"`: when it was first shown), if a crash still
+/// holds it and it wasn't before, under the folder's lock. Called by a host for each entry its
+/// prompt shows, once it is drawn. Whether it was recorded now (`false`: gone, another running
+/// instance has it, already recorded, or its metadata couldn't be written).
+pub fn note_offered(dir: &Path, uid: u64) -> bool {
+    let when = now_secs();
+    exclusively(dir, || {
+        let mut m = read_meta(dir, uid);
+        if !std::fs::metadata(files(dir, uid).0).is_ok_and(|f| f.is_file())
+            || !crash_left(dir, &m)
+            || m.get("offered").and_then(Value::as_u64).is_some()
+        {
+            return false;
+        }
+        let Some(o) = m.as_object_mut() else { return false };
+        o.insert("offered".into(), json!(when));
+        match write_atomic(&files(dir, uid).1, m.to_string().as_bytes()) {
+            Ok(()) => true,
+            Err(e) => {
+                log::warn!("recovery: {e}");
+                false
+            }
+        }
+    })
 }
 
 /// Takes entry `uid` over for this instance if a crash left it, checked now under the folder's
@@ -1066,21 +1073,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Entries a host offers are recorded as offered (when first), and kept so.
+    /// Listing what a crash left records nothing (an offer computed is not an offer shown): only
+    /// the entries a host shows, each recorded with [`note_offered`], are marked, when first; the
+    /// rest (past a host's limit) stay unmarked, so the sweep never removes an entry nobody saw.
     #[test]
-    fn offered_entries_are_recorded() {
+    fn only_entries_shown_are_recorded_as_offered() {
         let dir = temp("recovery-offered");
         std::fs::create_dir_all(&dir).unwrap();
         let dead = instance_id() ^ (1 << 49);
-        let (d, m) = files(&dir, dead + 1);
-        std::fs::write(&d, b"x").unwrap();
-        std::fs::write(&m, json!({"owner": dead}).to_string()).unwrap();
-        let first = recoverable(&dir);
-        let t = first[0].1["offered"].as_u64().unwrap();
-        assert_eq!(read_meta(&dir, dead + 1)["offered"], json!(t));
+        for i in 1..=40u64 {
+            let (d, m) = files(&dir, dead + i);
+            std::fs::write(&d, b"x").unwrap();
+            std::fs::write(&m, json!({"owner": dead}).to_string()).unwrap();
+        }
+        let listed = recoverable(&dir);
+        assert_eq!(listed.len(), 40);
+        assert!(listed.iter().all(|(_, m)| m.get("offered").is_none()), "listing records nothing");
+        assert!((1..=40).all(|i| read_meta(&dir, dead + i).get("offered").is_none()), "nor on disk");
+        // The host shows the first 32: those, and only those, are recorded.
+        for i in 1..=32 {
+            assert!(note_offered(&dir, dead + i));
+        }
+        let marked = (1..=40).filter(|i| read_meta(&dir, dead + i)["offered"].as_u64().is_some()).count();
+        assert_eq!(marked, 32);
+        assert!(read_meta(&dir, dead + 33).get("offered").is_none());
+        // The first offer is kept.
+        let (_, m) = files(&dir, dead + 1);
         std::fs::write(&m, json!({"owner": dead, "offered": 5}).to_string()).unwrap();
-        recoverable(&dir);
+        assert!(!note_offered(&dir, dead + 1));
         assert_eq!(read_meta(&dir, dead + 1)["offered"], json!(5), "the first offer is kept");
+        // Gone, or this instance's own live entry: nothing is recorded (nor made up).
+        assert!(!note_offered(&dir, dead + 99));
+        assert!(!files(&dir, dead + 99).1.exists());
+        let (d, m) = files(&dir, dead + 50);
+        std::fs::write(&d, b"x").unwrap();
+        std::fs::write(&m, json!({"owner": instance_id()}).to_string()).unwrap();
+        assert!(!note_offered(&dir, dead + 50));
+        assert!(read_meta(&dir, dead + 50).get("offered").is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
