@@ -6,6 +6,7 @@ use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
+use crate::i18n::{tl, tl_in};
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -47,7 +48,7 @@ fn title(id: &str) -> &'static str {
         "paragraph" => "Paragraph",
         "tabs" => "Tabs",
         "font" => "Font",
-        "about" => "About Nexus Slides",
+        "about" => "About Nexus Slide",
         "preferences" => "Preferences",
         "autocorrect" => "AutoCorrect",
         "gridOptions" => "Grid Options",
@@ -77,9 +78,28 @@ fn title(id: &str) -> &'static str {
 
 pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let Some(mut d) = app.dialog.take() else { return };
+    // NexusOffice: as a tab of the NexusOffice window, the prompt every Nexus app shows.
+    if app.embedded && matches!(d.id.as_str(), "close" | "quit") {
+        match embedded_save_prompt(app, ctx, &d) {
+            Some(true) => {
+                app.dialog = Some(d);
+                return;
+            }
+            Some(false) => return,
+            None => {}
+        }
+    }
     let mut open = true;
     let mut close = false;
-    let mut window = egui::Window::new(title(&d.id))
+    let lang = app.ui.language;
+    // NexusOffice: titles in the interface's language; "Save changes?" names itself there.
+    let shown = if lang != crate::i18n::Language::En && matches!(d.id.as_str(), "close" | "quit") {
+        lang.tr("Save changes?").into_owned()
+    } else {
+        // A title can differ from the ribbon's word for the same thing ("Đoạn văn", the group "Đoạn").
+        lang.lookup(&format!("dialog.{}", d.id)).map_or_else(|| lang.tr(title(&d.id)).into_owned(), str::to_string)
+    };
+    let mut window = egui::Window::new(shown)
         .id(egui::Id::new(("dialog", d.id.clone())))
         .collapsible(false)
         .resizable(false)
@@ -122,9 +142,74 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     }
 }
 
+/// NexusOffice: "Lưu thay đổi?" over the tab (`nexus_save_prompt`) for File › Close ("close")
+/// and quitting ("quit"). Lưu, Không lưu and Hủy do what the stand-alone prompt's Save, Don't Save
+/// and Cancel do. Returns whether the prompt stays open, or None when there is nothing to ask
+/// about (the stand-alone code then finishes the close or the quit).
+fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> Option<bool> {
+    use crate::nexus_save_prompt as sp;
+    let quit = d.id == "quit";
+    let names: Vec<String> = if quit {
+        app.session.documents().iter().filter(|d| d.is_dirty()).map(|d| d.title()).collect()
+    } else {
+        app.session.active().map(|d| d.title()).into_iter().collect()
+    };
+    let lang = app.ui.language;
+    let vi = lang == crate::i18n::Language::Vi;
+    // Through the catalogue (the same words as `sp::question`), so the interface audit knows them.
+    let question = match names.as_slice() {
+        [] => return None,
+        [one] => lang.fill("Save changes to “{name}” before closing?", &[("name", &sp::shorten_middle(one, 80))]),
+        many => lang.fill("Save changes to {n} presentations before closing?", &[("n", &many.len().to_string())]),
+    };
+    let t = Tokens::get(ctx);
+    let prompt = sp::Prompt { words: sp::words(vi), question: &question, note: None, error: None };
+    let look = sp::Look {
+        dark: t.dark,
+        accent: t.accent,
+        on_accent: t.accent_text,
+        error: ctx.global_style().visuals.error_fg_color,
+        title_font: theme::bold(sp::TITLE_SIZE),
+        title_fake_bold: !theme::has_semibold(),
+    };
+    let Some(answer) = sp::show(ctx, egui::Id::new("nexus_save_prompt"), app.drawn_in, &prompt, &look) else { return Some(true) };
+    match (answer, quit) {
+        (sp::Answer::Cancel, _) => {}
+        (sp::Answer::DontSave, false) => {
+            let _ = app.run("file.close", json!({}));
+        }
+        (sp::Answer::DontSave, true) => {
+            let _ = app.session.execute("file.recovery.discard", &json!({}));
+            app.quit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        (sp::Answer::Save, false) => {
+            app.save();
+            // In the browser a save is a download: the presentation stays "unsaved".
+            let web = app.services.pick_save.is_none() && app.services.download.is_some();
+            if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
+                let _ = app.run("file.close", json!({}));
+            } else {
+                // A presentation with no file waits for the host's Save As.
+                app.close_after_pending_save();
+            }
+        }
+        (sp::Answer::Save, true) => {
+            if app.save_all() {
+                app.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+    Some(false)
+}
+
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
     let mut ok = false;
     let mut cancel = false;
+    let ok_label = crate::i18n::tr(ui.ctx(), ok_label).into_owned();
+    let ok_label = ok_label.as_str();
+    let cancel_label = crate::i18n::tr(ui.ctx(), "Cancel").into_owned();
     ui.add_space(8.0);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let t = Tokens::get(ui.ctx());
@@ -133,7 +218,7 @@ fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
         {
             ok = true;
         }
-        if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+        if ui.add(egui::Button::new(cancel_label.as_str()).min_size(vec2(72.0, 24.0))).clicked() {
             cancel = true;
         }
     });
@@ -145,6 +230,7 @@ fn preferences_snapshot(app: &SlideApp) -> Value {
     json!({
         "dark": app.ui.brightness == theme::Brightness::Dark,
         "uiScale": app.ui.ui_scale,
+        "accent": app.ui.accent,
         "prefs": serde_json::to_value(&app.session.prefs).unwrap_or(Value::Null),
     })
 }
@@ -160,6 +246,9 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
     if let Some(scale) = before.get("uiScale").and_then(Value::as_f64) {
         app.ui.ui_scale = scale as f32;
     }
+    if let Some(accent) = before.get("accent") {
+        let _ = app.run("ui.accent", json!({ "value": accent }));
+    }
     if let Some(prefs) = before.get("prefs").and_then(|p| serde_json::from_value(p.clone()).ok()) {
         app.session.prefs = prefs;
     }
@@ -168,7 +257,7 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(label));
+        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0));
     });
     d.fields.insert(key.into(), v);
@@ -188,7 +277,7 @@ fn alt_text_starts_decorative(decorative: impl IntoIterator<Item = bool>) -> boo
 
 fn check(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: bool) -> bool {
     let mut v = d.get(key, if default { "1" } else { "0" }) == "1";
-    ui.checkbox(&mut v, label);
+    ui.checkbox(&mut v, tl(ui, label));
     d.fields.insert(key.into(), if v { "1".into() } else { "0".into() });
     v
 }
@@ -1195,21 +1284,26 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 return true;
             }
-            let what = if names.len() == 1 { format!("“{}”", names[0]) } else { format!("{} presentations", names.len()) };
-            ui.label(egui::RichText::new(format!("Do you want to save the changes you made to {what}?")).strong());
-            ui.label("Your changes will be lost if you don't save them.");
+            let lang = app.ui.language;
+            let question = match names.as_slice() {
+                [one] => lang.fill("Do you want to save the changes you made to “{name}”?", &[("name", one)]),
+                _ => lang.fill("Do you want to save the changes you made to {n} presentations?", &[("n", &names.len().to_string())]),
+            };
+            ui.label(egui::RichText::new(question).strong());
+            ui.label(lang.tr("Your changes will be lost if you don't save them."));
             ui.add_space(8.0);
             let mut done = false;
             ui.horizontal(|ui| {
                 let t = Tokens::get(ui.ctx());
-                if ui.add(egui::Button::new("Don't Save").min_size(vec2(84.0, 24.0))).clicked() {
+                if ui.add(egui::Button::new(lang.tr("Don't Save")).min_size(vec2(84.0, 24.0))).clicked() {
                     let _ = app.session.execute("file.recovery.discard", &json!({}));
                     app.quit_confirmed = true;
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     done = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let save = ui.add(egui::Button::new(egui::RichText::new("Save").color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
+                    let save = ui
+                        .add(egui::Button::new(egui::RichText::new(lang.tr("Save")).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
                     if save.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         if app.save_all() {
                             app.quit_confirmed = true;
@@ -1217,7 +1311,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         }
                         done = true;
                     }
-                    if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+                    if ui.add(egui::Button::new(lang.tr("Cancel")).min_size(vec2(72.0, 24.0))).clicked() {
                         done = true;
                     }
                 });
@@ -1227,28 +1321,33 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "close" => {
             // File › Close and Ctrl+W on a presentation with unsaved changes.
             let Some(name) = app.session.active().map(|d| d.title()) else { return true };
-            ui.label(egui::RichText::new(format!("Do you want to save the changes you made to “{name}”?")).strong());
-            ui.label("Your changes will be lost if you don't save them.");
+            let lang = app.ui.language;
+            ui.label(egui::RichText::new(lang.fill("Do you want to save the changes you made to “{name}”?", &[("name", &name)])).strong());
+            ui.label(lang.tr("Your changes will be lost if you don't save them."));
             ui.add_space(8.0);
             let mut done = false;
             ui.horizontal(|ui| {
                 let t = Tokens::get(ui.ctx());
-                if ui.add(egui::Button::new("Don't Save").min_size(vec2(84.0, 24.0))).clicked() {
+                if ui.add(egui::Button::new(lang.tr("Don't Save")).min_size(vec2(84.0, 24.0))).clicked() {
                     run(app, "file.close", json!({}));
                     done = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let save = ui.add(egui::Button::new(egui::RichText::new("Save").color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
+                    let save = ui
+                        .add(egui::Button::new(egui::RichText::new(lang.tr("Save")).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
                     if save.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         app.save();
                         // In the browser a save is a download: the presentation stays "unsaved".
                         let web = app.services.pick_save.is_none() && app.services.download.is_some();
                         if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
                             run(app, "file.close", json!({}));
+                        } else {
+                            // NexusOffice: a presentation with no file waits for the host's Save As.
+                            app.close_after_pending_save();
                         }
                         done = true;
                     }
-                    if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+                    if ui.add(egui::Button::new(lang.tr("Cancel")).min_size(vec2(72.0, 24.0))).clicked() {
                         done = true;
                     }
                 });
@@ -1274,7 +1373,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let tab = d.get("tab", if numbered { "numbered" } else { "bulleted" });
             ui.horizontal(|ui| {
                 for (k, l) in [("bulleted", "Bulleted"), ("numbered", "Numbered")] {
-                    if ui.selectable_label(tab == k, l).clicked() {
+                    if ui.selectable_label(tab == k, tl(ui, l)).clicked() {
                         d.fields.insert("tab".into(), k.into());
                     }
                 }
@@ -1327,19 +1426,20 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ];
             let color = d.get("color", "");
             ui.horizontal(|ui| {
-                ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Color:"));
+                ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Color:")));
+                let colors = colors.map(|(k, l)| (k, tl(ui, l)));
                 egui::ComboBox::from_id_salt("bullet-color")
-                    .selected_text(colors.iter().find(|c| c.0 == color).map_or("Automatic", |c| c.1))
+                    .selected_text(colors.iter().find(|c| c.0 == color).map_or(tl(ui, "Automatic"), |c| c.1.clone()))
                     .show_ui(ui, |ui| {
-                        for (k, l) in colors {
-                            if ui.selectable_label(color == k, l).clicked() {
-                                d.fields.insert("color".into(), k.into());
+                        for (k, l) in &colors {
+                            if ui.selectable_label(color == *k, l.as_ref()).clicked() {
+                                d.fields.insert("color".into(), (*k).into());
                             }
                         }
                     });
             });
             ui.horizontal(|ui| {
-                if ui.button("None").on_hover_text("Remove bullets and numbering").clicked() {
+                if ui.button(tl(ui, "None")).on_hover_text(tl(ui, "Remove bullets and numbering")).clicked() {
                     d.fields.insert("none".into(), "1".into());
                 }
             });
@@ -2090,21 +2190,21 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         "autocorrect" => {
             let pr = &mut app.session.prefs;
-            ui.checkbox(&mut pr.ac_two_initials, "Correct TWo INitial CApitals");
-            ui.checkbox(&mut pr.ac_sentence_caps, "Capitalize first letter of sentences");
-            ui.checkbox(&mut pr.ac_days, "Capitalize names of days");
-            ui.checkbox(&mut pr.ac_caps_lock, "Correct accidental use of cAPS LOCK key");
-            ui.checkbox(&mut pr.ac_fractions, "Replace fractions (1/2) with fraction characters (½)");
-            ui.checkbox(&mut pr.autocorrect, "Replace text as you type");
+            ui.checkbox(&mut pr.ac_two_initials, tl(ui, "Correct TWo INitial CApitals"));
+            ui.checkbox(&mut pr.ac_sentence_caps, tl(ui, "Capitalize first letter of sentences"));
+            ui.checkbox(&mut pr.ac_days, tl(ui, "Capitalize names of days"));
+            ui.checkbox(&mut pr.ac_caps_lock, tl(ui, "Correct accidental use of cAPS LOCK key"));
+            ui.checkbox(&mut pr.ac_fractions, tl(ui, "Replace fractions (1/2) with fraction characters (½)"));
+            ui.checkbox(&mut pr.autocorrect, tl(ui, "Replace text as you type"));
             ui.add_space(4.0);
             let mut from = d.get("from", "");
             let mut to = d.get("to", "");
             ui.horizontal(|ui| {
-                ui.label("Replace");
+                ui.label(tl(ui, "Replace"));
                 ui.add(egui::TextEdit::singleline(&mut from).desired_width(90.0));
-                ui.label("With");
+                ui.label(tl(ui, "With"));
                 ui.add(egui::TextEdit::singleline(&mut to).desired_width(130.0));
-                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new("Add")).clicked() {
+                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new(tl(ui, "Add"))).clicked() {
                     run(app, "text.autocorrect", json!({"add": [from.trim(), to]}));
                     from.clear();
                     to.clear();
@@ -2120,7 +2220,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     for (k, v) in entries.iter().filter(|(k, _)| q.is_empty() || k.to_lowercase().starts_with(&q)) {
                         ui.label(k);
                         ui.label(v);
-                        if ui.small_button("Delete").clicked() {
+                        if ui.small_button(tl(ui, "Delete")).clicked() {
                             run(app, "text.autocorrect", json!({"remove": k}));
                         }
                         ui.end_row();
@@ -2137,17 +2237,18 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             if d.params.get("before").is_none() {
                 d.params = json!({ "before": preferences_snapshot(app) });
             }
-            ui.label(egui::RichText::new("General").font(theme::bold(13.0)));
+            ui.label(egui::RichText::new(tl(ui, "General")).font(theme::bold(13.0)));
             let mut dark = app.ui.brightness == theme::Brightness::Dark;
-            if ui.checkbox(&mut dark, "Dark appearance").changed() {
+            if ui.checkbox(&mut dark, tl(ui, "Dark appearance")).changed() {
                 let _ = app.run("view.dark", json!({"on": dark}));
             }
+            crate::nexus_toolbar::accent_row(app, ui);
             // While the pointer holds the slider its value only waits in the dialog: applying it
             // would rescale the slider under the pointer and run it to an end (#767). It applies
             // on release, and at once from the keyboard.
             let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
             let mut scale = pending.unwrap_or(app.ui.ui_scale);
-            let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text("Interface size"));
+            let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text(tl(ui, "Interface size")));
             if r.is_pointer_button_down_on() {
                 if r.changed() || pending.is_some() {
                     d.fields.insert("uiScale".into(), scale.to_string());
@@ -2158,13 +2259,13 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 d.fields.remove("uiScale");
             }
-            ui.label(egui::RichText::new("Editing").font(theme::bold(13.0)));
-            ui.checkbox(&mut app.session.prefs.smart_guides, "Show smart guides");
-            ui.checkbox(&mut app.session.prefs.snap_to_grid, "Snap objects to grid");
-            ui.checkbox(&mut app.session.prefs.smart_quotes, "Replace straight quotes with smart quotes");
+            ui.label(egui::RichText::new(tl(ui, "Editing")).font(theme::bold(13.0)));
+            ui.checkbox(&mut app.session.prefs.smart_guides, tl(ui, "Show smart guides"));
+            ui.checkbox(&mut app.session.prefs.snap_to_grid, tl(ui, "Snap objects to grid"));
+            ui.checkbox(&mut app.session.prefs.smart_quotes, tl(ui, "Replace straight quotes with smart quotes"));
             ui.horizontal(|ui| {
-                ui.checkbox(&mut app.session.prefs.autocorrect, "AutoCorrect as you type");
-                if ui.button("AutoCorrect Options…").clicked() {
+                ui.checkbox(&mut app.session.prefs.autocorrect, tl(ui, "AutoCorrect as you type"));
+                if ui.button(tl(ui, "AutoCorrect Options…")).clicked() {
                     *d = Dialog::new("autocorrect");
                 }
             });
@@ -2172,7 +2273,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 return false;
             }
             ui.horizontal(|ui| {
-                ui.label("Your name (comments):");
+                ui.label(tl(ui, "Your name (comments):"));
                 ui.text_edit_singleline(&mut app.session.prefs.author);
             });
             let (ok, cancel) = buttons(ui, "Done");
@@ -2398,7 +2499,7 @@ fn size_position_value(d: &Dialog) -> Result<Value, String> {
 fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
     let mut v = field_of(d, key);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(label));
+        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(96.0));
     });
     d.fields.insert(key.into(), v);
@@ -2406,7 +2507,7 @@ fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
 
 fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     seed_size_position(app, d);
-    ui.label(egui::RichText::new("Size").strong());
+    ui.label(egui::RichText::new(tl(ui, "Size")).strong());
     text_row(ui, d, "Height (in):", "h");
     text_row(ui, d, "Width (in):", "w");
     text_row(ui, d, "Rotation (°):", "rot");
@@ -2414,8 +2515,8 @@ fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool
     text_row(ui, d, "Scale width (%):", "scaleW");
     check(ui, d, "Lock aspect ratio", "lock", false);
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Position").strong());
-    ui.label("From the top-left corner of the slide");
+    ui.label(egui::RichText::new(tl(ui, "Position")).strong());
+    ui.label(tl(ui, "From the top-left corner of the slide"));
     text_row(ui, d, "Horizontal (in):", "x");
     text_row(ui, d, "Vertical (in):", "y");
     reconcile_size_fields(d);
@@ -2533,13 +2634,13 @@ fn format_spacing(v: f64) -> String {
 /// Grid Options: spacing, snap and whether the grid and guides are drawn. OK applies one
 /// `view.gridOptions` call; Cancel leaves the presentation as it was.
 fn grid_options(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    ui.label(egui::RichText::new("Snap").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Snap")).font(theme::bold(13.0)));
     let snap = check(ui, d, "Snap objects to grid", "snap", app.session.prefs.snap_to_grid);
     let smart = check(ui, d, "Snap objects to other objects", "smart", app.session.prefs.smart_guides);
     let spacing_default = format_spacing(app.session.prefs.grid_spacing);
     field(ui, d, "Spacing (pt):", "spacing", &spacing_default);
     ui.add_space(6.0);
-    ui.label(egui::RichText::new("Display").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Display")).font(theme::bold(13.0)));
     let gridlines = check(ui, d, "Display grid on screen", "gridlines", app.ui.gridlines);
     let guides = check(ui, d, "Display drawing guides on screen", "guides", app.ui.guides);
     if let Some(err) = d.fields.get("error").cloned().filter(|s| !s.is_empty()) {
@@ -2603,7 +2704,7 @@ fn pretty_equation(s: &str) -> String {
 }
 
 pub fn about(_app: &mut SlideApp, ui: &mut Ui) {
-    // NexusOffices: Nexus Slides' About (attribution to upstream in text, no community links).
+    // NexusOffice: Nexus Slide's About (attribution to upstream in text, no community links).
     crate::nexus::about_ui(ui);
 }
 
@@ -2622,7 +2723,7 @@ pub fn version_line() -> String {
     s
 }
 
-/// The app's mark, drawn in code. NexusOffices: the Nexus Slides mark (`crate::nexus`).
+/// The app's mark, drawn in code. NexusOffice: the Nexus Slide mark (`crate::nexus`).
 pub fn paint_logo(p: &egui::Painter, r: Rect) {
     crate::nexus::paint_logo(p, r);
 }
@@ -2651,7 +2752,9 @@ pub fn selected_language(app: &SlideApp) -> (String, bool) {
         _ => st.selection.shapes.first().and_then(|id| st.shape(*id)).and_then(|sh| run(sh, None)),
     };
     let props = props.unwrap_or_default();
-    (props.lang.unwrap_or_else(|| "en-US".into()), props.no_proof == Some(true))
+    // NexusOffice: text that doesn't say is in the deck's default language, if it has one.
+    let lang = props.lang.or_else(|| st.doc.default_lang().map(str::to_string)).unwrap_or_else(|| "en-US".into());
+    (lang, props.no_proof == Some(true))
 }
 
 fn seed_once(d: &mut Dialog, key: &str, val: String) {
@@ -2694,9 +2797,13 @@ fn seed_font_fields(d: &mut Dialog) {
 fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, "");
     let label = choices.iter().find(|(v, _)| *v == cur).map(|(_, l)| *l).unwrap_or(cur.as_str());
-    egui::ComboBox::from_id_salt(salt).selected_text(label).width(140.0).show_ui(ui, |ui| {
-        for (v, l) in choices {
-            if ui.selectable_label(cur == *v, *l).clicked() {
+    // NexusOffice: the items in the interface's language (keyed by field and value where a word
+    // differs by place: `align.left` "Căn trái"), worked out before the list opens.
+    let shown: Vec<String> = choices.iter().map(|(v, l)| tl_in(ui, key, v, l)).collect();
+    let selected = choices.iter().position(|(v, _)| *v == cur).and_then(|i| shown.get(i).cloned()).unwrap_or_else(|| tl(ui, label).into_owned());
+    egui::ComboBox::from_id_salt(salt).selected_text(selected).width(140.0).show_ui(ui, |ui| {
+        for ((v, _), l) in choices.iter().zip(&shown) {
+            if ui.selectable_label(cur == *v, l.as_str()).clicked() {
                 d.fields.insert((*key).into(), (*v).into());
             }
         }
@@ -2705,7 +2812,7 @@ fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, 
 
 fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32) -> String {
     let mut v = d.get(key, "");
-    let l = ui.label(label);
+    let l = ui.label(tl_in(ui, "field", key, label));
     ui.add(egui::TextEdit::singleline(&mut v).desired_width(width)).labelled_by(l.id);
     d.fields.insert(key.into(), v.clone());
     v
@@ -2725,7 +2832,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         fams.insert(0, family.clone());
     }
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Font"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Font")));
         egui::ComboBox::from_id_salt("font_dialog_family").selected_text(if family.is_empty() { " " } else { family.as_str() }).width(300.0).show_ui(
             ui,
             |ui| {
@@ -2746,7 +2853,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         check(ui, d, "Italic", "italic", false);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Underline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Underline")));
         choice(
             ui,
             d,
@@ -2758,34 +2865,28 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         let _ = labeled_text(ui, d, "Color", "color", 110.0);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Strikethrough"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Strikethrough")));
         choice(ui, d, "font_dialog_strike", "strike", &[("none", "None"), ("sng", "Single"), ("dbl", "Double")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Baseline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Baseline")));
         choice(ui, d, "font_dialog_baseline", "baseline", &[("none", "None"), ("super", "Superscript"), ("sub", "Subscript")]);
         ui.add_space(8.0);
-        ui.label("Caps");
+        ui.label(tl(ui, "Caps"));
         choice(ui, d, "font_dialog_caps", "caps", &[("none", "None"), ("small", "Small caps"), ("all", "All caps")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Spacing"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Spacing")));
         let mut spacing = d.get("spacing", "0");
         let edited = ui.add(egui::TextEdit::singleline(&mut spacing).desired_width(64.0).hint_text("pt"));
         let mut picked = None;
+        let presets = [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")].map(|(v, l)| (v, tl(ui, l)));
         egui::ComboBox::from_id_salt("font_dialog_spacing")
-            .selected_text(match spacing.as_str() {
-                "-3" => "Very tight",
-                "-1.5" => "Tight",
-                "0" => "Normal",
-                "3" => "Loose",
-                "6" => "Very loose",
-                other => other,
-            })
+            .selected_text(presets.iter().find(|(v, _)| *v == spacing).map_or(spacing.as_str(), |(_, l)| l.as_ref()))
             .width(120.0)
             .show_ui(ui, |ui| {
-                for (v, l) in [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")] {
-                    if ui.selectable_label(spacing == v, l).clicked() {
+                for (v, l) in &presets {
+                    if ui.selectable_label(spacing == *v, l.as_ref()).clicked() {
                         picked = Some(v.to_string());
                     }
                 }
@@ -2928,7 +3029,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.set_min_width(460.0);
     seed_paragraph_fields(d);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Alignment"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Alignment")));
         choice(
             ui,
             d,
@@ -2944,7 +3045,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ],
         );
     });
-    ui.label(egui::RichText::new("Indentation").strong());
+    ui.label(egui::RichText::new(tl(ui, "Indentation")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Before text", "before", 64.0);
         ui.label("in");
@@ -2953,13 +3054,13 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         ui.label("in");
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Special"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Special")));
         choice(ui, d, "paragraph_special", "special", &[("none", "None"), ("first", "First line"), ("hanging", "Hanging")]);
         ui.add_space(8.0);
         let _ = labeled_text(ui, d, "By", "by", 64.0);
         ui.label("in");
     });
-    ui.label(egui::RichText::new("Spacing").strong());
+    ui.label(egui::RichText::new(tl(ui, "Spacing")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Spacing before", "spaceBefore", 64.0);
         ui.label("pt");
@@ -2969,18 +3070,21 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     });
     let mut picked: Option<(&'static str, Option<&'static str>)> = None;
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Line spacing"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Line spacing")));
         let kind = d.get("lineKind", "multiple");
         let value = d.get("lineValue", "1");
-        egui::ComboBox::from_id_salt("paragraph_line").selected_text(line_preset_label(&kind, &value)).width(140.0).show_ui(ui, |ui| {
-            for (label, k, v) in [
-                ("Single", "multiple", Some("1")),
-                ("1.5 lines", "multiple", Some("1.5")),
-                ("Double", "multiple", Some("2")),
-                ("Multiple", "multiple", None),
-                ("Exactly", "exactly", None),
-            ] {
-                if ui.selectable_label(line_preset_label(&kind, &value) == label, label).clicked() {
+        let presets = [
+            ("Single", "multiple", Some("1")),
+            ("1.5 lines", "multiple", Some("1.5")),
+            ("Double", "multiple", Some("2")),
+            ("Multiple", "multiple", None),
+            ("Exactly", "exactly", None),
+        ]
+        .map(|(label, k, v)| (label, tl_in(ui, "lineSpacing", label, label), k, v));
+        let current = line_preset_label(&kind, &value);
+        egui::ComboBox::from_id_salt("paragraph_line").selected_text(tl_in(ui, "lineSpacing", current, current)).width(140.0).show_ui(ui, |ui| {
+            for (label, shown, k, v) in presets {
+                if ui.selectable_label(line_preset_label(&kind, &value) == label, shown).clicked() {
                     picked = Some((k, v));
                 }
             }
@@ -3000,7 +3104,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     let mut open_tabs = false;
     ui.horizontal(|ui| {
-        if ui.button("Tabs…").clicked() {
+        if ui.button(tl(ui, "Tabs…")).clicked() {
             open_tabs = true;
         }
     });
@@ -3090,17 +3194,20 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         .collect();
     field(ui, d, "Default tab stops (in):", "default", "1");
     ui.add_space(6.0);
-    ui.label("Tab stops:");
+    ui.label(tl(ui, "Tab stops:"));
     let mut remove = None;
     egui::Grid::new("tab_stops").num_columns(3).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
         if stops.is_empty() {
-            ui.label("(none)");
+            ui.label(tl(ui, "(none)"));
             ui.end_row();
         }
         for (i, (pos, align)) in stops.iter().enumerate() {
             ui.label(format!("{pos:.2}\""));
-            ui.label(TAB_KINDS.iter().find(|k| k.0 == align).map(|k| k.1).unwrap_or("Left"));
-            if ui.small_button("Clear").on_hover_text(format!("Clear the tab at {pos:.2}\"")).clicked() {
+            let (k, l) = TAB_KINDS.iter().find(|k| k.0 == align).copied().unwrap_or(("l", "Left"));
+            ui.label(tl_in(ui, "tab", k, l));
+            let at = format!("{pos:.2}\"");
+            let tip = crate::i18n::current(ui.ctx()).fill("Clear the tab at {pos}", &[("pos", &at)]);
+            if ui.small_button(tl(ui, "Clear")).on_hover_text(tip).clicked() {
                 remove = Some(i);
             }
             ui.end_row();
@@ -3111,22 +3218,22 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label("Tab stop position (in):");
+        ui.label(tl(ui, "Tab stop position (in):"));
         let mut v = d.get("newpos", "");
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(60.0));
         d.fields.insert("newpos".into(), v);
     });
     let cur = d.get("newalign", "l");
     ui.horizontal(|ui| {
-        ui.label("Alignment:");
+        ui.label(tl(ui, "Alignment:"));
         for (k, label) in TAB_KINDS {
-            if ui.radio(cur == k, label).clicked() {
+            if ui.radio(cur == k, tl_in(ui, "tab", k, label)).clicked() {
                 d.fields.insert("newalign".into(), k.into());
             }
         }
     });
     ui.horizontal(|ui| {
-        if ui.button("Set").clicked()
+        if ui.button(tl(ui, "Set")).clicked()
             && let Some(p) = Some(num(d, "newpos", f64::NAN)).filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
         {
             stops.retain(|(q, _)| (q - p).abs() > 0.005);
@@ -3134,7 +3241,7 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             stops.sort_by(|a, b| a.0.total_cmp(&b.0));
             d.fields.insert("newpos".into(), String::new());
         }
-        if ui.button("Clear All").clicked() {
+        if ui.button(tl(ui, "Clear All")).clicked() {
             stops.clear();
         }
     });
@@ -3192,7 +3299,7 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 p["with"] = json!(d.get("with", ""));
                 let msg = match app.session.execute("text.replace", &p) {
                     Ok(v) => format!("Replaced {} occurrence(s).", v.get("replaced").and_then(Value::as_u64).unwrap_or(0)),
-                    Err(_) => format!("Nexus Slides can't find “{text}”."),
+                    Err(_) => format!("Nexus Slide can't find “{text}”."),
                 };
                 d.fields.insert("status".into(), msg);
                 d.fields.remove("cur");
@@ -3207,7 +3314,7 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     if find_next {
         let list = app.session.execute("text.find", &q).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
         if list.is_empty() {
-            d.fields.insert("status".into(), format!("Nexus Slides can't find “{text}”."));
+            d.fields.insert("status".into(), format!("Nexus Slide can't find “{text}”."));
             d.fields.remove("cur");
         } else {
             let n = d.get("next", "0").parse::<usize>().unwrap_or(0) % list.len();

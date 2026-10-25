@@ -22,6 +22,7 @@ pub mod keys;
 pub mod links;
 pub mod media_refs;
 pub mod nexus;
+pub mod nexus_vi;
 pub mod recovery;
 pub mod sample;
 pub mod sounds;
@@ -453,6 +454,15 @@ pub struct Session {
     pub ui_requests: Vec<UiRequest>,
     pub tool: tools::ToolState,
     pub(crate) untitled: u32,
+    /// NexusOffice: what new presentations are called before their number, in the interface's
+    /// language ("Trình chiếu " → "Trình chiếu 1"); empty is upstream's "Presentation". Set by the
+    /// interface, not saved.
+    pub untitled_prefix: String,
+    /// NexusOffice: the language new presentations' text is in (`vi-VN` while the interface is
+    /// Vietnamese), kept as the deck's default text language so a PPTX save writes
+    /// `lang="vi-VN"`; None is upstream's (no language, read as US English). Opened files keep
+    /// their own. Set by the interface, not saved.
+    pub new_language: Option<String>,
     /// Format Painter: copied shape/text formatting and whether it stays on (double-click).
     pub painter: Option<(cmd::format::Painted, bool)>,
     /// Animation Painter: copied shape animations and whether it stays on (double-click).
@@ -497,6 +507,8 @@ impl Session {
             ui_requests: vec![],
             tool: tools::ToolState::default(),
             untitled: 0,
+            untitled_prefix: String::new(),
+            new_language: None,
             default_look: None,
             painter: None,
             anim_painter: None,
@@ -571,8 +583,9 @@ impl Session {
         }
     }
     pub fn next_untitled(&mut self) -> String {
-        self.untitled += 1;
-        format!("Presentation{}", self.untitled)
+        self.untitled = self.untitled.saturating_add(1);
+        let prefix = if self.untitled_prefix.trim().is_empty() { "Presentation" } else { self.untitled_prefix.as_str() };
+        format!("{prefix}{}", self.untitled)
     }
 
     /// Run command `id`. A panic inside it becomes [`EngineError::Internal`] and leaves the

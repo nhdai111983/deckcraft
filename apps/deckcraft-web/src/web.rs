@@ -38,6 +38,9 @@ pub fn start() {
                     }
                     let inbox: Inbox = Inbox::default();
                     let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
+                    // NexusOffice layout in the style of WPS Office, in Vietnamese.
+                    app.wps = true;
+                    app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
                     let q = query();
                     if !q.contains("blank") {
                         if let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
@@ -56,9 +59,7 @@ pub fn start() {
         if let Some(el) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => el.remove(),
-                Err(e) => {
-                    el.set_inner_html(&format!("<p>Nexus Slides failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>"))
-                }
+                Err(e) => el.set_inner_html(&format!("<p>Nexus Slide failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
             }
         }
     });
