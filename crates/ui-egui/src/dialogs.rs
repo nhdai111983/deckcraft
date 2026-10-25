@@ -78,6 +78,17 @@ fn title(id: &str) -> &'static str {
 
 pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let Some(mut d) = app.dialog.take() else { return };
+    // NexusOffice: as a tab of the NexusOffice window, the prompt every Nexus app shows.
+    if app.embedded && matches!(d.id.as_str(), "close" | "quit") {
+        match embedded_save_prompt(app, ctx, &d) {
+            Some(true) => {
+                app.dialog = Some(d);
+                return;
+            }
+            Some(false) => return,
+            None => {}
+        }
+    }
     let mut open = true;
     let mut close = false;
     let lang = app.ui.language;
@@ -129,6 +140,70 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         back.params = ret;
         app.dialog = Some(back);
     }
+}
+
+/// NexusOffice: "Lưu thay đổi?" over the tab (`nexus_save_prompt`) for File › Close ("close")
+/// and quitting ("quit"). Lưu, Không lưu and Hủy do what the stand-alone prompt's Save, Don't Save
+/// and Cancel do. Returns whether the prompt stays open, or None when there is nothing to ask
+/// about (the stand-alone code then finishes the close or the quit).
+fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> Option<bool> {
+    use crate::nexus_save_prompt as sp;
+    let quit = d.id == "quit";
+    let names: Vec<String> = if quit {
+        app.session.documents().iter().filter(|d| d.is_dirty()).map(|d| d.title()).collect()
+    } else {
+        app.session.active().map(|d| d.title()).into_iter().collect()
+    };
+    let vi = app.ui.language == crate::i18n::Language::Vi;
+    let question = match names.as_slice() {
+        [] => return None,
+        [one] => sp::question(vi, one),
+        many if vi => format!("Lưu thay đổi của {} bản trình chiếu trước khi đóng?", many.len()),
+        many => format!("Save changes to {} presentations before closing?", many.len()),
+    };
+    let t = Tokens::get(ctx);
+    let prompt = sp::Prompt { words: sp::words(vi), question: &question, note: None, error: None };
+    let look = sp::Look {
+        surface: t.card,
+        border: t.card_border,
+        text: t.text,
+        text_dim: t.text_dim,
+        error: ctx.global_style().visuals.error_fg_color,
+        accent: t.accent,
+        on_accent: t.accent_text,
+        backdrop: Color32::from_black_alpha(if t.dark { 110 } else { 56 }),
+        title_font: theme::bold(sp::TITLE_SIZE),
+    };
+    let Some(answer) = sp::show(ctx, egui::Id::new("nexus_save_prompt"), app.drawn_in, &prompt, &look) else { return Some(true) };
+    match (answer, quit) {
+        (sp::Answer::Cancel, _) => {}
+        (sp::Answer::DontSave, false) => {
+            let _ = app.run("file.close", json!({}));
+        }
+        (sp::Answer::DontSave, true) => {
+            let _ = app.session.execute("file.recovery.discard", &json!({}));
+            app.quit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        (sp::Answer::Save, false) => {
+            app.save();
+            // In the browser a save is a download: the presentation stays "unsaved".
+            let web = app.services.pick_save.is_none() && app.services.download.is_some();
+            if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
+                let _ = app.run("file.close", json!({}));
+            } else {
+                // A presentation with no file waits for the host's Save As.
+                app.close_after_pending_save();
+            }
+        }
+        (sp::Answer::Save, true) => {
+            if app.save_all() {
+                app.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+    Some(false)
 }
 
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
@@ -2679,7 +2754,9 @@ pub fn selected_language(app: &SlideApp) -> (String, bool) {
         _ => st.selection.shapes.first().and_then(|id| st.shape(*id)).and_then(|sh| run(sh, None)),
     };
     let props = props.unwrap_or_default();
-    (props.lang.unwrap_or_else(|| "en-US".into()), props.no_proof == Some(true))
+    // NexusOffice: text that doesn't say is in the deck's default language, if it has one.
+    let lang = props.lang.or_else(|| st.doc.default_lang().map(str::to_string)).unwrap_or_else(|| "en-US".into());
+    (lang, props.no_proof == Some(true))
 }
 
 fn seed_once(d: &mut Dialog, key: &str, val: String) {

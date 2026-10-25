@@ -21,6 +21,9 @@ pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
+pub mod nexus_save_prompt;
+#[cfg(test)]
+mod nexus_save_prompt_tests;
 pub mod nexus_toolbar;
 pub mod nexus_wps;
 pub mod notes;
@@ -560,6 +563,9 @@ pub struct SlideApp {
     /// fonts to the window's instead of replacing them, leaves the window alone (no title, no
     /// drag, no close prompt of its own) and its top row doesn't move or maximise the window.
     pub embedded: bool,
+    /// NexusOffice: the rectangle the app was last drawn in (its tab, when [`embedded`](Self::embedded)),
+    /// which "Lưu thay đổi?" dims and centres on.
+    pub(crate) drawn_in: egui::Rect,
     /// The host's file dialog being shown ([`file_dialogs`]).
     pub(crate) file_dialog: Option<file_dialogs::PendingDialog>,
     /// NexusOffice: the untouched new presentation (its uid) a presentation being opened replaces.
@@ -639,6 +645,7 @@ impl SlideApp {
             toolbar: false,
             wps: false,
             embedded: false,
+            drawn_in: egui::Rect::NOTHING,
             file_dialog: None,
             replace_blank: None,
             page_notes: None,
@@ -1815,6 +1822,10 @@ impl SlideApp {
         if self.session.untitled_prefix != prefix {
             self.session.untitled_prefix = prefix.to_string();
         }
+        let lang = self.ui.language.document_language();
+        if self.session.new_language.as_deref() != lang {
+            self.session.new_language = lang.map(str::to_string);
+        }
         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
         // Embedded, the window's zoom is the host's (another tab's editor shares it).
         if !self.embedded && (ctx.zoom_factor() - scale).abs() > 1e-3 {
@@ -2099,6 +2110,7 @@ impl SlideApp {
     /// Lay out the whole window.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.drawn_in = ui.max_rect();
         if !self.fonts_ready {
             ctx.request_repaint();
             return;
