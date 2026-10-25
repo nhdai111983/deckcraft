@@ -687,7 +687,7 @@ fn theme_color_payload(d: &mut Dialog) -> Result<Value, String> {
     let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err(lang.tr("Enter a scheme name.").into_owned());
+        return Err(lang.lookup("themeColors.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let mut colors = serde_json::Map::new();
     for slot in SchemeSlot::THEME {
@@ -721,7 +721,7 @@ fn theme_colors_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
         ui.label(tl(ui, "Name:"));
-        let access = tl(ui, "Scheme name").into_owned();
+        let access = tl_in(ui, "themeColors", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
@@ -794,7 +794,7 @@ fn theme_font_payload(d: &mut Dialog) -> Result<Value, String> {
     let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err(lang.tr("Enter a scheme name.").into_owned());
+        return Err(lang.lookup("themeFonts.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let major = d.get("major", "").trim().to_string();
     if major.is_empty() {
@@ -836,7 +836,7 @@ fn theme_fonts_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
         ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Name:")));
-        let access = tl(ui, "Scheme name").into_owned();
+        let access = tl_in(ui, "themeFonts", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(240.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
@@ -1174,6 +1174,10 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let lang = lang_of(d);
             let unit = LengthUnit::of(lang);
             let two = |v: f64| units::localize(lang, &format!("{v:.2}")).into_owned();
+            if !d.fields.contains_key("wSeed") {
+                seed_len(d, "w", cur.width, two(unit.from_points(cur.width)));
+                seed_len(d, "h", cur.height, two(unit.from_points(cur.height)));
+            }
             ui.label(tl(ui, "Slides sized for:"));
             let preset = d.get("preset", "");
             egui::ComboBox::from_id_salt("sizes").selected_text(if preset.is_empty() { tl(ui, "Custom") } else { tl(ui, &preset) }).show_ui(
@@ -1182,29 +1186,33 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     for (label, w, h) in deckcraft_model::defaults::SLIDE_SIZES {
                         if ui.selectable_label(preset == *label, tl(ui, label)).clicked() {
                             d.fields.insert("preset".into(), label.to_string());
-                            d.fields.insert("w".into(), two(unit.from_points(*w)));
-                            d.fields.insert("h".into(), two(unit.from_points(*h)));
+                            seed_len(d, "w", *w, two(unit.from_points(*w)));
+                            seed_len(d, "h", *h, two(unit.from_points(*h)));
                         }
                     }
                 },
             );
             field(ui, d, "Width (in):", "w", &two(unit.from_points(cur.width)));
             field(ui, d, "Height (in):", "h", &two(unit.from_points(cur.height)));
-            let (w, h) = (num(d, "w", unit.from_points(cur.width)), num(d, "h", unit.from_points(cur.height)));
+            let (w, h) = (slide_len(d, "w", cur.width).unwrap_or(cur.width), slide_len(d, "h", cur.height).unwrap_or(cur.height));
             ui.horizontal(|ui| {
                 ui.label(tl(ui, "Orientation:"));
                 let portrait = ui.radio(h > w, tl(ui, "Portrait")).clicked();
                 let landscape = ui.radio(w >= h, tl(ui, "Landscape")).clicked();
                 // Picking the other orientation swaps the width and height fields.
                 if portrait && w > h || landscape && h > w {
-                    d.fields.insert("w".into(), two(h));
-                    d.fields.insert("h".into(), two(w));
+                    seed_len(d, "w", h, two(unit.from_points(h)));
+                    seed_len(d, "h", w, two(unit.from_points(w)));
                 }
             });
             let maximize = check(ui, d, "Maximize content (else ensure fit)", "max", false);
             let (ok, cancel) = buttons(ui, "OK");
             if ok {
-                let (w, h) = (unit.to_points(num(d, "w", unit.from_points(cur.width))), unit.to_points(num(d, "h", unit.from_points(cur.height))));
+                let (Some(w), Some(h)) = (slide_len(d, "w", cur.width), slide_len(d, "h", cur.height)) else {
+                    let which = if slide_len(d, "w", cur.width).is_none() { "Width" } else { "Height" };
+                    app.set_status(must_be_a_number(d, which));
+                    return false;
+                };
                 run(app, "design.slideSize", json!({"w": w, "h": h, "scale": if maximize { "maximize" } else { "ensureFit" }}));
             }
             ok || cancel
@@ -2165,7 +2173,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 for (i, cat) in c.categories.iter().enumerate() {
                     let mut row = vec![cat.clone()];
                     for s in &c.series {
-                        row.push(s.values.get(i).copied().flatten().map(|v| units::localize(lang, &v.to_string()).into_owned()).unwrap_or_default());
+                        row.push(s.values.get(i).copied().flatten().map(|v| units::format_grouped(lang, v)).unwrap_or_default());
                     }
                     g.push(row);
                 }
@@ -2191,11 +2199,36 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
             });
             d.params = json!({"grid": grid});
+            // NexusOffice: a cell that isn't a number is said, not dropped (the chart keeps its data).
+            if let Some(err) = d.fields.get("chartError").filter(|e| !e.is_empty()) {
+                ui.label(egui::RichText::new(err.as_str()).color(ui.visuals().error_fg_color));
+            }
             let (ok, cancel) = buttons(ui, "OK");
             if ok {
                 let names: Vec<String> = grid.first().map(|r| r.iter().skip(1).cloned().collect()).unwrap_or_default();
                 let cats: Vec<String> = grid.iter().skip(1).map(|r| r.first().cloned().unwrap_or_default()).collect();
-                let series: Vec<Value> = names.iter().enumerate().map(|(k, n)| json!({"name": n, "values": grid.iter().skip(1).map(|r| r.get(k + 1).and_then(|v| if lang == Language::En { v.trim().parse::<f64>().ok() } else { units::parse_number(lang, v.trim()) })).collect::<Vec<_>>()})).collect();
+                let mut bad: Option<String> = None;
+                let mut cell = |v: &String| -> Option<f64> {
+                    let t = v.trim();
+                    if lang == Language::En {
+                        return t.parse::<f64>().ok();
+                    }
+                    let n = units::parse_grouped(lang, t);
+                    if n.is_none() && !t.is_empty() && bad.is_none() {
+                        bad = Some(t.to_string());
+                    }
+                    n
+                };
+                let series: Vec<Value> = names
+                    .iter()
+                    .enumerate()
+                    .map(|(k, n)| json!({"name": n, "values": grid.iter().skip(1).map(|r| r.get(k + 1).and_then(&mut cell)).collect::<Vec<_>>()}))
+                    .collect();
+                if let Some(t) = bad {
+                    let msg = lang.fill("“{cell}” is not a number. Fix it; the chart keeps its data.", &[("cell", &t)]);
+                    d.fields.insert("chartError".into(), msg);
+                    return false;
+                }
                 run(app, "chart.data", json!({"id": id.0, "categories": cats, "series": series}));
             }
             ok || cancel
@@ -2597,6 +2630,30 @@ fn shown_number(d: &Dialog, key: &str, label: &str) -> Result<f64, String> {
     exact_of(d, key).ok_or_else(|| must_be_a_number(d, label))
 }
 
+/// NexusOffice: Slide Size's field `key` shows `shown` for `pt` points; left as it is, it keeps `pt`
+/// exactly (the text rounds to two decimals).
+fn seed_len(d: &mut Dialog, key: &str, pt: f64, shown: String) {
+    d.fields.insert(key.into(), shown.clone());
+    d.fields.insert(format!("{key}Seed"), shown);
+    d.fields.insert(format!("{key}Pt"), pt.to_string());
+}
+
+/// NexusOffice: Slide Size's field `key` in points. English is upstream's (`fallback_pt` when the
+/// text isn't a number). Vietnamese: the exact seeded value while the text is as shown, otherwise
+/// the typed length (centimetres, or the unit typed); `None` when it isn't one.
+fn slide_len(d: &mut Dialog, key: &str, fallback_pt: f64) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => Some(num(d, key, fallback_pt / 72.0) * 72.0),
+        lang => {
+            let text = d.get(key, "");
+            if d.fields.get(&format!("{key}Seed")) == Some(&text) {
+                return Some(d.fields.get(&format!("{key}Pt")).and_then(|p| p.parse::<f64>().ok()).filter(|v| v.is_finite()).unwrap_or(fallback_pt));
+            }
+            units::parse_length(lang, &text)
+        }
+    }
+}
+
 /// NexusOffice: an issue the accessibility check reports, in `lang`.
 fn accessibility_issue(lang: Language, issue: &str) -> String {
     if let Some(ratio) = issue.strip_prefix("Hard-to-read text contrast (").and_then(|r| r.strip_suffix(":1)")) {
@@ -2988,6 +3045,45 @@ fn pt_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
     finite_pt(&std_number(lang, &d.get(key, default)))
 }
 
+/// NexusOffice: the Paragraph dialog param field `key` was seeded from (`indentLeft` for "before").
+fn param_of(key: &str) -> &str {
+    match key {
+        "before" => "indentLeft",
+        "after" => "indentRight",
+        "by" => "specialBy",
+        other => other,
+    }
+}
+
+/// NexusOffice: in Vietnamese, field `key` still showing what it was seeded with keeps the exact
+/// value it was seeded from (the text rounds: 27 pt shows "0,95" cm); `None` when it wasn't seeded
+/// from a number. English reads the text as upstream does.
+fn kept_value(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    if lang_of(d) == Language::En {
+        return None;
+    }
+    let seed = d.fields.get(&format!("{key}Seed")).cloned()?;
+    if d.get(key, default) != seed {
+        return None;
+    }
+    match d.params.get(param_of(key)) {
+        // Seeded from the paragraph: exactly that (a malformed one reads as 0, as the seed did).
+        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).unwrap_or(0.0)),
+        // Seeded from the default: an indent's 0 is exact; anything else reads from the text.
+        None => (seed == "0").then_some(0.0),
+    }
+}
+
+/// NexusOffice: a Paragraph length in points, exact while untouched ([`kept_value`]).
+fn len_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| len_field(d, key, default))
+}
+
+/// NexusOffice: a Paragraph number (points, a multiple), exact while untouched ([`kept_value`]).
+fn pt_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| pt_field(d, key, default))
+}
+
 /// NexusOffice: the length typed in field `key`, in points: inches in English (upstream),
 /// centimetres (or the unit typed) in Vietnamese.
 fn len_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
@@ -3159,21 +3255,27 @@ fn seed_paragraph_fields(d: &mut Dialog) {
     seed_once(d, "after", inches_text(lang, d.params.get("indentRight")));
     seed_once(d, "special", json_text(d.params.get("special"), "none"));
     seed_once(d, "by", inches_text(lang, d.params.get("specialBy")));
+    // NexusOffice: what each length/number field showed, so OK with it untouched keeps the exact value.
+    for key in ["before", "after", "by"] {
+        let shown = d.fields.get(key).cloned().unwrap_or_default();
+        seed_once(d, &format!("{key}Seed"), shown);
+    }
     seed_once(d, "spaceBefore", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceBeforeSeed", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceAfter", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "spaceAfterSeed", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "lineKind", json_text(d.params.get("lineKind"), "multiple"));
     seed_once(d, "lineValue", pt_text(d.params.get("lineValue"), 1.0));
+    seed_once(d, "lineValueSeed", pt_text(d.params.get("lineValue"), 1.0));
 }
 
 fn paragraph_return_params(d: &mut Dialog) -> Value {
-    let before = len_field(d, "before", "0").unwrap_or(0.0);
-    let after = len_field(d, "after", "0").unwrap_or(0.0);
-    let by = len_field(d, "by", "0").unwrap_or(0.0);
-    let space_before = pt_field(d, "spaceBefore", "0").unwrap_or(0.0);
-    let space_after = pt_field(d, "spaceAfter", "0").unwrap_or(0.0);
-    let line_value = pt_field(d, "lineValue", "1").unwrap_or(1.0);
+    let before = len_kept(d, "before", "0").unwrap_or(0.0);
+    let after = len_kept(d, "after", "0").unwrap_or(0.0);
+    let by = len_kept(d, "by", "0").unwrap_or(0.0);
+    let space_before = pt_kept(d, "spaceBefore", "0").unwrap_or(0.0);
+    let space_after = pt_kept(d, "spaceAfter", "0").unwrap_or(0.0);
+    let line_value = pt_kept(d, "lineValue", "1").unwrap_or(1.0);
     let before_same = d.get("spaceBefore", "") == d.get("spaceBeforeSeed", "");
     let after_same = d.get("spaceAfter", "") == d.get("spaceAfterSeed", "");
     let v = json!({
@@ -3311,27 +3413,27 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         return true;
     }
     if ok {
-        let Some(before_in) = len_field(d, "before", "") else {
+        let Some(before_in) = len_kept(d, "before", "") else {
             app.set_status("Indent before text must be a number of inches");
             return false;
         };
-        let Some(after_in) = len_field(d, "after", "") else {
+        let Some(after_in) = len_kept(d, "after", "") else {
             app.set_status("Indent after text must be a number of inches");
             return false;
         };
-        let Some(by_in) = len_field(d, "by", "") else {
+        let Some(by_in) = len_kept(d, "by", "") else {
             app.set_status("Special indent must be a number of inches");
             return false;
         };
-        let Some(space_before) = pt_field(d, "spaceBefore", "") else {
+        let Some(space_before) = pt_kept(d, "spaceBefore", "") else {
             app.set_status("Spacing before must be a number");
             return false;
         };
-        let Some(space_after) = pt_field(d, "spaceAfter", "") else {
+        let Some(space_after) = pt_kept(d, "spaceAfter", "") else {
             app.set_status("Spacing after must be a number");
             return false;
         };
-        let Some(line_value) = pt_field(d, "lineValue", "") else {
+        let Some(line_value) = pt_kept(d, "lineValue", "") else {
             app.set_status("Line spacing must be a number");
             return false;
         };

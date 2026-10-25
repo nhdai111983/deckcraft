@@ -1343,3 +1343,102 @@ fn junk_lengths_in_vietnamese_never_panic() {
         assert!(h.state().dialog.is_some(), "{junk:?} is not a length: the dialog stays open");
     }
 }
+
+/// The chart selected in the active presentation, if any.
+fn selected_chart(app: &SlideApp) -> Option<deckcraft_model::chart::Chart> {
+    app.session.active()?.selected_shapes().into_iter().find_map(|x| match &x.kind {
+        deckcraft_model::ShapeKind::Chart(c) => Some((**c).clone()),
+        _ => None,
+    })
+}
+
+/// NexusOffice (vi-VN numbers): Chart Data is data, so a point groups thousands and a comma is
+/// the decimal ("1.500.000", "1.234,5"); the cells show the values that way. A cell that isn't a
+/// number is not silently dropped: OK keeps the dialog open with a Vietnamese notice and the chart
+/// keeps its data.
+#[test]
+fn chart_data_reads_vietnamese_thousands_and_keeps_the_data_on_a_bad_cell() {
+    use crate::dialogs::Dialog;
+    let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+        let id = a.run("insert.chart", json!({})).unwrap()["id"].as_u64().unwrap();
+        let series = json!([{"name": "Doanh thu", "values": [1_500_000.0, 2.5]}]);
+        a.run("chart.data", json!({"id": id, "categories": ["Quý 1", "Quý 2"], "series": series})).unwrap();
+        a.dialog = Some(Dialog::new("chartData"));
+    });
+    h.run_steps(8);
+    let grid = |h: &H| -> Vec<Vec<String>> {
+        h.state().dialog.as_ref().and_then(|d| serde_json::from_value(d.params["grid"].clone()).ok()).unwrap_or_default()
+    };
+    let g = grid(&h);
+    assert_eq!(g.get(1).and_then(|r| r.get(1)).map(String::as_str), Some("1.500.000"), "{g:?}");
+    assert_eq!(g.get(2).and_then(|r| r.get(1)).map(String::as_str), Some("2,5"), "{g:?}");
+    let set = |h: &mut H, a: &str, b: &str| {
+        let mut g = grid(h);
+        g[1][1] = a.into();
+        g[2][1] = b.into();
+        h.state_mut().dialog.as_mut().unwrap().params = json!({"grid": g});
+        h.run_steps(2);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(4);
+    };
+    let values = |h: &H| selected_chart(h.state()).map(|c| c.series[0].values.clone()).unwrap_or_default();
+    // A bad cell: the dialog stays, says so in Vietnamese, and nothing changes.
+    set(&mut h, "1.234,5", "abc");
+    assert!(h.state().dialog.is_some(), "a cell that isn't a number keeps the dialog open");
+    assert!(drawn(&h).iter().any(|t| t.contains("abc") && t.contains("không phải là số")), "{:?}", drawn(&h));
+    assert_eq!(values(&h), vec![Some(1_500_000.0), Some(2.5)], "the chart keeps its data");
+    // Thousands and a decimal comma read as data.
+    set(&mut h, "1.234,5", "-1.234");
+    assert!(h.state().dialog.is_none(), "valid cells apply");
+    assert_eq!(values(&h), vec![Some(1234.5), Some(-1234.0)]);
+}
+
+/// NexusOffice (vi-VN units): a length shown in centimetres and left as it is keeps its exact value:
+/// OK in Paragraph and Slide Size, and leaving a Format Shape spinner, don't round it through the
+/// two decimals shown (27 pt is "0,95" cm, 960 pt is "33,87" cm). Slide Size reads a typed unit.
+#[test]
+fn unchanged_lengths_keep_their_exact_value_in_vietnamese() {
+    use crate::dialogs::Dialog;
+    let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| {
+        a.run("shape.insert", json!({"preset": "rect", "rect": [72.0, 36.0, 300.0, 100.0], "text": "x"})).unwrap();
+        a.run("format.paragraphDialog", json!({"indentLeft": 27.0, "special": "first", "specialBy": 13.0})).unwrap();
+        a.run("format.paragraphDialog", json!({})).unwrap();
+    });
+    h.run_steps(8);
+    assert_eq!(h.state().dialog.as_ref().map(|d| d.id.as_str()), Some("paragraph"));
+    assert_eq!(h.state().dialog.as_ref().and_then(|d| d.fields.get("before")).map(String::as_str), Some("0,95"));
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+    let left = h.state().session.active().unwrap().selected_shapes().first().and_then(|s| s.text.as_ref()?.paragraphs.first()?.props.margin_left);
+    assert_eq!(left, Some(27.0), "OK with the indent untouched keeps 27 pt");
+    // Format Shape › Size: focusing a spinner and leaving it unchanged doesn't move the shape.
+    h.state_mut().ui.pane = Some("format".into());
+    h.state_mut().ui.format_tab = "size".into();
+    h.run_steps(8);
+    let height = |h: &H| h.state().session.active().unwrap().selected_shapes().first().and_then(|s| s.xfrm).map(|x| x.h);
+    assert_eq!(height(&h), Some(100.0));
+    // The pane's box (the ribbon's Shape Format group shows the same height).
+    h.get_all_by_value("3,53 cm").max_by(|a, b| a.rect().min.x.total_cmp(&b.rect().min.x)).unwrap().click();
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    assert_eq!(height(&h), Some(100.0), "an unchanged spinner commits nothing (3,53 cm would be 100,06 pt)");
+    h.state_mut().ui.pane = None;
+    // Slide Size: OK untouched keeps 960 × 540 pt; "25,4 cm" typed is 720 pt.
+    h.state_mut().dialog = Some(Dialog::new("slideSize"));
+    h.run_steps(6);
+    assert_eq!(h.state().dialog.as_ref().and_then(|d| d.fields.get("w")).map(String::as_str), Some("33,87"));
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    let size = h.state().session.active().unwrap().doc.slide_size;
+    assert_eq!((size.width, size.height), (960.0, 540.0), "OK with the size untouched keeps it");
+    h.state_mut().dialog = Some(Dialog::new("slideSize"));
+    h.run_steps(6);
+    h.state_mut().dialog.as_mut().unwrap().fields.insert("w".into(), "25,4 cm".into());
+    h.run_steps(2);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(4);
+    let size = h.state().session.active().unwrap().doc.slide_size;
+    assert!((size.width - 720.0).abs() < 1e-6, "25,4 cm is 720 pt: {}", size.width);
+}

@@ -12,6 +12,15 @@
 //!
 //! Typed text is untrusted: nothing here panics, and a number that isn't one (empty, letters,
 //! "1,2,3", NaN, infinity, absurdly long input) is `None`.
+//!
+//! Two readings of a point in Vietnamese, on purpose:
+//! - **Data** (Chart Data cells: [`parse_grouped`], [`format_grouped`]) follows vi-VN strictly: a
+//!   point groups thousands and a comma is the decimal ("1.500.000", "1.234,5"; "1.234" is 1234).
+//! - **Lengths, sizes, percents and the like** ([`parse_number`], [`parse_measure`],
+//!   [`parse_length`]) take a point *or* a comma as the decimal separator ("2.54" = "2,54"). This
+//!   is a deliberate exception: these fields never reach a thousand in practice (a slide is at most
+//!   142 cm), and people type "2.5" as often as "2,5", so a point read as thousands would turn
+//!   "1.5 cm" into 15 cm.
 
 use std::borrow::Cow;
 use std::ops::RangeInclusive;
@@ -121,12 +130,7 @@ pub fn parse_number(language: Language, text: &str) -> Option<f64> {
 
 /// Digits with one optional ',' or '.' and an optional sign; finite.
 fn parse_decimal(text: &str) -> Option<f64> {
-    let t = text.trim();
-    let (negative, digits) = match t.chars().next() {
-        Some('-' | '\u{2212}') => (true, t.get(t.chars().next().map_or(0, char::len_utf8)..)?),
-        Some('+') => (false, t.get(1..)?),
-        _ => (false, t),
-    };
+    let (negative, digits) = split_sign(text.trim());
     let digits = digits.trim_start();
     let mut plain = String::with_capacity(digits.len() + 1);
     if negative {
@@ -218,6 +222,107 @@ pub fn spinner(language: Language, value: f64, step: f64, suffix: &str) -> (Stri
         }
         Language::Vi => (localize(language, &crate::widgets::fmt_num(value, suffix)).into_owned(), vi_number, step),
     }
+}
+
+/// A number typed as **data** (Chart Data cells), in `language`. English is upstream's parse.
+/// Vietnamese follows vi-VN: a point groups thousands, a comma is the decimal. With a comma, the
+/// points before it must group thousands ("1.234,5"); without one, points that group thousands are
+/// thousands ("1.234", "1.500.000") and a single other point is a decimal point ("1.5", "0.75").
+/// Anything else ("1,2,3", "12.34,5", "1,234.5", letters) is `None`: the caller tells the user
+/// instead of dropping the value.
+pub fn parse_grouped(language: Language, text: &str) -> Option<f64> {
+    match language {
+        Language::En => text.trim().parse::<f64>().ok().filter(|v| v.is_finite()),
+        Language::Vi if text.len() > MAX_INPUT => None,
+        Language::Vi => {
+            let t = text.trim();
+            let (negative, body) = split_sign(t);
+            let (int, frac) = match body.split_once(',') {
+                Some((i, f)) => (i, Some(f)),
+                None => (body, None),
+            };
+            let int = if int.contains('.') {
+                if groups_thousands(int) {
+                    int.replace('.', "")
+                } else if frac.is_none() && int.matches('.').count() == 1 {
+                    return parse_decimal(t);
+                } else {
+                    return None;
+                }
+            } else {
+                int.to_string()
+            };
+            let frac = frac.unwrap_or("");
+            let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+            if !digits(&int) || !digits(frac) || (int.is_empty() && frac.is_empty()) {
+                return None;
+            }
+            let plain = format!(
+                "{}{}.{}",
+                if negative { "-" } else { "" },
+                if int.is_empty() { "0" } else { int.as_str() },
+                if frac.is_empty() { "0" } else { frac }
+            );
+            plain.parse::<f64>().ok().filter(|v| v.is_finite())
+        }
+    }
+}
+
+/// "1", "12", "1.234", "12.345.678": one to three digits, then groups of exactly three.
+fn groups_thousands(s: &str) -> bool {
+    let mut parts = s.split('.');
+    let first_ok = parts.next().is_some_and(|p| (1..=3).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit()));
+    let mut rest = 0usize;
+    for p in parts {
+        if p.len() != 3 || !p.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+        rest += 1;
+    }
+    first_ok && rest > 0
+}
+
+/// A sign at the start of `t` (`-`, `−`, `+`) and what follows it.
+fn split_sign(t: &str) -> (bool, &str) {
+    if let Some(rest) = t.strip_prefix('-').or_else(|| t.strip_prefix('\u{2212}')) {
+        (true, rest)
+    } else if let Some(rest) = t.strip_prefix('+') {
+        (false, rest)
+    } else {
+        (false, t)
+    }
+}
+
+/// A data number as a cell shows it: upstream's text in English; in Vietnamese thousands grouped
+/// with points and a decimal comma ("1.500.000", "1.234,5"), every digit kept so
+/// [`parse_grouped`] reads back the same value. Not a finite number: "".
+pub fn format_grouped(language: Language, v: f64) -> String {
+    if language == Language::En {
+        return v.to_string();
+    }
+    if !v.is_finite() {
+        return String::new();
+    }
+    // `Display` for f64 is the shortest text that reads back exactly, never in exponent form.
+    let s = v.to_string();
+    let (negative, body) = split_sign(&s);
+    let (int, frac) = body.split_once('.').unwrap_or((body, ""));
+    let mut out = String::with_capacity(s.len() + s.len() / 3 + 1);
+    if negative {
+        out.push('-');
+    }
+    let n = int.len();
+    for (i, c) in int.chars().enumerate() {
+        if i > 0 && (n - i) % 3 == 0 {
+            out.push('.');
+        }
+        out.push(c);
+    }
+    if !frac.is_empty() {
+        out.push(',');
+        out.push_str(frac);
+    }
+    out
 }
 
 /// egui's own number text for `value` in `range` decimals, in `language`.
@@ -340,6 +445,38 @@ mod tests {
         assert_eq!(read("2\""), Some(2.0));
         assert!(near(step, 0.1));
         assert_eq!(spinner(EN, 0.75, 0.25, " pt").0, "0.75 pt");
+    }
+
+    #[test]
+    fn data_numbers_read_points_as_thousands_and_a_comma_as_the_decimal() {
+        assert_eq!(parse_grouped(VI, "1.500.000"), Some(1_500_000.0));
+        assert_eq!(parse_grouped(VI, "1.234,5"), Some(1234.5));
+        assert_eq!(parse_grouped(VI, "1.234"), Some(1234.0));
+        assert_eq!(parse_grouped(VI, "-1.234,5"), Some(-1234.5));
+        assert_eq!(parse_grouped(VI, "12,5"), Some(12.5));
+        assert_eq!(parse_grouped(VI, "1234,5"), Some(1234.5));
+        assert_eq!(parse_grouped(VI, "1234"), Some(1234.0));
+        // One point that doesn't group three digits is a decimal point.
+        assert_eq!(parse_grouped(VI, "1.5"), Some(1.5));
+        assert_eq!(parse_grouped(VI, "0.75"), Some(0.75));
+        for bad in ["abc", "", " ", "1,2,3", "1.23.4", "12.34,5", "1,234.5", "1.234.5", "1..234", "NaN", "inf", "1e3", "--1", ",", "."] {
+            assert_eq!(parse_grouped(VI, bad), None, "{bad:?}");
+        }
+        assert_eq!(parse_grouped(VI, &"9".repeat(400)), None);
+        // English is upstream's parse.
+        assert_eq!(parse_grouped(EN, "1234.5"), Some(1234.5));
+        assert_eq!(parse_grouped(EN, "1,234.5"), None);
+        // Shown grouped, read back exactly.
+        assert_eq!(format_grouped(VI, 1_500_000.0), "1.500.000");
+        assert_eq!(format_grouped(VI, 1234.5), "1.234,5");
+        assert_eq!(format_grouped(VI, -1234.5), "-1.234,5");
+        assert_eq!(format_grouped(VI, 999.0), "999");
+        assert_eq!(format_grouped(VI, -0.25), "-0,25");
+        assert_eq!(format_grouped(EN, 1234.5), "1234.5");
+        for v in [0.0, 1.0, -1.0, 0.1, 2.5, 999.999, 1000.0, 1234.5678, -98765.4321, 1e15, 123_456_789.25] {
+            assert_eq!(parse_grouped(VI, &format_grouped(VI, v)), Some(v), "{v}");
+        }
+        assert_eq!(format_grouped(VI, f64::NAN), "");
     }
 
     #[test]
