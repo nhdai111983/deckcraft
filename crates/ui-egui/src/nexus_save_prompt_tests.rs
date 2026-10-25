@@ -45,21 +45,22 @@ fn asking(tag: &str, embedded: bool) -> (H, std::path::PathBuf) {
     (h, path)
 }
 
+/// The prompt: a dialog named by its title.
 fn title(h: &H) -> egui::Rect {
-    h.get_by_label("Lưu thay đổi?").rect()
+    h.get_by_role_and_label(Role::Dialog, "Lưu thay đổi?").rect()
 }
 
 /// The prompt's button `label` (the tool row above may have a button of the same name).
 fn button(h: &H, label: &str) -> egui::Rect {
-    let top = title(h).max.y;
-    let found: Vec<_> = h.query_all_by_role_and_label(Role::Button, label).filter(|b| b.rect().min.y > top).collect();
+    let card = title(h);
+    let found: Vec<_> = h.query_all_by_role_and_label(Role::Button, label).filter(|b| card.contains_rect(b.rect())).collect();
     assert_eq!(found.len(), 1, "one {label} in the prompt");
     found[0].rect()
 }
 
 fn click(h: &mut H, label: &str) {
-    let top = title(h).max.y;
-    h.query_all_by_role_and_label(Role::Button, label).find(|b| b.rect().min.y > top).unwrap().click();
+    let card = title(h);
+    h.query_all_by_role_and_label(Role::Button, label).find(|b| card.contains_rect(b.rect())).unwrap().click();
     h.run_steps(4);
 }
 
@@ -79,10 +80,11 @@ fn embedded_prompt_reads_like_every_nexus_app() {
     for b in [save, dont, cancel] {
         assert!(b.width() >= BUTTON_SIZE.x - 0.5 && b.height() >= BUTTON_SIZE.y - 0.5, "{b:?}");
     }
-    let inner = WIDTH - 2.0 * f32::from(PADDING);
-    assert!((cancel.max.x - (title(&h).min.x + inner)).abs() < 1.5, "right-aligned: {cancel:?}");
-    let top = title(&h).max.y;
-    assert!(h.query_all_by_role_and_label(Role::Button, "Lưu").any(|b| b.rect().min.y > top && b.is_focused()), "the keyboard starts on Lưu");
+    let card = title(&h);
+    assert!((card.width() - WIDTH).abs() < 3.0, "{card:?}");
+    assert!((cancel.max.x - (card.max.x - f32::from(PADDING))).abs() < 1.5, "right-aligned: {cancel:?} {card:?}");
+    let card = title(&h);
+    assert!(h.query_all_by_role_and_label(Role::Button, "Lưu").any(|b| card.contains_rect(b.rect()) && b.is_focused()), "the keyboard starts on Lưu");
     assert!(h.query_by_label("Bạn có muốn lưu các thay đổi bạn đã thực hiện với “Báo cáo.pptx” không?").is_none());
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
@@ -174,4 +176,24 @@ fn new_presentations_in_english_stay_upstreams() {
     s.new_language = Some("vi-VN".into());
     s.execute("file.new", &json!({"template": "Briefing"})).unwrap();
     assert_eq!(s.active().unwrap().doc.default_lang(), Some("vi-VN"), "templates too");
+}
+
+/// Tab and Shift+Tab go through the three buttons in the order they read (the dim and the card
+/// never take the focus): Lưu → Không lưu → Hủy → Không lưu.
+#[test]
+fn tab_cycles_the_buttons_in_reading_order() {
+    let (mut h, path) = asking("tab", true);
+    let focused = |h: &H, l: &str| {
+        let card = title(h);
+        h.query_all_by_role_and_label(Role::Button, l).any(|b| card.contains_rect(b.rect()) && b.is_focused())
+    };
+    assert!(focused(&h, "Lưu"));
+    for (shift, want) in [(false, "Không lưu"), (false, "Hủy"), (true, "Không lưu")] {
+        let m = if shift { egui::Modifiers::SHIFT } else { egui::Modifiers::NONE };
+        h.key_press_modifiers(m, egui::Key::Tab);
+        h.run_steps(2);
+        assert!(focused(&h, want), "Tab shift={shift}: {want} has the focus");
+    }
+    assert!(h.state().dialog.is_some(), "still asking");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }

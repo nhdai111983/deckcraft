@@ -367,6 +367,12 @@ pub fn bold(size: f32) -> egui::FontId {
     egui::FontId::new(size, bold_family())
 }
 
+/// NexusOffice: whether [`bold_family`] has a semibold face (Inter SemiBold, from craft-fonts);
+/// without one it is the regular face, and "Lưu thay đổi?" draws its title bolder itself.
+pub fn has_semibold() -> bool {
+    deckcraft_fonts::CRAFT_FONTS.iter().any(|f| f.family == "Inter" && f.style == "SemiBold")
+}
+
 /// The interface's bold family (headings, the selected tab).
 pub fn bold_family() -> FontFamily {
     FontFamily::Name("bold".into())
