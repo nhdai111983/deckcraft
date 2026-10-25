@@ -154,12 +154,13 @@ fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> 
     } else {
         app.session.active().map(|d| d.title()).into_iter().collect()
     };
-    let vi = app.ui.language == crate::i18n::Language::Vi;
+    let lang = app.ui.language;
+    let vi = lang == crate::i18n::Language::Vi;
+    // Through the catalogue (the same words as `sp::question`), so the interface audit knows them.
     let question = match names.as_slice() {
         [] => return None,
-        [one] => sp::question(vi, one),
-        many if vi => format!("Lưu thay đổi của {} bản trình chiếu trước khi đóng?", many.len()),
-        many => format!("Save changes to {} presentations before closing?", many.len()),
+        [one] => lang.fill("Save changes to “{name}” before closing?", &[("name", &sp::shorten_middle(one, 80))]),
+        many => lang.fill("Save changes to {n} presentations before closing?", &[("n", &many.len().to_string())]),
     };
     let t = Tokens::get(ctx);
     let prompt = sp::Prompt { words: sp::words(vi), question: &question, note: None, error: None };
