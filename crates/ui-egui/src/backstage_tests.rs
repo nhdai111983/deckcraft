@@ -166,7 +166,7 @@ fn every_page_renders() {
         (Page::SaveAs, "Not saved yet"),
         (Page::Print, "Print Hidden Slides"),
         (Page::Export, "Create PDF Document"),
-        (Page::Account, "About Nexus Slides"),
+        (Page::Account, "About Nexus Slide"),
     ];
     for (p, marker) in checks {
         h.state_mut().run("app.backstage", json!({"page": p.id()})).unwrap();
@@ -177,6 +177,24 @@ fn every_page_renders() {
         assert!(selected, "{} is in the side menu", p.label());
     }
     assert!(h.state_mut().run("app.backstage", json!({"page": "share"})).is_err(), "Share (cloud) isn't offered");
+}
+
+/// Open offers "Recover Unsaved Presentations" when there is a recovery folder, except in a host
+/// window (NexusOffice: one session per tab), which offers what a crash left itself.
+#[test]
+fn open_offers_recovery_only_when_not_embedded() {
+    let dir = temp_dir("recover-button");
+    for embedded in [false, true] {
+        let mut app = new_app();
+        app.session.recovery_dir = Some(dir.clone());
+        app.embedded = embedded;
+        let mut h = harness(app);
+        h.state_mut().run("app.backstage", json!({"page": "open"})).unwrap();
+        h.run_steps(6);
+        assert_eq!(page(&h), Some(Page::Open));
+        assert!(h.query_by_label("Browse").is_some(), "the Open page is drawn (embedded: {embedded})");
+        assert_eq!(h.query_by_label("Recover Unsaved Presentations").is_some(), !embedded, "embedded: {embedded}");
+    }
 }
 
 /// A starter template from File › New opens its deck and leaves the File tab.
@@ -454,7 +472,7 @@ fn a_file_that_cant_be_opened_says_why() {
     }
     h.run_steps(2);
     assert!(h.state().session.documents().is_empty());
-    assert!(h.query_by_label_contains("not a presentation Nexus Slides can read").is_some(), "the error is on screen");
+    assert!(h.query_by_label_contains("not a presentation Nexus Slide can read").is_some(), "the error is on screen");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

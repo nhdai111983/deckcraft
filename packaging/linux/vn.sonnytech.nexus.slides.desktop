@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Nexus Slides
+Name=Nexus Slide
 GenericName=Presentation
 Comment=Create and present slide decks
-Exec=nexus-slides %F
-TryExec=nexus-slides
+Exec=nexus-slide %F
+TryExec=nexus-slide
 Icon=vn.sonnytech.nexus.slides
 Terminal=false
 StartupNotify=true

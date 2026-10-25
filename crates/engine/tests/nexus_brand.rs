@@ -1,4 +1,4 @@
-//! NexusOffices: what the engine writes into the user's files names Nexus Slides, not upstream's
+//! NexusOffice: what the engine writes into the user's files names Nexus Slide, not upstream's
 //! product (spec §4.4: default author, `<Application>`, the `.deckcraft` generator, the first
 //! built-in theme; the PDF's Creator/Producer are tested in `deckcraft-pdf`). Format identities
 //! (the `.deckcraft` extension, the manifest's `"format": "deckcraft"`) are deliberately unchanged.
@@ -55,15 +55,15 @@ fn no_upstream_name(parts: &[(String, String)]) {
 #[test]
 fn default_author_is_nexus() {
     let mut s = Session::with_new();
-    assert_eq!(s.prefs.author, "Nexus Slides User");
+    assert_eq!(s.prefs.author, "Nexus Slide User");
     s.execute("comment.add", &json!({"text": "Xin chào"})).unwrap();
     let dir = Scratch::new("author");
     let path = dir.path("comment.pptx");
     s.execute("file.saveAs", &json!({"path": path.to_str().unwrap()})).unwrap();
     let parts = zip_parts(&path);
-    assert!(parts.iter().any(|(_, t)| t.contains("Nexus Slides User")), "the comment is signed with the Nexus default");
+    assert!(parts.iter().any(|(_, t)| t.contains("Nexus Slide User")), "the comment is signed with the Nexus default");
     let app = part(&parts, "docProps/app.xml");
-    assert!(app.contains("<Application>Nexus Slides</Application>"), "{app}");
+    assert!(app.contains("<Application>Nexus Slide</Application>"), "{app}");
     no_upstream_name(&parts);
 }
 
@@ -94,7 +94,7 @@ fn native_files_name_nexus_as_generator_and_keep_the_format_key() {
     let manifest = part(&parts, "presentation.json");
     let v: serde_json::Value = serde_json::from_str(&manifest).unwrap();
     assert_eq!(v["format"], "deckcraft", "the format identity is unchanged");
-    assert!(v["generator"].as_str().unwrap().starts_with("Nexus Slides "), "{}", v["generator"]);
+    assert!(v["generator"].as_str().unwrap().starts_with("Nexus Slide "), "{}", v["generator"]);
     // And it opens again.
     let mut t = Session::new();
     t.execute("file.open", &json!({"path": path.to_str().unwrap()})).unwrap();
@@ -172,7 +172,7 @@ fn pdf_names_nexus_as_creator_and_producer() {
         bytes.windows(needle.len()).any(|w| w == needle.as_bytes()) || bytes.windows(utf16.len()).any(|w| w == utf16.as_slice())
     };
     assert!(has("/Creator") && has("/Producer"), "the PDF has an Info dictionary");
-    assert!(has("Nexus Slides"), "Creator/Producer name Nexus Slides");
+    assert!(has("Nexus Slide"), "Creator/Producer name Nexus Slide");
     assert!(!has("DeckCraft"), "no upstream name in the PDF");
 }
 
