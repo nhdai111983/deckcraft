@@ -1815,6 +1815,10 @@ impl SlideApp {
         if self.session.untitled_prefix != prefix {
             self.session.untitled_prefix = prefix.to_string();
         }
+        let lang = self.ui.language.document_language();
+        if self.session.new_language.as_deref() != lang {
+            self.session.new_language = lang.map(str::to_string);
+        }
         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
         // Embedded, the window's zoom is the host's (another tab's editor shares it).
         if !self.embedded && (ctx.zoom_factor() - scale).abs() > 1e-3 {

@@ -320,4 +320,40 @@ mod tests {
         assert_eq!(matching("").len(), crate::templates::starters().len());
         assert!(matching("không có mẫu này").is_empty());
     }
+
+    /// A deck started while the interface is Vietnamese (`Session::new_language`) saves its
+    /// default text language as `vi-VN` in PPTX and reads back so; an opened deck keeps its own;
+    /// a language tag that can't be one is ignored.
+    #[test]
+    fn new_decks_take_the_interface_language() {
+        let mut s = crate::Session::new();
+        s.new_language = Some("vi-VN".into());
+        s.execute("file.new", &serde_json::json!({})).unwrap();
+        let doc = &s.active().unwrap().doc;
+        assert_eq!(doc.default_lang(), Some("vi-VN"));
+        let bytes = deckcraft_pptx::export(doc).unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes.clone())).unwrap();
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("ppt/presentation.xml").unwrap(), &mut xml).unwrap();
+        assert!(xml.contains(r#"<a:defRPr lang="vi-VN""#) || xml.contains(r#"lang="vi-VN""#), "{xml}");
+        let back = deckcraft_pptx::import(&bytes).unwrap();
+        assert_eq!(back.default_lang(), Some("vi-VN"));
+        // Opened files keep their own language (none here: upstream's US English).
+        let mut plain = crate::Session::new();
+        plain.execute("file.new", &serde_json::json!({})).unwrap();
+        let english = deckcraft_pptx::export(&plain.active().unwrap().doc).unwrap();
+        let dir = std::env::temp_dir().join(format!("deckcraft-new-lang-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("english.pptx");
+        std::fs::write(&path, english).unwrap();
+        s.execute("file.open", &serde_json::json!({"path": path.to_string_lossy()})).unwrap();
+        assert_eq!(s.active().unwrap().doc.default_lang(), None, "an opened deck keeps its language");
+        assert!(s.execute("review.spelling", &serde_json::json!({})).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+        // Junk is not a language.
+        let mut junk = crate::Session::new();
+        junk.new_language = Some("../../x".into());
+        junk.execute("file.new", &serde_json::json!({})).unwrap();
+        assert_eq!(junk.active().unwrap().doc.default_lang(), None);
+    }
 }
