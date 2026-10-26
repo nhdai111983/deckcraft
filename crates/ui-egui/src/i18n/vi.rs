@@ -457,6 +457,9 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Text Fill", "Tô chữ"),
     ("Text Outline", "Viền chữ"),
     ("Text Effects", "Hiệu ứng chữ"),
+    // ---- WordArt (nexus_wordart.rs; style names come from the engine's table)
+    ("WordArt Styles", "Kiểu WordArt"),
+    ("Your text here", "Nhập chữ của bạn vào đây"),
     ("Alt Text", "Văn bản thay thế"),
     ("Height:", "Cao:"),
     ("Width:", "Rộng:"),
