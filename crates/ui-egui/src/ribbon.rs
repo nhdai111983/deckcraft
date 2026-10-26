@@ -1314,7 +1314,13 @@ pub fn table_grid_picker(ui: &mut Ui) -> Option<(usize, usize)> {
     let id = ui.id().with("tgrid");
     let mut hover: (usize, usize) = ui.data_mut(|d| d.get_temp(id).unwrap_or((0, 0)));
     let cell = 16.0;
-    let label = if hover.0 > 0 { format!("{}x{} Table", hover.1, hover.0) } else { "Insert Table".into() };
+    // NexusOffice: in the interface's language ("Bảng 3x2").
+    let lang = crate::i18n::current(ui.ctx());
+    let label = if hover.0 > 0 {
+        lang.fill("{cols}x{rows} Table", &[("cols", &hover.1.to_string()), ("rows", &hover.0.to_string())])
+    } else {
+        lang.tr("Insert Table").into_owned()
+    };
     ui.label(label);
     let (rect, resp) = ui.allocate_exact_size(vec2(10.0 * (cell + 2.0), 8.0 * (cell + 2.0)), Sense::click());
     if let Some(p) = resp.hover_pos() {

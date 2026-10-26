@@ -121,6 +121,13 @@ fn main() {
         });
         shot(&mut h, &dir, &name(file));
     }
+    // The same look in the dark theme.
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.ui.brightness = deckcraft_ui_egui::theme::Brightness::Dark;
+        a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new("dateTime"));
+    });
+    shot(&mut h, &dir, &name("wps-dlg-date-time-dark"));
     if only_dialogs {
         return;
     }
