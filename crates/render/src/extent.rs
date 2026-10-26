@@ -327,3 +327,113 @@ mod tests {
         assert_eq!(a, b);
     }
 }
+
+/// NexusOffice: what an edit changed on a slide, for the editor to draw again only there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Changed {
+    /// Nothing drawn changed (the notes, the animations, the name).
+    Nothing,
+    /// Only this area (slide space) changed: where the changed shapes drew before and draw now.
+    Area(Rect),
+    /// Something whose reach isn't known changed: draw the whole slide.
+    Unknown,
+}
+
+/// What changed on the slide between `old` and `new` (the same slide before and after an edit
+/// of `pres`, with the same master): the shapes that differ, where they drew and where they draw,
+/// their outline, effects and text included. Anything else that differs is [`Changed::Unknown`].
+/// `editing`: the shape whose text is being typed (its empty placeholder draws empty list markers
+/// instead of the prompt).
+pub fn changed_area(pres: &Presentation, old: &Slide, new: &Slide, editing: Option<deckcraft_model::ShapeId>) -> Changed {
+    if old.id != new.id
+        || old.layout != new.layout
+        || old.background != new.background
+        || old.hidden != new.hidden
+        || old.show_master_shapes != new.show_master_shapes
+        || old.color_map != new.color_map
+        || old.comments != new.comments
+        || old.shapes.len() != new.shapes.len()
+    {
+        return Changed::Unknown;
+    }
+    let (Some(octx), Some(nctx)) = (Ctx::for_slide(pres, old), Ctx::for_slide(pres, new)) else { return Changed::Unknown };
+    let mut area: Option<Rect> = None;
+    for (a, b) in old.shapes.iter().zip(&new.shapes) {
+        if a == b {
+            continue;
+        }
+        if a.id != b.id {
+            return Changed::Unknown;
+        }
+        for (c, s) in [(&octx, a), (&nctx, b)] {
+            match shape_ink(c, s, editing == Some(s.id)) {
+                Some(Some(r)) => area = Some(area.map_or(r, |x| x.union(r))),
+                Some(None) => {}
+                None => return Changed::Unknown,
+            }
+        }
+    }
+    match area {
+        Some(r) if r.is_finite() => Changed::Area(r),
+        Some(_) => Changed::Unknown,
+        None => Changed::Nothing,
+    }
+}
+
+/// Where a top-level shape draws (slide space): its box with outline and effects, and its text
+/// where it runs past the box. `Some(None)`: it draws nothing (hidden). `None`: not known
+/// (groups, tables, warped text, fields, text effects).
+fn shape_ink(rctx: &Ctx, s: &Shape, editing: bool) -> Option<Option<Rect>> {
+    if s.hidden {
+        return Some(None);
+    }
+    if matches!(s.kind, ShapeKind::Group { .. } | ShapeKind::Table(_)) {
+        return None;
+    }
+    let mut r = shape_box(rctx, s)?;
+    let Some(body) = &s.text else { return Some(Some(r)) };
+    if body.paragraphs.iter().flat_map(|p| &p.runs).any(|run| matches!(run.kind, deckcraft_model::text::RunKind::Field { .. })) {
+        return None;
+    }
+    let x: Xfrm = resolve::xfrm(rctx, s);
+    let geo = crate::shape_geometry(s, x.w, x.h);
+    let tr = geo.text_rect;
+    if crate::text_warp(rctx, s, tr).is_some() {
+        return None;
+    }
+    let m = x.affine();
+    if body.is_empty() && !editing {
+        // A placeholder's prompt draws in its text box.
+        return Some(Some(r.union(m.transform_rect_bbox(tr))));
+    }
+    let mut padded;
+    let body = if body.paragraphs.is_empty() {
+        padded = body.clone();
+        padded.paragraphs.push(Default::default());
+        &padded
+    } else {
+        body
+    };
+    let l = deckcraft_text::layout(
+        rctx,
+        s,
+        body,
+        &deckcraft_text::Opts { rect: tr, fields: &deckcraft_text::NoFields, prompt_color: None, no_shrink: false },
+    );
+    if l.runs.iter().any(|g| g.effects.is_some()) {
+        return None;
+    }
+    let tm = crate::text_transform(m, tr, l.rotation);
+    for li in &l.lines {
+        // The line across the whole text box (bullets, indents), and glyphs reaching past it
+        // (italics, swashes, stacked marks) as the renderer allows for them.
+        let (lo, hi) = li.caret_x.iter().fold((tr.x0, tr.x1), |(a, b), v| (a.min(*v), b.max(*v)));
+        let b = Rect::new(lo, li.top, hi, li.bottom);
+        if !b.is_finite() {
+            return None;
+        }
+        let pad = b.height() * 0.3 + 2.0;
+        r = r.union(tm.transform_rect_bbox(b.inflate(pad, pad)));
+    }
+    Some(Some(r))
+}

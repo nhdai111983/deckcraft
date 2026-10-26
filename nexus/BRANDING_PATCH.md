@@ -204,6 +204,7 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 | File | Lý do | Thay được bằng white-label? |
 |---|---|---|
 | `crates/engine/src/cmd/text.rs` (hiệu năng, nhánh `nx/perf-canvas`) | Khung chữ đang sửa (`text_frame`, `caret_line`) được dàn trang một lần cho mỗi phiên bản bản trình chiếu (`FRAME_MEMO`, giữ `Arc` của bản trình chiếu) thay vì 3–4 lần mỗi khung hình khi đang gõ/nhấp nháy con trỏ; test `frame_memo_tests` | Không — đáng gửi upstream |
+| `crates/render/src/extent.rs` (`changed_area`, `Changed`), `crates/render/src/lib.rs` (re-export), `crates/ui-egui/src/textures.rs` (`patch_region`, `region_renders`, test `patch_tests`) (hiệu năng, nhánh `nx/perf-canvas`) | Gõ chữ/sửa vài hình chỉ vẽ lại phần canvas các hình đó chiếm trước và sau khi sửa (hộp + viền + hiệu ứng + chữ tràn), dán lên texture bằng `set_partial`; sửa ghi chú không vẽ lại gì; nhóm, bảng, chữ uốn (warp), trường, hiệu ứng chữ, đổi nền/bố cục hay vùng > nửa canvas vẫn vẽ cả slide | Không — đáng gửi upstream |
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:
