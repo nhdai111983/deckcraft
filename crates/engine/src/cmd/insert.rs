@@ -73,7 +73,8 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         cmd!("insert.audio", "Audio from File…", ["Insert", "Media", "Audio"], None, "{path? | data: base64, name?, rect?}", has_slide, audio),
         cmd!("insert.video", "Video from File…", ["Insert", "Media", "Video"], None, "{path? | data: base64, name?, rect?}", has_slide, video),
-        cmd!("insert.wordArt", "WordArt", ["Insert", "Text"], None, "{text?, style?: 0..}", has_slide, word_art),
+        // NexusOffice: Nexus Slide's WordArt styles and placement (`crate::nexus_wordart`).
+        cmd!("insert.wordArt", "WordArt", ["Insert", "Text"], None, "{text?, style?: amber|indigoEdge|roseLine|skyNeon|brand|sunset|lagoon|dusk|obsidian|retro|violetGlow|sticker|0..} → {id, style}", has_slide, word_art),
         cmd!("insert.slideNumber", "Slide Number", ["Insert", "Text"], None, "{}", has_slide, slide_number),
         cmd!(
             "insert.dateTime",
@@ -141,6 +142,10 @@ pub fn specs() -> Vec<CommandSpec> {
             action_button
         ),
     ]
+    .into_iter()
+    // NexusOffice: Shape Format › WordArt Styles (`format.wordArtStyle`).
+    .chain(crate::nexus_wordart::specs())
+    .collect()
 }
 
 /// Default size for a click-inserted shape (1 inch square, PowerPoint style).
@@ -1330,31 +1335,7 @@ fn video(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn word_art(s: &mut Session, p: &Value) -> Result<Value> {
-    let text = str_param(p, "text").unwrap_or("Your text here");
-    let size = s.doc()?.doc.slide_size;
-    let style = usize_param(p, "style").unwrap_or(0);
-    let mut shape = new_text_box(Xfrm::new(size.width * 0.2, size.height * 0.4, size.width * 0.6, 80.0), text);
-    if let Some(t) = shape.text.as_mut() {
-        for para in &mut t.paragraphs {
-            para.props.align = Some(deckcraft_model::text::Align::Center);
-            for r in &mut para.runs {
-                r.props.size = Some(54.0);
-                r.props.bold = Some(style % 2 == 1);
-                r.props.fill = Some(Fill::solid(ColorRef::scheme(match style % 4 {
-                    0 => SchemeSlot::Tx1,
-                    1 => SchemeSlot::Accent1,
-                    2 => SchemeSlot::Accent2,
-                    _ => SchemeSlot::Accent4,
-                })));
-                if style % 3 == 2 {
-                    r.props.outline = Some(deckcraft_model::Line::solid(ColorRef::scheme(SchemeSlot::Bg1), 1.0));
-                }
-            }
-        }
-    }
-    let id = add_shape(s, "insert.wordArt", shape, true)?;
-    super::text::fit_text_box(s, id)?;
-    Ok(json!({"id": id}))
+    crate::nexus_wordart::insert(s, p)
 }
 
 fn field_run(s: &mut Session, field: &str, text: &str) -> Result<Value> {
