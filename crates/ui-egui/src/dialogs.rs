@@ -2,7 +2,7 @@
 //! About window. The start screen is File › Home (`backstage.rs`).
 
 use deckcraft_color::SchemeSlot;
-use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
+use egui::{Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
@@ -102,12 +102,8 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     };
     // NexusOffice: the dialog's numbers and lengths read in the interface's language (`lang_of`).
     d.fields.insert(LANG_FIELD.into(), lang.code().into());
-    let mut window = egui::Window::new(shown)
-        .id(egui::Id::new(("dialog", d.id.clone())))
-        .collapsible(false)
-        .resizable(false)
-        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
-        .open(&mut open);
+    // NexusOffice: the shared dialog look (sized to the content, 16 px padding).
+    let mut window = crate::nexus_dialog::window(ctx, shown, egui::Id::new(("dialog", d.id.clone()))).open(&mut open);
     // Two columns of colour rows plus Save must fit the first frame (Theme Colors), as must Save
     // in Theme Fonts. A later resize clips the buttons (the window size sticks) and clicks miss them.
     if d.id == "themeColors" {
@@ -119,7 +115,7 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         ui.set_min_width(match d.id.as_str() {
             "themeColors" => 700.0,
             "themeFonts" => 400.0,
-            _ => 340.0,
+            _ => crate::nexus_dialog::MIN_WIDTH,
         });
         if d.id == "themeColors" {
             ui.set_min_height(360.0);
@@ -207,25 +203,9 @@ fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> 
     Some(false)
 }
 
+/// NexusOffice: the shared footer (Hủy, then the primary button, right-aligned; Enter is OK).
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
-    let mut ok = false;
-    let mut cancel = false;
-    let ok_label = crate::i18n::tr(ui.ctx(), ok_label).into_owned();
-    let ok_label = ok_label.as_str();
-    let cancel_label = crate::i18n::tr(ui.ctx(), "Cancel").into_owned();
-    ui.add_space(8.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let t = Tokens::get(ui.ctx());
-        if ui.add(egui::Button::new(egui::RichText::new(ok_label).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0))).clicked()
-            || ui.input(|i| i.key_pressed(egui::Key::Enter))
-        {
-            ok = true;
-        }
-        if ui.add(egui::Button::new(cancel_label.as_str()).min_size(vec2(72.0, 24.0))).clicked() {
-            cancel = true;
-        }
-    });
-    (ok, cancel)
+    crate::nexus_dialog::footer(ui, ok_label, true)
 }
 
 /// What the Preferences dialog can change, as it was when the dialog opened.
@@ -259,12 +239,14 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
 
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
-    ui.horizontal(|ui| {
-        // NexusOffice: an indented label ("  Footer text:") keeps its indent in every language.
-        let name = label.trim_start();
-        let pad = label.get(..label.len().saturating_sub(name.len())).unwrap_or_default();
-        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(format!("{pad}{}", tl(ui, name))));
-        ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0));
+    // NexusOffice: an indented label ("  Footer text:") keeps its indent in every language; labels
+    // sit left-aligned in one column, and a label too long for it goes above its field
+    // (`nexus_dialog::field_row`).
+    let name = label.trim_start();
+    let indent = label.len().saturating_sub(name.len()) > 0;
+    let text = tl(ui, name).into_owned();
+    crate::nexus_dialog::field_row(ui, &text, indent, |ui, width| {
+        ui.add(egui::TextEdit::singleline(&mut v).desired_width(width).margin(vec2(6.0, 4.0)).min_size(vec2(0.0, 26.0)));
     });
     d.fields.insert(key.into(), v);
 }
@@ -459,21 +441,19 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.set_min_width(440.0);
     egui::ScrollArea::vertical().max_height(520.0).id_salt("album_body").show(ui, |ui| {
         ui.set_min_width(420.0);
-        ui.label(tl(ui, "Pictures in album"));
+        crate::nexus_dialog::section(ui, "Pictures in album");
         let items = album_items(d).unwrap_or_default();
         let mut sel = d.get("sel", "0").parse::<usize>().unwrap_or(0);
         // Fixed height so adding pictures does not push Create past the window.
-        egui::ScrollArea::vertical().max_height(120.0).min_scrolled_height(120.0).auto_shrink([false, false]).id_salt("album_list").show(ui, |ui| {
-            if items.is_empty() {
-                ui.label(egui::RichText::new(tl(ui, "No pictures yet")).color(Tokens::get(ui.ctx()).text_dim));
-            }
-            for (i, item) in items.iter().enumerate() {
-                if ui.selectable_label(sel == i, album_item_label(crate::i18n::current(ui.ctx()), item)).clicked() {
-                    sel = i;
-                }
-            }
-        });
+        let lang = crate::i18n::current(ui.ctx());
+        let rows: Vec<String> = items.iter().map(|item| album_item_label(lang, item)).collect();
+        let empty = tl(ui, "No pictures yet").into_owned();
+        let picked = crate::nexus_dialog::list_box_sized(ui, "album_list", &rows, (!rows.is_empty()).then_some(sel), (120.0, 120.0), &empty);
+        if let Some(i) = picked.0 {
+            sel = i;
+        }
         d.fields.insert("sel".into(), sel.to_string());
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
         ui.horizontal(|ui| {
             if ui.button(tl(ui, "Add Pictures…")).clicked()
                 && let Some(item) = pick_album_picture(app)
@@ -522,7 +502,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         let default_box = tl(ui, "Text Box").into_owned();
         field(ui, d, "Text box:", "boxText", &default_box);
         let picture = selected_album_picture(d, &items);
-        ui.label(album_picture_status(crate::i18n::current(ui.ctx()), &items, sel));
+        ui.add_space(crate::nexus_dialog::GAP_S);
+        crate::nexus_dialog::section(ui, &album_picture_status(crate::i18n::current(ui.ctx()), &items, sel));
         ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(picture, |ui| {
                 if ui.button(tl(ui, "Rotate Left")).clicked() {
@@ -553,8 +534,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
             });
         });
-        ui.add_space(4.0);
-        ui.label(tl(ui, "Picture layout"));
+        ui.add_space(crate::nexus_dialog::GAP_M);
+        crate::nexus_dialog::section(ui, "Picture layout");
         album_choice(
             ui,
             d,
@@ -571,7 +552,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ("4title", "4 pictures with title"),
             ],
         );
-        ui.label(tl(ui, "Frame shape"));
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+        crate::nexus_dialog::section(ui, "Frame shape");
         album_choice(
             ui,
             d,
@@ -582,7 +564,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         );
         check(ui, d, "Captions under pictures", "captions", false);
         check(ui, d, "ALL pictures black and white", "grayscale", false);
-        ui.label(tl(ui, "Album theme"));
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+        crate::nexus_dialog::section(ui, "Album theme");
         album_choice(ui, d, "album_theme", "theme", deckcraft_engine::nexus::THEME_NAME, &ALBUM_THEMES.iter().map(|n| (*n, *n)).collect::<Vec<_>>());
     });
     let captions = d.fields.get("captions").is_some_and(|v| v == "1");
@@ -1063,7 +1046,7 @@ fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     let mut mode = d.get("mode", "percent");
     let mut percent = d.get("percent", "100");
-    ui.label(tl(ui, "Zoom to"));
+    crate::nexus_dialog::section(ui, "Zoom to");
     if ui.radio(mode == "fit", tl(ui, "Fit")).clicked() {
         mode = "fit".into();
     }
@@ -1226,16 +1209,11 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let foot = check(ui, d, "Footer", "footer", hf.footer);
             field(ui, d, "  Footer text:", "footerText", &hf.footer_text);
             let hide = check(ui, d, "Don't show on title slide", "hide", hf.hide_on_title);
-            ui.add_space(6.0);
-            let mut apply_all = false;
-            let mut apply = false;
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                apply_all = ui.button(tl(ui, "Apply to All")).clicked();
-                apply = ui.button(tl(ui, "Apply")).clicked();
-                if ui.button(tl(ui, "Cancel")).clicked() {
-                    d.fields.insert("cancel".into(), "1".into());
-                }
-            });
+            let f = crate::nexus_dialog::footer_with(ui, &["Cancel", "Apply"], "Apply to All", true);
+            let (apply_all, apply) = (f.primary, f.secondary == Some(1));
+            if f.secondary == Some(0) {
+                d.fields.insert("cancel".into(), "1".into());
+            }
             if apply || apply_all {
                 let dt = d.get("dateText", "");
                 let ft = d.get("footerText", "");
@@ -1270,13 +1248,10 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         .map(|s| s.doc.slides.iter().enumerate().map(|(i, sl)| format!("{}. {}", i + 1, sl.title())).collect())
                         .unwrap_or_default();
                     let sel = d.get("slide", &slide_default).parse::<usize>().unwrap_or(0);
-                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-                        for (i, t) in titles.iter().enumerate() {
-                            if ui.selectable_label(sel == i, t).clicked() {
-                                d.fields.insert("slide".into(), i.to_string());
-                            }
-                        }
-                    });
+                    crate::nexus_dialog::section(ui, "Select a place in this document:");
+                    if let (Some(i), _) = crate::nexus_dialog::list_box(ui, "link-slides", &titles, Some(sel), 180.0) {
+                        d.fields.insert("slide".into(), i.to_string());
+                    }
                 }
                 "email" => field(ui, d, "Email address:", "email", &seed.email),
                 _ => field(ui, d, "Address:", "url", &seed.url),
@@ -1564,7 +1539,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
             });
             ui.separator();
-            ui.label(tl(ui, if tab == "hover" { "Action on mouse over" } else { "Action on click" }));
+            crate::nexus_dialog::section(ui, if tab == "hover" { "Action on mouse over" } else { "Action on click" });
             let kind = d.get("kind", cur_kind);
             let hyperlink = !matches!(kind.as_str(), "none" | "program" | "playMedia");
             let pick = |d: &mut Dialog, ui: &mut Ui, k: &str, l: &str| {
@@ -1604,23 +1579,21 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 "url" => field(ui, d, "Address:", "arg", if cur_kind == "url" { &cur_arg } else { "https://" }),
                 "slide" => {
                     let sel = d.get("arg", if cur_kind == "slide" { &cur_arg } else { "0" }).parse::<usize>().unwrap_or(0);
-                    egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
-                        for (i, (_, t)) in slides.iter().enumerate() {
-                            if ui.selectable_label(sel == i, t).clicked() {
-                                d.fields.insert("arg".into(), i.to_string());
-                            }
-                        }
-                    });
+                    let titles: Vec<String> = slides.iter().map(|(_, t)| t.clone()).collect();
+                    if let (Some(i), _) = crate::nexus_dialog::list_box(ui, "action-slides", &titles, Some(sel), 140.0) {
+                        d.fields.insert("arg".into(), i.to_string());
+                    }
                 }
                 "customShow" => {
                     if shows.is_empty() {
                         ui.label(tl(ui, "This presentation has no custom shows (Slide Show ▸ Custom Slide Show)."));
                     }
                     let sel = d.get("arg", if cur_kind == "customShow" { &cur_arg } else { shows.first().map_or("", String::as_str) });
-                    for n in &shows {
-                        if ui.selectable_label(&sel == n, n).clicked() {
-                            d.fields.insert("arg".into(), n.clone());
-                        }
+                    if !shows.is_empty()
+                        && let (Some(i), _) = crate::nexus_dialog::list_box(ui, "action-shows", &shows, shows.iter().position(|n| *n == sel), 120.0)
+                        && let Some(n) = shows.get(i)
+                    {
+                        d.fields.insert("arg".into(), n.clone());
                     }
                 }
                 _ => {}
@@ -1846,7 +1819,8 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ("Shapes", "■□▪▫▲△▶▷▼▽◀◁◆◇○●◎★☆✓✔✗✘♠♣♥♦"),
             ];
             for (g, chars) in groups {
-                ui.label(egui::RichText::new(tl(ui, g)).font(theme::bold(12.0)));
+                ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+                crate::nexus_dialog::section(ui, g);
                 ui.horizontal_wrapped(|ui| {
                     for c in chars.chars() {
                         if ui.add(egui::Button::new(egui::RichText::new(c.to_string()).size(16.0)).min_size(vec2(26.0, 26.0))).clicked() {
@@ -1858,16 +1832,34 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     }
                 });
             }
-            let (ok, cancel) = buttons(ui, "Close");
-            ok || cancel
+            crate::nexus_dialog::footer_with(ui, &[], "Close", true).primary
         }
         "equation" => {
-            ui.label(tl(ui, "Type an equation in linear form (e.g. a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a)."));
+            crate::nexus_dialog::hint(ui, "Type an equation in linear form (e.g. a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a).");
+            ui.add_space(crate::nexus_dialog::GAP_S);
             let mut v = d.get("eq", "");
-            ui.add(egui::TextEdit::singleline(&mut v).desired_width(340.0).font(theme::font(15.0)));
+            // NexusOffice: the input has the keyboard when the dialog opens; a live preview under it.
+            let input = ui.add(
+                egui::TextEdit::singleline(&mut v)
+                    .id(egui::Id::new("nexus-equation-input"))
+                    .desired_width(crate::nexus_dialog::MIN_WIDTH)
+                    .margin(vec2(6.0, 5.0))
+                    .min_size(vec2(0.0, 30.0))
+                    .font(theme::font(15.0)),
+            );
+            // Enter on an empty equation inserts nothing; the input keeps the keyboard.
+            let enter_on_empty = input.lost_focus() && v.trim().is_empty() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if d.fields.insert("nx.focused".into(), "1".into()).is_none() || enter_on_empty {
+                input.request_focus();
+            }
             d.fields.insert("eq".into(), v.clone());
-            let (ok, cancel) = buttons(ui, "Insert");
-            if ok && !v.is_empty() {
+            let pretty = pretty_equation(v.trim());
+            let shown = if pretty.is_empty() { "—" } else { pretty.as_str() };
+            let preview = lang_of(d).fill("Preview: {text}", &[("text", shown)]);
+            ui.add_space(crate::nexus_dialog::GAP_S);
+            ui.label(egui::RichText::new(preview).font(theme::font(15.0)).color(Tokens::get(ui.ctx()).text_dim));
+            let (ok, cancel) = crate::nexus_dialog::footer(ui, "Insert", !v.trim().is_empty());
+            if ok && !v.trim().is_empty() {
                 let pretty = pretty_equation(&v);
                 let size = app.session.active().map(|s| s.doc.slide_size).unwrap_or(deckcraft_model::defaults::WIDE);
                 run(app, "insert.textBox", json!({"rect": [size.width / 2.0 - 150.0, size.height / 2.0 - 25.0, 300, 50], "text": pretty}));
@@ -2761,8 +2753,8 @@ const DATE_KINDS: [&str; 13] = [
     "datetime13",
 ];
 
-/// Samples `field_text` can compute for `lang`. Named months and AM/PM exist for English only;
-/// other languages keep the numeric date and the 24-hour times.
+/// Samples `field_text` can compute for `lang`. Named months exist for English and Vietnamese
+/// (AM/PM for English); other languages keep the numeric date and the 24-hour times.
 fn date_rows(lang: &str) -> Vec<(&'static str, String)> {
     let now = deckcraft_text::datetime::DateTime::now_local();
     let mut rows = Vec::new();
@@ -2779,19 +2771,26 @@ fn date_rows(lang: &str) -> Vec<(&'static str, String)> {
     rows
 }
 
-/// NexusOffice: the Date and Time dialog's languages: upstream's, and Vietnamese first in the
-/// Vietnamese interface (its dates read dd/MM/yyyy and 24-hour times).
+/// NexusOffice: the Date and Time dialog's languages. In the Vietnamese interface, Tiếng Việt
+/// (first, the default) and English, each named in its own language; otherwise upstream's list and
+/// Vietnamese.
 fn date_langs(ui_lang: Language) -> Vec<(&'static str, &'static str)> {
-    let vi = (ui_lang == Language::Vi).then_some(("vi-VN", "Vietnamese"));
-    vi.into_iter().chain(DATE_LANGS.iter().copied()).collect()
+    if ui_lang == Language::Vi {
+        return vec![("vi-VN", "Tiếng Việt"), ("en-US", "English")];
+    }
+    DATE_LANGS.iter().copied().chain([("vi-VN", "Tiếng Việt")]).collect()
+}
+
+/// The language the Date and Time dialog starts in: the interface's.
+pub fn date_default_lang(ui_lang: Language) -> &'static str {
+    if ui_lang == Language::Vi { "vi-VN" } else { "en-US" }
 }
 
 fn date_time_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    ui.set_min_width(440.0);
-    ui.label(tl(ui, "Available formats:"));
+    use crate::nexus_dialog as nd;
     let ui_lang = lang_of(d);
     let langs = date_langs(ui_lang);
-    let lang = d.get("language", if ui_lang == Language::Vi { "vi-VN" } else { "en-US" });
+    let lang = d.get("language", date_default_lang(ui_lang));
     let rows = date_rows(&lang);
     if !rows.iter().any(|(k, _)| *k == d.get("format", "datetime1"))
         && let Some((k, _)) = rows.first()
@@ -2799,19 +2798,19 @@ fn date_time_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         d.fields.insert("format".into(), (*k).to_string());
     }
     let format = d.get("format", "datetime1");
-    egui::ScrollArea::vertical().max_height(280.0).min_scrolled_height(220.0).auto_shrink([false, false]).show(ui, |ui| {
-        for (kind, sample) in &rows {
-            if ui.selectable_label(format == *kind, sample).clicked() {
-                d.fields.insert("format".into(), (*kind).to_string());
-            }
-        }
-    });
+    nd::section(ui, "Available formats:");
+    let samples: Vec<String> = rows.iter().map(|(_, s)| s.clone()).collect();
+    let (picked, double) = nd::list_box(ui, "date-formats", &samples, rows.iter().position(|(k, _)| *k == format), 260.0);
+    if let Some((kind, _)) = picked.and_then(|i| rows.get(i)) {
+        d.fields.insert("format".into(), (*kind).to_string());
+    }
+    ui.add_space(nd::GAP_M);
     let lang_label = langs.iter().find(|(k, _)| *k == lang).map(|(_, l)| *l).unwrap_or("English (United States)");
     let lang_label = tl(ui, lang_label).into_owned();
     let lang_label = lang_label.as_str();
     ui.horizontal(|ui| {
-        ui.label(tl(ui, "Language:"));
-        let opened = egui::ComboBox::from_id_salt("date-lang").selected_text(lang_label).width(240.0).show_ui(ui, |ui| {
+        nd::section(ui, "Language:");
+        let opened = egui::ComboBox::from_id_salt("date-lang").selected_text(lang_label).width(220.0).show_ui(ui, |ui| {
             for (k, l) in &langs {
                 if ui.selectable_label(lang == *k, tl(ui, l)).clicked() {
                     d.fields.insert("language".into(), (*k).to_string());
@@ -2820,15 +2819,17 @@ fn date_time_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         });
         opened.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, lang_label));
     });
-    ui.label(
-        egui::RichText::new(tl(ui, "Month names and AM/PM are listed for English. Other languages list the numeric date and 24-hour time."))
-            .size(11.0)
-            .color(Tokens::get(ui.ctx()).text_dim),
-    );
+    // Languages without month and day names list fewer formats; English and Vietnamese list them all.
+    let lower = lang.to_ascii_lowercase();
+    if !(lower.starts_with("en") || lower.starts_with("vi")) {
+        ui.add_space(nd::GAP_S / 2.0);
+        nd::hint(ui, "Month and day names are listed for English and Vietnamese. Other languages list the numeric date and 24-hour time.");
+    }
+    ui.add_space(nd::GAP_S);
     let update = check(ui, d, "Update automatically", "update", true);
-    let (ok, cancel) = buttons(ui, "OK");
-    if ok {
-        let lang = d.get("language", if ui_lang == Language::Vi { "vi-VN" } else { "en-US" });
+    let (ok, cancel) = nd::footer(ui, "OK", true);
+    if ok || double {
+        let lang = d.get("language", date_default_lang(ui_lang));
         let mut format = d.get("format", "datetime1");
         let probe = deckcraft_text::datetime::DateTime::new(2026, 10, 9, 20, 5, 7);
         if deckcraft_text::datetime::field_text(&format, Some(&lang), probe).is_none() {
@@ -2898,17 +2899,27 @@ fn pretty_equation(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
+            // The exponent: an optional sign, then digits (x^-12) or one letter (x^n); what
+            // follows ("+b^2") is not raised.
             '^' => {
-                while let Some(&n) = chars.peek() {
-                    if n.is_ascii_alphanumeric() || n == '+' || n == '-' {
+                if let Some(&n) = chars.peek()
+                    && (n == '+' || n == '-')
+                {
+                    out.push(sup(n));
+                    chars.next();
+                }
+                match chars.peek() {
+                    Some(&n) if n.is_ascii_digit() => {
+                        while let Some(&n) = chars.peek().filter(|n| n.is_ascii_digit()) {
+                            out.push(sup(n));
+                            chars.next();
+                        }
+                    }
+                    Some(&n) if n.is_ascii_alphabetic() => {
                         out.push(sup(n));
                         chars.next();
-                        if !n.is_ascii_digit() {
-                            break;
-                        }
-                    } else {
-                        break;
                     }
+                    _ => {}
                 }
             }
             '*' => out.push('·'),

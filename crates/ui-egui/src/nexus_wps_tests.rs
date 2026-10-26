@@ -601,6 +601,10 @@ fn exempt(text: &str, doc_text: &str) -> bool {
         || plain.ends_with('%')
         || fonts.iter().any(|f| f == plain)
         || starters.contains(&plain)
+        // Today's date in the Date and Time dialog's Vietnamese formats ("Thứ Hai, 26 tháng 10 năm 2026").
+        || deckcraft_text::datetime::DateTime::now_local().is_some_and(|now| {
+            (1..=13).any(|k| deckcraft_text::datetime::field_text(&format!("datetime{k}"), Some("vi-VN"), now).as_deref() == Some(plain))
+        })
         || papers.contains(&plain)
         // Character Spacing's and Change Case's samples.
         || ["ab", "abc"].contains(&plain)

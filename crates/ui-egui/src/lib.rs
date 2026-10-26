@@ -21,6 +21,7 @@ pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
+pub mod nexus_dialog;
 pub mod nexus_save_prompt;
 #[cfg(test)]
 mod nexus_save_prompt_tests;
@@ -2140,6 +2141,8 @@ impl SlideApp {
         self.sync_backstage();
         self.keyboard(&ctx);
         self.sync_backstage();
+        // NexusOffice: the bars keep their frameless buttons; inputs elsewhere are framed.
+        let style = nexus_dialog::chrome_style(ui);
         if !self.wps {
             ribbon::title_bar(self, ui);
         }
@@ -2153,6 +2156,7 @@ impl SlideApp {
             }
             status::status_bar(self, ui);
         }
+        ui.set_style(style);
         let now = ui.input(|i| i.time);
         if self.tick_anim_preview(now) {
             ctx.request_repaint();

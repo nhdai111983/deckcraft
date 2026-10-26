@@ -1245,6 +1245,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Web Page or File", "Trang web hoặc tệp"),
     ("This Document", "Tài liệu này"),
     ("Email Address", "Địa chỉ email"),
+    ("Select a place in this document:", "Chọn một vị trí trong tài liệu này:"),
     ("Email address:", "Địa chỉ email:"),
     ("Address:", "Địa chỉ:"),
     ("ScreenTip:", "Mẹo màn hình:"),
@@ -1336,6 +1337,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Type an equation in linear form (e.g. a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a).",
         "Gõ phương trình dạng tuyến tính (ví dụ a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a).",
     ),
+    ("Preview: {text}", "Xem trước: {text}"),
     ("As:", "Dán dưới dạng:"),
     ("Use Destination Theme", "Dùng chủ đề đích"),
     ("Keep Source Formatting", "Giữ định dạng nguồn"),
@@ -1479,6 +1481,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Month names and AM/PM are listed for English. Other languages list the numeric date and 24-hour time.",
         "Tên tháng và SA/CH chỉ có ở tiếng Anh. Các ngôn ngữ khác hiện ngày dạng số và giờ dạng 24 giờ.",
+    ),
+    (
+        "Month and day names are listed for English and Vietnamese. Other languages list the numeric date and 24-hour time.",
+        "Tên tháng và tên thứ chỉ có ở tiếng Anh và tiếng Việt. Các ngôn ngữ khác hiện ngày dạng số và giờ dạng 24 giờ.",
     ),
     ("Update automatically", "Tự động cập nhật"),
     // ---- Size and Position (validation)
