@@ -23,6 +23,7 @@ pub mod links;
 pub mod media_refs;
 pub mod nexus;
 pub mod nexus_vi;
+pub mod nexus_wordart;
 pub mod recovery;
 pub mod sample;
 pub mod sounds;

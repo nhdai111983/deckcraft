@@ -81,12 +81,25 @@ impl GlyphRun {
     }
 }
 
-/// A text run's shadow and glow, colours resolved.
+/// A text run's shadow, glow and reflection, colours resolved.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RunEffects {
     pub shadow: Option<TextShadow>,
     /// Glow colour (with its alpha) and radius in points.
     pub glow: Option<(Rgba, f64)>,
+    /// Mirror image under the text, fading out (`a:reflection`).
+    pub reflection: Option<TextReflection>,
+}
+
+/// A reflection: opacity where it starts and ends (0–1), how far down the text's height it fades
+/// out (0–1), and its gap and blur in points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TextReflection {
+    pub start_alpha: f64,
+    pub end_alpha: f64,
+    pub end_pos: f64,
+    pub dist: f64,
+    pub blur: f64,
 }
 
 /// An outer shadow: colour (with its alpha), blur radius and offset in points.
@@ -803,14 +816,24 @@ fn bullet_face(db: &FontDb, st: &mut Style, label: &str) {
 
 /// Shape a logical paragraph into cells: bidi levels, per-grapheme faces, items of one level,
 /// script, face and shaping style, each shaped with the whole paragraph as context.
-/// A run's outer shadow and glow (inner shadows aren't drawn on text), at the layout's `scale`.
+/// A run's outer shadow, glow and reflection (inner shadows aren't drawn on text), at the
+/// layout's `scale`.
 fn run_effects(ctx: &Ctx, r: &RunProps, scale: f64) -> Option<RunEffects> {
     let shadow = r.shadow.as_ref().filter(|s| !s.inner).map(|s| {
         let a = s.dir.to_radians();
         TextShadow { color: ctx.color(&s.color, None), blur: s.blur.max(0.0) * scale, dx: a.cos() * s.dist * scale, dy: a.sin() * s.dist * scale }
     });
     let glow = r.glow.as_ref().filter(|g| g.radius > 0.0).map(|g| (ctx.color(&g.color, None), g.radius * scale));
-    (shadow.is_some() || glow.is_some()).then_some(RunEffects { shadow, glow })
+    let unit = |v: f64| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 };
+    let pt = |v: f64| if v.is_finite() { v.clamp(0.0, 1000.0) * scale } else { 0.0 };
+    let reflection = r.reflection.as_ref().filter(|f| unit(f.start_alpha) > 0.0 || unit(f.end_alpha) > 0.0).map(|f| TextReflection {
+        start_alpha: unit(f.start_alpha),
+        end_alpha: unit(f.end_alpha),
+        end_pos: unit(f.end_pos),
+        dist: pt(f.dist),
+        blur: pt(f.blur),
+    });
+    (shadow.is_some() || glow.is_some() || reflection.is_some()).then_some(RunEffects { shadow, glow, reflection })
 }
 
 #[allow(clippy::too_many_arguments)]
