@@ -188,6 +188,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     // ---- Insert
     ("Table", "Bảng"),
     ("Insert Table", "Chèn bảng"),
+    ("{cols}x{rows} Table", "Bảng {cols}x{rows}"),
     ("Insert Table…", "Chèn bảng…"),
     ("Draw Table", "Vẽ bảng"),
     ("Pictures", "Ảnh"),
