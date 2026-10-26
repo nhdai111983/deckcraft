@@ -74,7 +74,15 @@ fn load_prefs(app: &mut SlideApp) {
     let Some(dir) = config_dir() else { return };
     let (ui, prefs) = deckcraft_ui_egui::settings::load(&dir);
     if let Some(ui) = ui {
+        // NexusOffice: a ui.json that names no language (written by an older version, or upstream's
+        // English that writes no key) keeps the Vietnamese default.
+        let saved = std::fs::read(dir.join("ui.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| deckcraft_ui_egui::i18n::saved_language(&v));
+        let language = saved.unwrap_or(app.ui.language);
         app.ui = ui;
+        app.ui.language = language;
     }
     if let Some(prefs) = prefs {
         app.session.prefs = prefs;
@@ -127,7 +135,7 @@ fn services() -> Services {
 const APP_ID: &str = deckcraft_engine::nexus::APP_ID;
 
 const USAGE: &str = "\
-Usage: nexus-slides [--control PORT] [--sample] [--show] [FILE...]
+Usage: nexus-slide [--control PORT] [--sample] [--show] [FILE...]
 
   --control PORT  JSON control server on 127.0.0.1:PORT
   --sample        open the sample presentation
@@ -162,7 +170,7 @@ fn startup(mut control_port: Option<u16>, args: impl IntoIterator<Item = String>
 }
 
 fn app_icon() -> Option<egui::IconData> {
-    let png: &[u8] = include_bytes!("../../../nexus/assets/nexus-slides-256.png");
+    let png: &[u8] = include_bytes!("../../../nexus/assets/nexus-slide-256.png");
     eframe::icon_data::from_png_bytes(png).map_err(|e| log::warn!("app icon: {e}")).ok()
 }
 
@@ -177,7 +185,7 @@ fn main() -> eframe::Result {
                 return Ok(());
             }
             Startup::Version => {
-                println!("nexus-slides {}", env!("CARGO_PKG_VERSION"));
+                println!("nexus-slide {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             Startup::Run { control_port, files, sample, show } => (control_port, files, sample, show),
@@ -217,7 +225,7 @@ fn main() -> eframe::Result {
         display::Choice::None => {
             // winit's own error says little to someone who started DeckCraft from a console.
             log::error!("no display: DISPLAY and WAYLAND_DISPLAY are not set");
-            eprintln!("Nexus Slides needs a graphical session: neither DISPLAY nor WAYLAND_DISPLAY is set.");
+            eprintln!("Nexus Slide needs a graphical session: neither DISPLAY nor WAYLAND_DISPLAY is set.");
             false
         }
     };
@@ -236,6 +244,10 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let mut app = SlideApp::new(Session::new(), services());
+            // NexusOffice layout in the style of WPS Office (the menu-bar layout stays behind
+            // `toolbar`); the interface speaks Vietnamese unless the user picked another language.
+            app.wps = true;
+            app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
             load_prefs(&mut app);
             // AutoRecover: reopen what a previous run left unsaved, then keep it current.
             if std::env::var_os("DECKCRAFT_NO_RECOVERY").is_none() {
@@ -251,7 +263,7 @@ fn main() -> eframe::Result {
                 let rx = control_server::start(port, cc.egui_ctx.clone());
                 app = app.with_control(rx);
             }
-            if sample && let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
+            if sample && let Err(e) = deckcraft_engine::sample::open_sample_in(&mut app.session, Some(app.ui.language.code())) {
                 log::error!("sample: {e}");
             }
             for f in files {

@@ -113,7 +113,14 @@ fn tip(q: &QatItem) -> String {
 /// Draw the toolbar and its Customize menu into a left-to-right row of the title bar.
 pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     let items = app.ui.qat.clone();
-    for q in &items {
+    show_items(app, ui, &items);
+}
+
+/// Draw `items` (some of the toolbar's buttons) and the Customize menu. NexusOffice: the WPS
+/// layout's top row draws Save, Undo and Redo itself and the rest here.
+pub fn show_items(app: &mut SlideApp, ui: &mut Ui, items: &[QatItem]) {
+    let lang = app.ui.language;
+    for q in items {
         let on = q.id == "app.home" && app.backstage_open();
         let en = match q.id.as_str() {
             "app.home" => true,
@@ -125,7 +132,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
             run(app, q);
         }
         r.context_menu(|ui| {
-            if ui.button("Remove from Quick Access Toolbar").clicked() {
+            if ui.button(lang.tr("Remove from Quick Access Toolbar")).clicked() {
                 let _ = command(app, &json!({"remove": q.id, "params": q.params}));
                 ui.close();
             }
@@ -133,10 +140,10 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     }
     let r = crate::widgets::icon_toggle(ui, Icon::ChevronDown, "Customize Quick Access Toolbar", true, false);
     egui::Popup::menu(&r).show(|ui| {
-        ui.label(egui::RichText::new("Customize Quick Access Toolbar").strong());
+        ui.label(egui::RichText::new(lang.tr("Customize Quick Access Toolbar")).strong());
         for c in common() {
             let mut on = app.ui.qat.iter().any(|q| q.same(&c.id, &Value::Null));
-            if ui.checkbox(&mut on, &c.label).changed() {
+            if ui.checkbox(&mut on, lang.tr(&c.label)).changed() {
                 let key = if on { "add" } else { "remove" };
                 let _ = command(app, &json!({key: c.id}));
             }
@@ -146,14 +153,14 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
             ui.separator();
             for q in extra {
                 let mut on = true;
-                if ui.checkbox(&mut on, &q.label).changed() {
+                if ui.checkbox(&mut on, lang.tr(&q.label)).changed() {
                     let _ = command(app, &json!({"remove": q.id, "params": q.params}));
                 }
             }
         }
         ui.separator();
-        ui.label(egui::RichText::new("Right-click any ribbon button to add it.").weak());
-        if ui.button("Reset to Defaults").clicked() {
+        ui.label(egui::RichText::new(lang.tr("Right-click any ribbon button to add it.")).weak());
+        if ui.button(lang.tr("Reset to Defaults")).clicked() {
             let _ = command(app, &json!({"reset": true}));
             ui.close();
         }
@@ -165,7 +172,7 @@ pub fn ribbon_menu(app: &mut SlideApp, r: &egui::Response, icon: Icon, label: &s
     r.context_menu(|ui| {
         let has = app.ui.qat.iter().any(|q| q.same(id, p));
         let text = if has { "Remove from Quick Access Toolbar" } else { "Add to Quick Access Toolbar" };
-        if ui.button(text).clicked() {
+        if ui.button(app.ui.language.tr(text)).clicked() {
             let label = label.replace('\n', " ");
             let key = if has { "remove" } else { "add" };
             let _ = command(app, &json!({key: id, "params": p, "label": label, "icon": icon.name()}));

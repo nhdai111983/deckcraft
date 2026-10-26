@@ -2,10 +2,12 @@
 //! About window. The start screen is File › Home (`backstage.rs`).
 
 use deckcraft_color::SchemeSlot;
-use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
+use egui::{Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
+use crate::i18n::units::{self, LengthUnit};
+use crate::i18n::{Language, tl, tl_in};
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -47,7 +49,7 @@ fn title(id: &str) -> &'static str {
         "paragraph" => "Paragraph",
         "tabs" => "Tabs",
         "font" => "Font",
-        "about" => "About Nexus Slides",
+        "about" => "About Nexus Slide",
         "preferences" => "Preferences",
         "autocorrect" => "AutoCorrect",
         "gridOptions" => "Grid Options",
@@ -77,14 +79,31 @@ fn title(id: &str) -> &'static str {
 
 pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let Some(mut d) = app.dialog.take() else { return };
+    // NexusOffice: as a tab of the NexusOffice window, the prompt every Nexus app shows.
+    if app.embedded && matches!(d.id.as_str(), "close" | "quit") {
+        match embedded_save_prompt(app, ctx, &d) {
+            Some(true) => {
+                app.dialog = Some(d);
+                return;
+            }
+            Some(false) => return,
+            None => {}
+        }
+    }
     let mut open = true;
     let mut close = false;
-    let mut window = egui::Window::new(title(&d.id))
-        .id(egui::Id::new(("dialog", d.id.clone())))
-        .collapsible(false)
-        .resizable(false)
-        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
-        .open(&mut open);
+    let lang = app.ui.language;
+    // NexusOffice: titles in the interface's language; "Save changes?" names itself there.
+    let shown = if lang != crate::i18n::Language::En && matches!(d.id.as_str(), "close" | "quit") {
+        lang.tr("Save changes?").into_owned()
+    } else {
+        // A title can differ from the ribbon's word for the same thing ("Đoạn văn", the group "Đoạn").
+        lang.lookup(&format!("dialog.{}", d.id)).map_or_else(|| lang.tr(title(&d.id)).into_owned(), str::to_string)
+    };
+    // NexusOffice: the dialog's numbers and lengths read in the interface's language (`lang_of`).
+    d.fields.insert(LANG_FIELD.into(), lang.code().into());
+    // NexusOffice: the shared dialog look (sized to the content, 16 px padding).
+    let mut window = crate::nexus_dialog::window(ctx, shown, egui::Id::new(("dialog", d.id.clone()))).open(&mut open);
     // Two columns of colour rows plus Save must fit the first frame (Theme Colors), as must Save
     // in Theme Fonts. A later resize clips the buttons (the window size sticks) and clicks miss them.
     if d.id == "themeColors" {
@@ -96,7 +115,7 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         ui.set_min_width(match d.id.as_str() {
             "themeColors" => 700.0,
             "themeFonts" => 400.0,
-            _ => 340.0,
+            _ => crate::nexus_dialog::MIN_WIDTH,
         });
         if d.id == "themeColors" {
             ui.set_min_height(360.0);
@@ -122,22 +141,71 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     }
 }
 
+/// NexusOffice: "Lưu thay đổi?" over the tab (`nexus_save_prompt`) for File › Close ("close")
+/// and quitting ("quit"). Lưu, Không lưu and Hủy do what the stand-alone prompt's Save, Don't Save
+/// and Cancel do. Returns whether the prompt stays open, or None when there is nothing to ask
+/// about (the stand-alone code then finishes the close or the quit).
+fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> Option<bool> {
+    use crate::nexus_save_prompt as sp;
+    let quit = d.id == "quit";
+    let names: Vec<String> = if quit {
+        app.session.documents().iter().filter(|d| d.is_dirty()).map(|d| d.title()).collect()
+    } else {
+        app.session.active().map(|d| d.title()).into_iter().collect()
+    };
+    let lang = app.ui.language;
+    let vi = lang == crate::i18n::Language::Vi;
+    // Through the catalogue (the same words as `sp::question`), so the interface audit knows them.
+    let question = match names.as_slice() {
+        [] => return None,
+        [one] => lang.fill("Save changes to “{name}” before closing?", &[("name", &sp::shorten_middle(one, 80))]),
+        many => lang.fill("Save changes to {n} presentations before closing?", &[("n", &many.len().to_string())]),
+    };
+    let t = Tokens::get(ctx);
+    let prompt = sp::Prompt { words: sp::words(vi), question: &question, note: None, error: None };
+    let look = sp::Look {
+        dark: t.dark,
+        accent: t.accent,
+        on_accent: t.accent_text,
+        error: ctx.global_style().visuals.error_fg_color,
+        title_font: theme::bold(sp::TITLE_SIZE),
+        title_fake_bold: !theme::has_semibold(),
+    };
+    let Some(answer) = sp::show(ctx, egui::Id::new("nexus_save_prompt"), app.drawn_in, &prompt, &look) else { return Some(true) };
+    match (answer, quit) {
+        (sp::Answer::Cancel, _) => {}
+        (sp::Answer::DontSave, false) => {
+            let _ = app.run("file.close", json!({}));
+        }
+        (sp::Answer::DontSave, true) => {
+            let _ = app.session.execute("file.recovery.discard", &json!({}));
+            app.quit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        (sp::Answer::Save, false) => {
+            app.save();
+            // In the browser a save is a download: the presentation stays "unsaved".
+            let web = app.services.pick_save.is_none() && app.services.download.is_some();
+            if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
+                let _ = app.run("file.close", json!({}));
+            } else {
+                // A presentation with no file waits for the host's Save As.
+                app.close_after_pending_save();
+            }
+        }
+        (sp::Answer::Save, true) => {
+            if app.save_all() {
+                app.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+    Some(false)
+}
+
+/// NexusOffice: the shared footer (Hủy, then the primary button, right-aligned; Enter is OK).
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
-    let mut ok = false;
-    let mut cancel = false;
-    ui.add_space(8.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let t = Tokens::get(ui.ctx());
-        if ui.add(egui::Button::new(egui::RichText::new(ok_label).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0))).clicked()
-            || ui.input(|i| i.key_pressed(egui::Key::Enter))
-        {
-            ok = true;
-        }
-        if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
-            cancel = true;
-        }
-    });
-    (ok, cancel)
+    crate::nexus_dialog::footer(ui, ok_label, true)
 }
 
 /// What the Preferences dialog can change, as it was when the dialog opened.
@@ -145,6 +213,7 @@ fn preferences_snapshot(app: &SlideApp) -> Value {
     json!({
         "dark": app.ui.brightness == theme::Brightness::Dark,
         "uiScale": app.ui.ui_scale,
+        "accent": app.ui.accent,
         "prefs": serde_json::to_value(&app.session.prefs).unwrap_or(Value::Null),
     })
 }
@@ -160,6 +229,9 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
     if let Some(scale) = before.get("uiScale").and_then(Value::as_f64) {
         app.ui.ui_scale = scale as f32;
     }
+    if let Some(accent) = before.get("accent") {
+        let _ = app.run("ui.accent", json!({ "value": accent }));
+    }
     if let Some(prefs) = before.get("prefs").and_then(|p| serde_json::from_value(p.clone()).ok()) {
         app.session.prefs = prefs;
     }
@@ -167,9 +239,14 @@ fn restore_preferences(app: &mut SlideApp, d: &Dialog) {
 
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
-    ui.horizontal(|ui| {
-        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(label));
-        ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0));
+    // NexusOffice: an indented label ("  Footer text:") keeps its indent in every language; labels
+    // sit left-aligned in one column, and a label too long for it goes above its field
+    // (`nexus_dialog::field_row`).
+    let name = label.trim_start();
+    let indent = label.len().saturating_sub(name.len()) > 0;
+    let text = tl(ui, name).into_owned();
+    crate::nexus_dialog::field_row(ui, &text, indent, |ui, width| {
+        ui.add(egui::TextEdit::singleline(&mut v).desired_width(width).margin(vec2(6.0, 4.0)).min_size(vec2(0.0, 26.0)));
     });
     d.fields.insert(key.into(), v);
 }
@@ -188,13 +265,31 @@ fn alt_text_starts_decorative(decorative: impl IntoIterator<Item = bool>) -> boo
 
 fn check(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: bool) -> bool {
     let mut v = d.get(key, if default { "1" } else { "0" }) == "1";
-    ui.checkbox(&mut v, label);
+    ui.checkbox(&mut v, tl(ui, label));
     d.fields.insert(key.into(), if v { "1".into() } else { "0".into() });
     v
 }
 
 fn num(d: &mut Dialog, key: &str, default: f64) -> f64 {
-    d.get(key, "").trim().trim_end_matches(['"', '%', ' ']).parse::<f64>().ok().filter(|v| v.is_finite()).unwrap_or(default)
+    let lang = lang_of(d);
+    units::parse_number(lang, d.get(key, "").trim().trim_end_matches(['"', '%', ' '])).unwrap_or(default)
+}
+
+/// NexusOffice: where `show` notes the interface language of the frame (numbers and lengths).
+const LANG_FIELD: &str = "nx.lang";
+
+/// NexusOffice: the interface language the dialog is drawn in (English until `show` notes it).
+fn lang_of(d: &Dialog) -> Language {
+    d.fields.get(LANG_FIELD).and_then(|c| Language::parse(c)).unwrap_or_default()
+}
+
+/// NexusOffice: typed `text` as upstream's parsers read it: as it is in English; in Vietnamese the
+/// number it holds (a comma or a point) written with a point, or "" when it holds none.
+fn std_number(lang: Language, text: &str) -> String {
+    match lang {
+        Language::En => text.to_string(),
+        _ => units::parse_measure(lang, text).map(|v| v.to_string()).unwrap_or_default(),
+    }
 }
 
 fn album_items(d: &Dialog) -> Option<Vec<Value>> {
@@ -207,12 +302,12 @@ fn store_album_items(d: &mut Dialog, items: &[Value]) {
     d.fields.insert("items".into(), raw);
 }
 
-fn album_item_label(v: &Value) -> String {
+fn album_item_label(lang: Language, v: &Value) -> String {
     if let Some(text) = v.get("text").and_then(Value::as_str) {
         let text = text.trim();
-        if text.is_empty() { "Text Box".to_string() } else { format!("Text: {text}") }
+        if text.is_empty() { lang.tr("Text Box").into_owned() } else { lang.fill("Text: {text}", &[("text", text)]) }
     } else {
-        v.get("name").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("Picture").to_string()
+        v.get("name").and_then(Value::as_str).filter(|s| !s.is_empty()).map_or_else(|| lang.tr("Picture").into_owned(), str::to_string)
     }
 }
 
@@ -264,9 +359,12 @@ fn pick_album_picture(app: &mut SlideApp) -> Option<Value> {
 fn album_choice(ui: &mut Ui, d: &mut Dialog, id: &str, key: &str, default: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, default);
     let label = choices.iter().find(|(k, _)| *k == cur).map(|(_, l)| *l).unwrap_or(default);
+    // NexusOffice: the choices in the interface's language (theme names stay names).
+    let label = tl(ui, label).into_owned();
+    let label = label.as_str();
     let opened = egui::ComboBox::from_id_salt(id).selected_text(label).width(220.0).show_ui(ui, |ui| {
         for (k, l) in choices {
-            if ui.selectable_label(cur == *k, *l).clicked() {
+            if ui.selectable_label(cur == *k, tl(ui, l)).clicked() {
                 d.fields.insert(key.into(), (*k).to_string());
             }
         }
@@ -343,23 +441,21 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.set_min_width(440.0);
     egui::ScrollArea::vertical().max_height(520.0).id_salt("album_body").show(ui, |ui| {
         ui.set_min_width(420.0);
-        ui.label("Pictures in album");
+        crate::nexus_dialog::section(ui, "Pictures in album");
         let items = album_items(d).unwrap_or_default();
         let mut sel = d.get("sel", "0").parse::<usize>().unwrap_or(0);
         // Fixed height so adding pictures does not push Create past the window.
-        egui::ScrollArea::vertical().max_height(120.0).min_scrolled_height(120.0).auto_shrink([false, false]).id_salt("album_list").show(ui, |ui| {
-            if items.is_empty() {
-                ui.label(egui::RichText::new("No pictures yet").color(Tokens::get(ui.ctx()).text_dim));
-            }
-            for (i, item) in items.iter().enumerate() {
-                if ui.selectable_label(sel == i, album_item_label(item)).clicked() {
-                    sel = i;
-                }
-            }
-        });
+        let lang = crate::i18n::current(ui.ctx());
+        let rows: Vec<String> = items.iter().map(|item| album_item_label(lang, item)).collect();
+        let empty = tl(ui, "No pictures yet").into_owned();
+        let picked = crate::nexus_dialog::list_box_sized(ui, "album_list", &rows, (!rows.is_empty()).then_some(sel), (120.0, 120.0), &empty);
+        if let Some(i) = picked.0 {
+            sel = i;
+        }
         d.fields.insert("sel".into(), sel.to_string());
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
         ui.horizontal(|ui| {
-            if ui.button("Add Pictures…").clicked()
+            if ui.button(tl(ui, "Add Pictures…")).clicked()
                 && let Some(item) = pick_album_picture(app)
             {
                 match album_items(d) {
@@ -373,8 +469,9 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     None => app.set_status("The picture list is invalid"),
                 }
             }
-            if ui.button("New Text Box").clicked() {
-                let text = d.get("boxText", "Text Box");
+            let default_box = tl(ui, "Text Box").into_owned();
+            if ui.button(tl(ui, "New Text Box")).clicked() {
+                let text = d.get("boxText", &default_box);
                 let text = text.trim();
                 if text.is_empty() {
                     app.set_status("Type the text for the new text box");
@@ -391,7 +488,7 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     }
                 }
             }
-            if ui.button("Remove").clicked()
+            if ui.button(tl(ui, "Remove")).clicked()
                 && let Some(mut list) = album_items(d)
                 && let Some(i) = d.get("sel", "0").parse::<usize>().ok()
                 && i < list.len()
@@ -402,41 +499,43 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 d.fields.insert("sel".into(), next.to_string());
             }
         });
-        field(ui, d, "Text box:", "boxText", "Text Box");
+        let default_box = tl(ui, "Text Box").into_owned();
+        field(ui, d, "Text box:", "boxText", &default_box);
         let picture = selected_album_picture(d, &items);
-        ui.label(album_picture_status(&items, sel));
+        ui.add_space(crate::nexus_dialog::GAP_S);
+        crate::nexus_dialog::section(ui, &album_picture_status(crate::i18n::current(ui.ctx()), &items, sel));
         ui.horizontal_wrapped(|ui| {
             ui.add_enabled_ui(picture, |ui| {
-                if ui.button("Rotate Left").clicked() {
+                if ui.button(tl(ui, "Rotate Left")).clicked() {
                     with_selected_picture(d, |obj| {
                         let cur = obj.get("rot").and_then(Value::as_f64).unwrap_or(0.0);
                         let next = ((cur - 90.0) % 360.0 + 360.0) % 360.0;
                         obj.insert("rot".into(), json!(next));
                     });
                 }
-                if ui.button("Rotate Right").clicked() {
+                if ui.button(tl(ui, "Rotate Right")).clicked() {
                     with_selected_picture(d, |obj| {
                         let cur = obj.get("rot").and_then(Value::as_f64).unwrap_or(0.0);
                         let next = ((cur + 90.0) % 360.0 + 360.0) % 360.0;
                         obj.insert("rot".into(), json!(next));
                     });
                 }
-                if ui.button("More Brightness").clicked() {
+                if ui.button(tl(ui, "More Brightness")).clicked() {
                     nudge_picture(d, "brightness", 0.1);
                 }
-                if ui.button("Less Brightness").clicked() {
+                if ui.button(tl(ui, "Less Brightness")).clicked() {
                     nudge_picture(d, "brightness", -0.1);
                 }
-                if ui.button("More Contrast").clicked() {
+                if ui.button(tl(ui, "More Contrast")).clicked() {
                     nudge_picture(d, "contrast", 0.1);
                 }
-                if ui.button("Less Contrast").clicked() {
+                if ui.button(tl(ui, "Less Contrast")).clicked() {
                     nudge_picture(d, "contrast", -0.1);
                 }
             });
         });
-        ui.add_space(4.0);
-        ui.label("Picture layout");
+        ui.add_space(crate::nexus_dialog::GAP_M);
+        crate::nexus_dialog::section(ui, "Picture layout");
         album_choice(
             ui,
             d,
@@ -453,7 +552,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ("4title", "4 pictures with title"),
             ],
         );
-        ui.label("Frame shape");
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+        crate::nexus_dialog::section(ui, "Frame shape");
         album_choice(
             ui,
             d,
@@ -464,7 +564,8 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         );
         check(ui, d, "Captions under pictures", "captions", false);
         check(ui, d, "ALL pictures black and white", "grayscale", false);
-        ui.label("Album theme");
+        ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+        crate::nexus_dialog::section(ui, "Album theme");
         album_choice(ui, d, "album_theme", "theme", deckcraft_engine::nexus::THEME_NAME, &ALBUM_THEMES.iter().map(|n| (*n, *n)).collect::<Vec<_>>());
     });
     let captions = d.fields.get("captions").is_some_and(|v| v == "1");
@@ -504,17 +605,22 @@ fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     cancel
 }
 
-fn album_picture_status(items: &[Value], sel: usize) -> String {
+fn album_picture_status(lang: Language, items: &[Value], sel: usize) -> String {
     let Some(item) = items.get(sel) else {
-        return "Select a picture to rotate it or change brightness and contrast".into();
+        return lang.tr("Select a picture to rotate it or change brightness and contrast").into_owned();
     };
     if item.get("data").is_none() && item.get("path").is_none() {
-        return "Text boxes have no picture options".into();
+        return lang.tr("Text boxes have no picture options").into_owned();
     }
     let rot = item.get("rot").and_then(Value::as_f64).unwrap_or(0.0);
     let brightness = item.get("brightness").and_then(Value::as_f64).unwrap_or(0.0);
     let contrast = item.get("contrast").and_then(Value::as_f64).unwrap_or(0.0);
-    format!("Rotation {rot:.0}°, brightness {brightness:.1}, contrast {contrast:.1}")
+    // NexusOffice: the sentence and its numbers in the interface's language.
+    let n = |v: String| units::localize(lang, &v).into_owned();
+    lang.fill(
+        "Rotation {rot}°, brightness {brightness}, contrast {contrast}",
+        &[("rot", &format!("{rot:.0}")), ("brightness", &n(format!("{brightness:.1}"))), ("contrast", &n(format!("{contrast:.1}")))],
+    )
 }
 
 fn nudge_picture(d: &mut Dialog, key: &str, delta: f64) {
@@ -529,7 +635,8 @@ fn seed_theme_colors(d: &mut Dialog) {
     if d.fields.contains_key("seeded") {
         return;
     }
-    let name = d.params.get("name").and_then(Value::as_str).unwrap_or("Custom");
+    let custom = lang_of(d).tr("Custom").into_owned();
+    let name = d.params.get("name").and_then(Value::as_str).unwrap_or(&custom);
     d.fields.insert("schemeName".into(), name.to_string());
     let obj = d.params.get("colors").and_then(Value::as_object);
     for slot in SchemeSlot::THEME {
@@ -543,14 +650,15 @@ fn theme_color_row(ui: &mut Ui, d: &mut Dialog, slot: SchemeSlot) {
     let key = slot.xml_name();
     let mut v = d.get(key, "000000");
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(188.0, 18.0), egui::Label::new(slot.label()));
+        let name = tl(ui, slot.label()).into_owned();
+        ui.add_sized(vec2(188.0, 18.0), egui::Label::new(name.as_str()));
         let fill = deckcraft_color::Rgba::from_hex(&v).map(theme::to_color32).unwrap_or_else(|| Color32::from_gray(200));
         let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
         ui.painter().rect(rect, CornerRadius::same(2), fill, Stroke::new(1.0, Tokens::get(ui.ctx()).border), egui::StrokeKind::Inside);
         let resp = ui.add(egui::TextEdit::singleline(&mut v).desired_width(84.0).id_salt(("theme-hex", key)));
         let shown = v.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, format!("{} hex", slot.label()));
+            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, format!("{name} hex"));
             info.current_text_value = Some(shown.clone());
             info
         });
@@ -559,15 +667,16 @@ fn theme_color_row(ui: &mut Ui, d: &mut Dialog, slot: SchemeSlot) {
 }
 
 fn theme_color_payload(d: &mut Dialog) -> Result<Value, String> {
+    let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err("Enter a scheme name.".into());
+        return Err(lang.lookup("themeColors.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let mut colors = serde_json::Map::new();
     for slot in SchemeSlot::THEME {
         let raw = d.get(slot.xml_name(), "");
         let Some(rgb) = deckcraft_color::Rgba::from_hex(raw.trim()) else {
-            return Err(format!("{} needs a colour like #RRGGBB.", slot.label()));
+            return Err(lang.fill("{name} needs a colour like #RRGGBB.", &[("name", &lang.tr(slot.label()))]));
         };
         colors.insert(slot.xml_name().into(), Value::String(format!("#{}", rgb.hex())));
     }
@@ -594,17 +703,18 @@ fn theme_colors_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     ui.add_space(6.0);
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
-        ui.label("Name:");
+        ui.label(tl(ui, "Name:"));
+        let access = tl_in(ui, "themeColors", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Scheme name");
+            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, access.clone());
             info.current_text_value = Some(shown.clone());
             info
         });
     });
     d.fields.insert("schemeName".into(), name);
-    ui.label(egui::RichText::new("Applies to this presentation's theme colours.").size(11.0).color(Tokens::get(ui.ctx()).text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Applies to this presentation's theme colours.")).size(11.0).color(Tokens::get(ui.ctx()).text_dim));
     let (ok, cancel) = buttons(ui, "Save");
     if ok {
         match theme_color_payload(d) {
@@ -622,7 +732,8 @@ fn seed_theme_fonts(d: &mut Dialog) {
     if d.fields.contains_key("seeded") {
         return;
     }
-    let name = d.params.get("name").and_then(Value::as_str).unwrap_or("Custom");
+    let custom = lang_of(d).tr("Custom").into_owned();
+    let name = d.params.get("name").and_then(Value::as_str).unwrap_or(&custom);
     let major = d.params.get("major").and_then(Value::as_str).unwrap_or("Inter");
     let minor = d.params.get("minor").and_then(Value::as_str).unwrap_or(major);
     d.fields.insert("schemeName".into(), name.to_string());
@@ -654,7 +765,7 @@ fn font_combo(ui: &mut Ui, label: &str, choices: &[String], selected: &mut Strin
         }
     });
     let shown = selected.clone();
-    let access = label.to_string();
+    let access = tl(ui, label).into_owned();
     resp.response.widget_info(move || {
         let mut info = egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, access.clone());
         info.current_text_value = Some(shown.clone());
@@ -663,17 +774,18 @@ fn font_combo(ui: &mut Ui, label: &str, choices: &[String], selected: &mut Strin
 }
 
 fn theme_font_payload(d: &mut Dialog) -> Result<Value, String> {
+    let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err("Enter a scheme name.".into());
+        return Err(lang.lookup("themeFonts.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let major = d.get("major", "").trim().to_string();
     if major.is_empty() {
-        return Err("Choose a heading font.".into());
+        return Err(lang.tr("Choose a heading font.").into_owned());
     }
     let minor = d.get("minor", "").trim().to_string();
     if minor.is_empty() {
-        return Err("Choose a body font.".into());
+        return Err(lang.tr("Choose a body font.").into_owned());
     }
     Ok(json!({"name": name, "major": major, "minor": minor}))
 }
@@ -688,11 +800,11 @@ fn theme_fonts_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let mut major = major;
     let mut minor = minor;
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Heading:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Heading:")));
         font_combo(ui, "Heading font", &headings, &mut major);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Body:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Body:")));
         font_combo(ui, "Body font", &bodies, &mut minor);
     });
     d.fields.insert("major".into(), major.clone());
@@ -700,22 +812,24 @@ fn theme_fonts_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.add_space(4.0);
     // Theme faces are not egui families; naming an unbound family panics. The lines show the
     // chosen names at heading and body sizes.
-    ui.label(egui::RichText::new(format!("Heading sample  {major}")).size(20.0));
-    ui.label(egui::RichText::new(format!("Body sample  {minor}")).size(14.0));
+    let lang = crate::i18n::current(ui.ctx());
+    ui.label(egui::RichText::new(lang.fill("Heading sample  {font}", &[("font", &major)])).size(20.0));
+    ui.label(egui::RichText::new(lang.fill("Body sample  {font}", &[("font", &minor)])).size(14.0));
     ui.add_space(4.0);
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Name:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Name:")));
+        let access = tl_in(ui, "themeFonts", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(240.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Scheme name");
+            let mut info = egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, access.clone());
             info.current_text_value = Some(shown.clone());
             info
         });
     });
     d.fields.insert("schemeName".into(), name);
-    ui.label(egui::RichText::new("Heading and body fonts for this presentation.").size(11.0).color(Tokens::get(ui.ctx()).text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Heading and body fonts for this presentation.")).size(11.0).color(Tokens::get(ui.ctx()).text_dim));
     let (ok, cancel) = buttons(ui, "Save");
     if ok {
         match theme_font_payload(d) {
@@ -932,8 +1046,8 @@ fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     let mut mode = d.get("mode", "percent");
     let mut percent = d.get("percent", "100");
-    ui.label("Zoom to");
-    if ui.radio(mode == "fit", "Fit").clicked() {
+    crate::nexus_dialog::section(ui, "Zoom to");
+    if ui.radio(mode == "fit", tl(ui, "Fit")).clicked() {
         mode = "fit".into();
     }
     for pct in ZOOM_PRESETS {
@@ -944,7 +1058,7 @@ fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
     }
     ui.horizontal(|ui| {
-        ui.label("Percent:");
+        ui.label(tl(ui, "Percent:"));
         let edit = ui.add(egui::TextEdit::singleline(&mut percent).desired_width(72.0));
         if edit.changed() {
             mode = "percent".into();
@@ -959,7 +1073,7 @@ fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             app.ui.zoom = None;
             return true;
         }
-        match parse_zoom_percent(&percent) {
+        match parse_zoom_percent(&std_number(lang_of(d), &percent)) {
             Some(scale) => app.ui.zoom = Some(scale),
             None => {
                 app.set_status("Enter a zoom percent");
@@ -1039,34 +1153,49 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         "slideSize" => {
             let cur = app.session.active().map(|s| s.doc.slide_size).unwrap_or(deckcraft_model::defaults::WIDE);
-            ui.label("Slides sized for:");
+            // NexusOffice: inches in English, centimetres in Vietnamese, in the interface's numbers.
+            let lang = lang_of(d);
+            let unit = LengthUnit::of(lang);
+            let two = |v: f64| units::localize(lang, &format!("{v:.2}")).into_owned();
+            if !d.fields.contains_key("wSeed") {
+                seed_len(d, "w", cur.width, two(unit.from_points(cur.width)));
+                seed_len(d, "h", cur.height, two(unit.from_points(cur.height)));
+            }
+            ui.label(tl(ui, "Slides sized for:"));
             let preset = d.get("preset", "");
-            egui::ComboBox::from_id_salt("sizes").selected_text(if preset.is_empty() { "Custom" } else { &preset }).show_ui(ui, |ui| {
-                for (label, w, h) in deckcraft_model::defaults::SLIDE_SIZES {
-                    if ui.selectable_label(preset == *label, *label).clicked() {
-                        d.fields.insert("preset".into(), label.to_string());
-                        d.fields.insert("w".into(), format!("{:.2}", w / 72.0));
-                        d.fields.insert("h".into(), format!("{:.2}", h / 72.0));
+            egui::ComboBox::from_id_salt("sizes").selected_text(if preset.is_empty() { tl(ui, "Custom") } else { tl(ui, &preset) }).show_ui(
+                ui,
+                |ui| {
+                    for (label, w, h) in deckcraft_model::defaults::SLIDE_SIZES {
+                        if ui.selectable_label(preset == *label, tl(ui, label)).clicked() {
+                            d.fields.insert("preset".into(), label.to_string());
+                            seed_len(d, "w", *w, two(unit.from_points(*w)));
+                            seed_len(d, "h", *h, two(unit.from_points(*h)));
+                        }
                     }
-                }
-            });
-            field(ui, d, "Width (in):", "w", &format!("{:.2}", cur.width / 72.0));
-            field(ui, d, "Height (in):", "h", &format!("{:.2}", cur.height / 72.0));
-            let (w, h) = (num(d, "w", cur.width / 72.0), num(d, "h", cur.height / 72.0));
+                },
+            );
+            field(ui, d, "Width (in):", "w", &two(unit.from_points(cur.width)));
+            field(ui, d, "Height (in):", "h", &two(unit.from_points(cur.height)));
+            let (w, h) = (slide_len(d, "w", cur.width).unwrap_or(cur.width), slide_len(d, "h", cur.height).unwrap_or(cur.height));
             ui.horizontal(|ui| {
-                ui.label("Orientation:");
-                let portrait = ui.radio(h > w, "Portrait").clicked();
-                let landscape = ui.radio(w >= h, "Landscape").clicked();
+                ui.label(tl(ui, "Orientation:"));
+                let portrait = ui.radio(h > w, tl(ui, "Portrait")).clicked();
+                let landscape = ui.radio(w >= h, tl(ui, "Landscape")).clicked();
                 // Picking the other orientation swaps the width and height fields.
                 if portrait && w > h || landscape && h > w {
-                    d.fields.insert("w".into(), format!("{h:.2}"));
-                    d.fields.insert("h".into(), format!("{w:.2}"));
+                    seed_len(d, "w", h, two(unit.from_points(h)));
+                    seed_len(d, "h", w, two(unit.from_points(w)));
                 }
             });
             let maximize = check(ui, d, "Maximize content (else ensure fit)", "max", false);
             let (ok, cancel) = buttons(ui, "OK");
             if ok {
-                let (w, h) = (num(d, "w", cur.width / 72.0) * 72.0, num(d, "h", cur.height / 72.0) * 72.0);
+                let (Some(w), Some(h)) = (slide_len(d, "w", cur.width), slide_len(d, "h", cur.height)) else {
+                    let which = if slide_len(d, "w", cur.width).is_none() { "Width" } else { "Height" };
+                    app.set_status(must_be_a_number(d, which));
+                    return false;
+                };
                 run(app, "design.slideSize", json!({"w": w, "h": h, "scale": if maximize { "maximize" } else { "ensureFit" }}));
             }
             ok || cancel
@@ -1080,16 +1209,11 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let foot = check(ui, d, "Footer", "footer", hf.footer);
             field(ui, d, "  Footer text:", "footerText", &hf.footer_text);
             let hide = check(ui, d, "Don't show on title slide", "hide", hf.hide_on_title);
-            ui.add_space(6.0);
-            let mut apply_all = false;
-            let mut apply = false;
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                apply_all = ui.button("Apply to All").clicked();
-                apply = ui.button("Apply").clicked();
-                if ui.button("Cancel").clicked() {
-                    d.fields.insert("cancel".into(), "1".into());
-                }
-            });
+            let f = crate::nexus_dialog::footer_with(ui, &["Cancel", "Apply"], "Apply to All", true);
+            let (apply_all, apply) = (f.primary, f.secondary == Some(1));
+            if f.secondary == Some(0) {
+                d.fields.insert("cancel".into(), "1".into());
+            }
             if apply || apply_all {
                 let dt = d.get("dateText", "");
                 let ft = d.get("footerText", "");
@@ -1106,13 +1230,13 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let slide_default = seed.slide.to_string();
             let mode = d.get("mode", seed.mode);
             ui.horizontal(|ui| {
-                if ui.selectable_label(mode == "url", "Web Page or File").clicked() {
+                if ui.selectable_label(mode == "url", tl(ui, "Web Page or File")).clicked() {
                     d.fields.insert("mode".into(), "url".into());
                 }
-                if ui.selectable_label(mode == "slide", "This Document").clicked() {
+                if ui.selectable_label(mode == "slide", tl(ui, "This Document")).clicked() {
                     d.fields.insert("mode".into(), "slide".into());
                 }
-                if ui.selectable_label(mode == "email", "Email Address").clicked() {
+                if ui.selectable_label(mode == "email", tl(ui, "Email Address")).clicked() {
                     d.fields.insert("mode".into(), "email".into());
                 }
             });
@@ -1124,13 +1248,10 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         .map(|s| s.doc.slides.iter().enumerate().map(|(i, sl)| format!("{}. {}", i + 1, sl.title())).collect())
                         .unwrap_or_default();
                     let sel = d.get("slide", &slide_default).parse::<usize>().unwrap_or(0);
-                    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
-                        for (i, t) in titles.iter().enumerate() {
-                            if ui.selectable_label(sel == i, t).clicked() {
-                                d.fields.insert("slide".into(), i.to_string());
-                            }
-                        }
-                    });
+                    crate::nexus_dialog::section(ui, "Select a place in this document:");
+                    if let (Some(i), _) = crate::nexus_dialog::list_box(ui, "link-slides", &titles, Some(sel), 180.0) {
+                        d.fields.insert("slide".into(), i.to_string());
+                    }
                 }
                 "email" => field(ui, d, "Email address:", "email", &seed.email),
                 _ => field(ui, d, "Address:", "url", &seed.url),
@@ -1152,13 +1273,13 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "setupShow" => {
             let sh = app.session.active().map(|s| s.doc.show.clone()).unwrap_or_default();
             let ty = d.get("type", &sh.show_type);
-            ui.label("Show type");
+            ui.label(tl(ui, "Show type"));
             for (l, v) in [
                 ("Presented by a speaker (full screen)", "speaker"),
                 ("Browsed by an individual (window)", "browsed"),
                 ("Browsed at a kiosk (full screen)", "kiosk"),
             ] {
-                if ui.radio(ty == v, l).clicked() {
+                if ui.radio(ty == v, tl(ui, l)).clicked() {
                     d.fields.insert("type".into(), v.into());
                 }
             }
@@ -1168,10 +1289,10 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let ut = check(ui, d, "Use timings, if present", "ut", sh.use_timings);
             let names: Vec<String> = app.session.active().map(|s| s.doc.custom_shows.iter().map(|c| c.name.clone()).collect()).unwrap_or_default();
             let chosen = d.fields.entry("custom".into()).or_insert_with(|| sh.custom_show.clone().unwrap_or_default()).clone();
-            ui.label("Slides");
-            let label = if chosen.is_empty() { "All slides".to_string() } else { chosen.clone() };
+            ui.label(tl(ui, "Slides"));
+            let label = if chosen.is_empty() { tl(ui, "All slides").into_owned() } else { chosen.clone() };
             egui::ComboBox::from_id_salt("setup_custom").selected_text(label).show_ui(ui, |ui| {
-                if ui.selectable_label(chosen.is_empty(), "All slides").clicked() {
+                if ui.selectable_label(chosen.is_empty(), tl(ui, "All slides")).clicked() {
                     d.fields.insert("custom".into(), String::new());
                 }
                 for n in &names {
@@ -1195,21 +1316,26 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 return true;
             }
-            let what = if names.len() == 1 { format!("“{}”", names[0]) } else { format!("{} presentations", names.len()) };
-            ui.label(egui::RichText::new(format!("Do you want to save the changes you made to {what}?")).strong());
-            ui.label("Your changes will be lost if you don't save them.");
+            let lang = app.ui.language;
+            let question = match names.as_slice() {
+                [one] => lang.fill("Do you want to save the changes you made to “{name}”?", &[("name", one)]),
+                _ => lang.fill("Do you want to save the changes you made to {n} presentations?", &[("n", &names.len().to_string())]),
+            };
+            ui.label(egui::RichText::new(question).strong());
+            ui.label(lang.tr("Your changes will be lost if you don't save them."));
             ui.add_space(8.0);
             let mut done = false;
             ui.horizontal(|ui| {
                 let t = Tokens::get(ui.ctx());
-                if ui.add(egui::Button::new("Don't Save").min_size(vec2(84.0, 24.0))).clicked() {
+                if ui.add(egui::Button::new(lang.tr("Don't Save")).min_size(vec2(84.0, 24.0))).clicked() {
                     let _ = app.session.execute("file.recovery.discard", &json!({}));
                     app.quit_confirmed = true;
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     done = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let save = ui.add(egui::Button::new(egui::RichText::new("Save").color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
+                    let save = ui
+                        .add(egui::Button::new(egui::RichText::new(lang.tr("Save")).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
                     if save.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         if app.save_all() {
                             app.quit_confirmed = true;
@@ -1217,7 +1343,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         }
                         done = true;
                     }
-                    if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+                    if ui.add(egui::Button::new(lang.tr("Cancel")).min_size(vec2(72.0, 24.0))).clicked() {
                         done = true;
                     }
                 });
@@ -1227,28 +1353,33 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "close" => {
             // File › Close and Ctrl+W on a presentation with unsaved changes.
             let Some(name) = app.session.active().map(|d| d.title()) else { return true };
-            ui.label(egui::RichText::new(format!("Do you want to save the changes you made to “{name}”?")).strong());
-            ui.label("Your changes will be lost if you don't save them.");
+            let lang = app.ui.language;
+            ui.label(egui::RichText::new(lang.fill("Do you want to save the changes you made to “{name}”?", &[("name", &name)])).strong());
+            ui.label(lang.tr("Your changes will be lost if you don't save them."));
             ui.add_space(8.0);
             let mut done = false;
             ui.horizontal(|ui| {
                 let t = Tokens::get(ui.ctx());
-                if ui.add(egui::Button::new("Don't Save").min_size(vec2(84.0, 24.0))).clicked() {
+                if ui.add(egui::Button::new(lang.tr("Don't Save")).min_size(vec2(84.0, 24.0))).clicked() {
                     run(app, "file.close", json!({}));
                     done = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let save = ui.add(egui::Button::new(egui::RichText::new("Save").color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
+                    let save = ui
+                        .add(egui::Button::new(egui::RichText::new(lang.tr("Save")).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0)));
                     if save.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         app.save();
                         // In the browser a save is a download: the presentation stays "unsaved".
                         let web = app.services.pick_save.is_none() && app.services.download.is_some();
                         if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
                             run(app, "file.close", json!({}));
+                        } else {
+                            // NexusOffice: a presentation with no file waits for the host's Save As.
+                            app.close_after_pending_save();
                         }
                         done = true;
                     }
-                    if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+                    if ui.add(egui::Button::new(lang.tr("Cancel")).min_size(vec2(72.0, 24.0))).clicked() {
                         done = true;
                     }
                 });
@@ -1258,7 +1389,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "zoom" => zoom_dialog(app, ui, d),
         "comment" => {
             let mut v = d.get("text", "");
-            ui.add(egui::TextEdit::multiline(&mut v).hint_text("Start a conversation").desired_rows(4).desired_width(320.0));
+            ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "Start a conversation")).desired_rows(4).desired_width(320.0));
             d.fields.insert("text".into(), v.clone());
             let (ok, cancel) = buttons(ui, "Post");
             if ok && !v.trim().is_empty() {
@@ -1274,7 +1405,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let tab = d.get("tab", if numbered { "numbered" } else { "bulleted" });
             ui.horizontal(|ui| {
                 for (k, l) in [("bulleted", "Bulleted"), ("numbered", "Numbered")] {
-                    if ui.selectable_label(tab == k, l).clicked() {
+                    if ui.selectable_label(tab == k, tl(ui, l)).clicked() {
                         d.fields.insert("tab".into(), k.into());
                     }
                 }
@@ -1327,19 +1458,20 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ];
             let color = d.get("color", "");
             ui.horizontal(|ui| {
-                ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Color:"));
+                ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Color:")));
+                let colors = colors.map(|(k, l)| (k, tl(ui, l)));
                 egui::ComboBox::from_id_salt("bullet-color")
-                    .selected_text(colors.iter().find(|c| c.0 == color).map_or("Automatic", |c| c.1))
+                    .selected_text(colors.iter().find(|c| c.0 == color).map_or(tl(ui, "Automatic"), |c| c.1.clone()))
                     .show_ui(ui, |ui| {
-                        for (k, l) in colors {
-                            if ui.selectable_label(color == k, l).clicked() {
-                                d.fields.insert("color".into(), k.into());
+                        for (k, l) in &colors {
+                            if ui.selectable_label(color == *k, l.as_ref()).clicked() {
+                                d.fields.insert("color".into(), (*k).into());
                             }
                         }
                     });
             });
             ui.horizontal(|ui| {
-                if ui.button("None").on_hover_text("Remove bullets and numbering").clicked() {
+                if ui.button(tl(ui, "None")).on_hover_text(tl(ui, "Remove bullets and numbering")).clicked() {
                     d.fields.insert("none".into(), "1".into());
                 }
             });
@@ -1349,7 +1481,8 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 run(app, if tab == "numbered" { "format.numbering" } else { "format.bullets" }, json!({"on": false}));
             } else if ok {
                 let mut p = json!({"on": true});
-                if let Some(size) = d.get("size", "100").trim().trim_end_matches('%').parse::<f64>().ok().filter(|v| v.is_finite()) {
+                let lang = lang_of(d);
+                if let Some(size) = units::parse_number(lang, d.get("size", "100").trim().trim_end_matches('%')) {
                     p["size"] = json!(size.clamp(25.0, 400.0));
                 }
                 if !color.is_empty() {
@@ -1399,24 +1532,24 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             };
             ui.horizontal(|ui| {
                 for (k, l) in [("click", "Mouse Click"), ("hover", "Mouse Over")] {
-                    if ui.selectable_label(tab == k, l).clicked() && tab != k {
+                    if ui.selectable_label(tab == k, tl(ui, l)).clicked() && tab != k {
                         d.fields.clear();
                         d.fields.insert("tab".into(), k.into());
                     }
                 }
             });
             ui.separator();
-            ui.label(if tab == "hover" { "Action on mouse over" } else { "Action on click" });
+            crate::nexus_dialog::section(ui, if tab == "hover" { "Action on mouse over" } else { "Action on click" });
             let kind = d.get("kind", cur_kind);
             let hyperlink = !matches!(kind.as_str(), "none" | "program" | "playMedia");
             let pick = |d: &mut Dialog, ui: &mut Ui, k: &str, l: &str| {
-                if ui.radio(d.get("kind", cur_kind) == k, l).clicked() {
+                if ui.radio(d.get("kind", cur_kind) == k, tl(ui, l)).clicked() {
                     d.fields.insert("kind".into(), k.into());
                 }
             };
             pick(d, ui, "none", "None");
             ui.horizontal(|ui| {
-                if ui.radio(hyperlink, "Hyperlink to:").clicked() && !hyperlink {
+                if ui.radio(hyperlink, tl(ui, "Hyperlink to:")).clicked() && !hyperlink {
                     d.fields.insert("kind".into(), "next".into());
                 }
                 let targets = [
@@ -1432,9 +1565,9 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ];
                 let shown = targets.iter().find(|t| t.0 == kind).map_or("Next Slide", |t| t.1);
                 ui.add_enabled_ui(hyperlink, |ui| {
-                    egui::ComboBox::from_id_salt("action-target").selected_text(shown).show_ui(ui, |ui| {
+                    egui::ComboBox::from_id_salt("action-target").selected_text(tl(ui, shown)).show_ui(ui, |ui| {
                         for (k, l) in targets {
-                            if ui.selectable_label(kind == k, l).clicked() {
+                            if ui.selectable_label(kind == k, tl(ui, l)).clicked() {
                                 d.fields.insert("kind".into(), k.into());
                             }
                         }
@@ -1446,23 +1579,21 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 "url" => field(ui, d, "Address:", "arg", if cur_kind == "url" { &cur_arg } else { "https://" }),
                 "slide" => {
                     let sel = d.get("arg", if cur_kind == "slide" { &cur_arg } else { "0" }).parse::<usize>().unwrap_or(0);
-                    egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
-                        for (i, (_, t)) in slides.iter().enumerate() {
-                            if ui.selectable_label(sel == i, t).clicked() {
-                                d.fields.insert("arg".into(), i.to_string());
-                            }
-                        }
-                    });
+                    let titles: Vec<String> = slides.iter().map(|(_, t)| t.clone()).collect();
+                    if let (Some(i), _) = crate::nexus_dialog::list_box(ui, "action-slides", &titles, Some(sel), 140.0) {
+                        d.fields.insert("arg".into(), i.to_string());
+                    }
                 }
                 "customShow" => {
                     if shows.is_empty() {
-                        ui.label("This presentation has no custom shows (Slide Show ▸ Custom Slide Show).");
+                        ui.label(tl(ui, "This presentation has no custom shows (Slide Show ▸ Custom Slide Show)."));
                     }
                     let sel = d.get("arg", if cur_kind == "customShow" { &cur_arg } else { shows.first().map_or("", String::as_str) });
-                    for n in &shows {
-                        if ui.selectable_label(&sel == n, n).clicked() {
-                            d.fields.insert("arg".into(), n.clone());
-                        }
+                    if !shows.is_empty()
+                        && let (Some(i), _) = crate::nexus_dialog::list_box(ui, "action-shows", &shows, shows.iter().position(|n| *n == sel), 120.0)
+                        && let Some(n) = shows.get(i)
+                    {
+                        d.fields.insert("arg".into(), n.clone());
                     }
                 }
                 _ => {}
@@ -1500,7 +1631,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     (cur, deco)
                 })
                 .unwrap_or_default();
-            ui.label("How would you describe this object and its context to someone who is blind or has low vision?");
+            ui.label(tl(ui, "How would you describe this object and its context to someone who is blind or has low vision?"));
             let mut v = d.get("text", &cur);
             ui.add(egui::TextEdit::multiline(&mut v).desired_rows(4).desired_width(340.0));
             d.fields.insert("text".into(), v.clone());
@@ -1512,7 +1643,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ok || cancel
         }
         "outline" => {
-            ui.label("Paste or type an outline. Unindented lines become slide titles; tab-indented lines become bullets.");
+            ui.label(tl(ui, "Paste or type an outline. Unindented lines become slide titles; tab-indented lines become bullets."));
             let mut v = d.get("text", "");
             ui.add(egui::TextEdit::multiline(&mut v).desired_rows(10).desired_width(380.0).code_editor());
             d.fields.insert("text".into(), v.clone());
@@ -1540,7 +1671,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "paragraph" => paragraph_dialog(app, ui, d),
         "tabs" => tabs_dialog(app, ui, d),
         "export" => {
-            ui.label("Export the presentation as:");
+            ui.label(tl(ui, "Export the presentation as:"));
             let fmt = d.get("fmt", "pdf");
             for (l, f) in [
                 ("PDF document (.pdf)", "pdf"),
@@ -1551,7 +1682,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ("Outline (.txt)", "outline"),
                 ("Animated GIF (.gif)", "gif"),
             ] {
-                if ui.radio(fmt == f, l).clicked() {
+                if ui.radio(fmt == f, tl(ui, l)).clicked() {
                     d.fields.insert("fmt".into(), f.into());
                 }
             }
@@ -1559,18 +1690,21 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             if fmt == "pdf" {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label("Print layout:");
+                    ui.label(tl(ui, "Print layout:"));
                     egui::ComboBox::from_id_salt("pdf_layout")
-                        .selected_text(match pdf_layout.as_str() {
-                            "notes" => "Notes Pages",
-                            "h1" => "Handouts (1 slide per page)",
-                            "h2" => "Handouts (2 slides per page)",
-                            "h3" => "Handouts (3 slides per page)",
-                            "h4" => "Handouts (4 slides per page)",
-                            "h6" => "Handouts (6 slides per page)",
-                            "h9" => "Handouts (9 slides per page)",
-                            _ => "Full Page Slides",
-                        })
+                        .selected_text(tl(
+                            ui,
+                            match pdf_layout.as_str() {
+                                "notes" => "Notes Pages",
+                                "h1" => "Handouts (1 slide per page)",
+                                "h2" => "Handouts (2 slides per page)",
+                                "h3" => "Handouts (3 slides per page)",
+                                "h4" => "Handouts (4 slides per page)",
+                                "h6" => "Handouts (6 slides per page)",
+                                "h9" => "Handouts (9 slides per page)",
+                                _ => "Full Page Slides",
+                            },
+                        ))
                         .show_ui(ui, |ui| {
                             for (k, l) in [
                                 ("slides", "Full Page Slides"),
@@ -1582,14 +1716,14 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                                 ("h6", "Handouts (6 slides per page)"),
                                 ("h9", "Handouts (9 slides per page)"),
                             ] {
-                                if ui.selectable_label(pdf_layout == k, l).clicked() {
+                                if ui.selectable_label(pdf_layout == k, tl(ui, l)).clicked() {
                                     d.fields.insert("pdfLayout".into(), k.into());
                                 }
                             }
                         });
                 });
                 let mut hidden = d.get("pdfHidden", "false") == "true";
-                if ui.checkbox(&mut hidden, "Include hidden slides").changed() {
+                if ui.checkbox(&mut hidden, tl(ui, "Include hidden slides")).changed() {
                     d.fields.insert("pdfHidden".into(), hidden.to_string());
                 }
             }
@@ -1630,16 +1764,16 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let mut from = d.get("from", used.first().map(String::as_str).unwrap_or(""));
             let mut to = d.get("to", "");
             egui::Grid::new("replace_fonts").num_columns(2).spacing(vec2(10.0, 8.0)).show(ui, |ui| {
-                ui.label("Replace:");
+                ui.label(tl(ui, "Replace:"));
                 egui::ComboBox::from_id_salt("rf_from").width(240.0).selected_text(from.clone()).show_ui(ui, |ui| {
                     for f in &used {
                         ui.selectable_value(&mut from, f.clone(), f);
                     }
                 });
                 ui.end_row();
-                ui.label("With:");
+                ui.label(tl(ui, "With:"));
                 ui.vertical(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut to).desired_width(240.0).hint_text("Font name"));
+                    ui.add(egui::TextEdit::singleline(&mut to).desired_width(240.0).hint_text(tl(ui, "Font name")));
                     let needle = to.trim().to_lowercase();
                     egui::ScrollArea::vertical().max_height(140.0).id_salt("rf_list").show(ui, |ui| {
                         for f in
@@ -1661,8 +1795,12 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let (ok, cancel) = buttons(ui, "Replace");
             if ok && !from.is_empty() && !to.trim().is_empty() {
                 let n = app.run("font.replace", json!({"from": from, "to": to.trim()})).ok().and_then(|v| v["replaced"].as_u64()).unwrap_or(0);
-                let msg =
-                    if n == 0 { format!("“{from}” isn't used explicitly.") } else { format!("Replaced “{from}” with “{}”.", to.trim()) };
+                let lang = lang_of(d);
+                let msg = if n == 0 {
+                    lang.fill("“{from}” isn't used explicitly.", &[("from", &from)])
+                } else {
+                    lang.fill("Replaced “{from}” with “{to}”.", &[("from", &from), ("to", to.trim())])
+                };
                 d.fields.insert("result".into(), msg);
                 d.fields.remove("from");
                 // Stay open, like PowerPoint, so several fonts can be replaced in a row.
@@ -1671,7 +1809,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             cancel
         }
         "symbol" => {
-            ui.label("Click a symbol to insert it at the insertion point.");
+            ui.label(tl(ui, "Click a symbol to insert it at the insertion point."));
             let groups: [(&str, &str); 6] = [
                 ("Punctuation", "–—‘’“”…•·§¶†‡‰′″‹›«»¡¿"),
                 ("Currency", "$€£¥¢₹₩₽₺₿"),
@@ -1681,7 +1819,8 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ("Shapes", "■□▪▫▲△▶▷▼▽◀◁◆◇○●◎★☆✓✔✗✘♠♣♥♦"),
             ];
             for (g, chars) in groups {
-                ui.label(egui::RichText::new(g).font(theme::bold(12.0)));
+                ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
+                crate::nexus_dialog::section(ui, g);
                 ui.horizontal_wrapped(|ui| {
                     for c in chars.chars() {
                         if ui.add(egui::Button::new(egui::RichText::new(c.to_string()).size(16.0)).min_size(vec2(26.0, 26.0))).clicked() {
@@ -1693,16 +1832,34 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     }
                 });
             }
-            let (ok, cancel) = buttons(ui, "Close");
-            ok || cancel
+            crate::nexus_dialog::footer_with(ui, &[], "Close", true).primary
         }
         "equation" => {
-            ui.label("Type an equation in linear form (e.g. a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a).");
+            crate::nexus_dialog::hint(ui, "Type an equation in linear form (e.g. a^2+b^2=c^2, x=(-b±√(b^2-4ac))/2a).");
+            ui.add_space(crate::nexus_dialog::GAP_S);
             let mut v = d.get("eq", "");
-            ui.add(egui::TextEdit::singleline(&mut v).desired_width(340.0).font(theme::font(15.0)));
+            // NexusOffice: the input has the keyboard when the dialog opens; a live preview under it.
+            let input = ui.add(
+                egui::TextEdit::singleline(&mut v)
+                    .id(egui::Id::new("nexus-equation-input"))
+                    .desired_width(crate::nexus_dialog::MIN_WIDTH)
+                    .margin(vec2(6.0, 5.0))
+                    .min_size(vec2(0.0, 30.0))
+                    .font(theme::font(15.0)),
+            );
+            // Enter on an empty equation inserts nothing; the input keeps the keyboard.
+            let enter_on_empty = input.lost_focus() && v.trim().is_empty() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if d.fields.insert("nx.focused".into(), "1".into()).is_none() || enter_on_empty {
+                input.request_focus();
+            }
             d.fields.insert("eq".into(), v.clone());
-            let (ok, cancel) = buttons(ui, "Insert");
-            if ok && !v.is_empty() {
+            let pretty = pretty_equation(v.trim());
+            let shown = if pretty.is_empty() { "—" } else { pretty.as_str() };
+            let preview = lang_of(d).fill("Preview: {text}", &[("text", shown)]);
+            ui.add_space(crate::nexus_dialog::GAP_S);
+            ui.label(egui::RichText::new(preview).font(theme::font(15.0)).color(Tokens::get(ui.ctx()).text_dim));
+            let (ok, cancel) = crate::nexus_dialog::footer(ui, "Insert", !v.trim().is_empty());
+            if ok && !v.trim().is_empty() {
                 let pretty = pretty_equation(&v);
                 let size = app.session.active().map(|s| s.doc.slide_size).unwrap_or(deckcraft_model::defaults::WIDE);
                 run(app, "insert.textBox", json!({"rect": [size.width / 2.0 - 150.0, size.height / 2.0 - 25.0, 300, 50], "text": pretty}));
@@ -1722,10 +1879,10 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ];
             let has_shapes = !app.session.clipboard.shapes.is_empty();
             let mut cur = d.get("as", "destinationTheme");
-            ui.label("As:");
+            ui.label(tl(ui, "As:"));
             for (id, label) in OPTS {
                 let ok = has_shapes || matches!(id, "destinationTheme" | "text");
-                ui.add_enabled_ui(ok, |ui| ui.radio_value(&mut cur, id.to_string(), label));
+                ui.add_enabled_ui(ok, |ui| ui.radio_value(&mut cur, id.to_string(), tl(ui, label)));
             }
             d.fields.insert("as".into(), cur.clone());
             let (ok, cancel) = buttons(ui, "OK");
@@ -1743,29 +1900,40 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let list = v.as_array().cloned().unwrap_or_default();
             let info = app.session.execute("review.dictionary", &json!({})).unwrap_or_default();
             let available = info.get("available").and_then(Value::as_bool).unwrap_or(false);
+            let lang = crate::i18n::current(ui.ctx());
             match info.get("found").and_then(Value::as_str) {
-                Some(f) if available => {
-                    ui.label(egui::RichText::new(format!("Dictionary: {}", f.rsplit(['/', '\\']).next().unwrap_or(f))).small().weak())
-                }
-                _ if available => {
-                    ui.label(egui::RichText::new(format!("Dictionary: {}", info.get("lang").and_then(Value::as_str).unwrap_or(""))).small().weak())
-                }
-                _ => ui.label(
-                    egui::RichText::new(format!(
-                        "No {} dictionary is installed, so only common misspellings are found. Put a Hunspell .aff/.dic pair in {}.",
-                        info.get("lang").and_then(Value::as_str).unwrap_or("en-US"),
-                        info.get("folders")
-                            .and_then(Value::as_array)
-                            .and_then(|a| a.get(1).or(a.first()))
-                            .and_then(Value::as_str)
-                            .unwrap_or("a dictionaries folder")
-                    ))
-                    .small()
-                    .weak(),
+                Some(f) if available => ui.label(
+                    egui::RichText::new(lang.fill("Dictionary: {name}", &[("name", f.rsplit(['/', '\\']).next().unwrap_or(f))])).small().weak(),
                 ),
+                _ if available => ui.label(
+                    egui::RichText::new(lang.fill("Dictionary: {name}", &[("name", info.get("lang").and_then(Value::as_str).unwrap_or(""))]))
+                        .small()
+                        .weak(),
+                ),
+                _ => {
+                    let folder = lang.tr("a dictionaries folder");
+                    ui.label(
+                        egui::RichText::new(lang.fill(
+                            "No {lang} dictionary is installed, so only common misspellings are found. Put a Hunspell .aff/.dic pair in {folder}.",
+                            &[
+                                ("lang", info.get("lang").and_then(Value::as_str).unwrap_or("en-US")),
+                                (
+                                    "folder",
+                                    info.get("folders")
+                                        .and_then(Value::as_array)
+                                        .and_then(|a| a.get(1).or(a.first()))
+                                        .and_then(Value::as_str)
+                                        .unwrap_or(&folder),
+                                ),
+                            ],
+                        ))
+                        .small()
+                        .weak(),
+                    )
+                }
             };
             if list.is_empty() {
-                ui.label("The spelling check is complete. No issues found.");
+                ui.label(tl(ui, "The spelling check is complete. No issues found."));
             }
             let mut add_ignore = None;
             egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
@@ -1774,15 +1942,17 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     let slide = item.get("slide").cloned().unwrap_or_default();
                     let shape = item.get("shape").cloned().unwrap_or_default();
                     ui.horizontal(|ui| {
-                        ui.label(format!("Slide {}: “{w}”", slide.as_u64().unwrap_or(0) + 1));
-                        if ui.small_button("Go to").clicked() {
+                        ui.label(
+                            lang.fill("Slide {n}: “{word}”", &[("n", &(slide.as_u64().unwrap_or(0).saturating_add(1)).to_string()), ("word", w)]),
+                        );
+                        if ui.small_button(tl(ui, "Go to")).clicked() {
                             let _ = app.run("slide.go", json!({"index": slide}));
                             let _ = app.run("edit.select", json!({"ids": [shape]}));
                         }
-                        if ui.small_button("Ignore All").clicked() {
+                        if ui.small_button(tl(ui, "Ignore All")).clicked() {
                             add_ignore = Some(w.to_string());
                         }
-                        if ui.small_button("Add to Dictionary").clicked()
+                        if ui.small_button(tl(ui, "Add to Dictionary")).clicked()
                             && let Err(e) = app.session.execute("review.addToDictionary", &json!({"word": w}))
                         {
                             app.set_status(e.to_string());
@@ -1797,8 +1967,8 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     {
                         ui.horizontal(|ui| {
                             ui.add_space(16.0);
-                            ui.label(egui::RichText::new("Repeated word").weak());
-                            if ui.small_button("Delete Repeated Word").clicked() {
+                            ui.label(egui::RichText::new(tl(ui, "Repeated word")).weak());
+                            if ui.small_button(tl(ui, "Delete Repeated Word")).clicked() {
                                 let from = item.get("deleteFrom").and_then(Value::as_u64).unwrap_or(0) as usize;
                                 let end = item.get("end").and_then(Value::as_u64).unwrap_or(0) as usize;
                                 let para = item.get("para").and_then(Value::as_u64).unwrap_or(0) as usize;
@@ -1826,9 +1996,9 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     if !sug.is_empty() {
                         ui.horizontal_wrapped(|ui| {
                             ui.add_space(16.0);
-                            ui.label(egui::RichText::new("Change to:").weak());
+                            ui.label(egui::RichText::new(tl(ui, "Change to:")).weak());
                             for to in &sug {
-                                let r = ui.small_button(to.as_str()).on_hover_text("Click to change this one; Shift-click to change all");
+                                let r = ui.small_button(to.as_str()).on_hover_text(tl(ui, "Click to change this one; Shift-click to change all"));
                                 if r.clicked() {
                                     let all = ui.input(|i| i.modifiers.shift);
                                     if item.get("notes").and_then(Value::as_bool).unwrap_or(false) {
@@ -1885,18 +2055,26 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let v = app.session.execute("review.accessibility", &json!({})).unwrap_or_default();
             let list = v.as_array().cloned().unwrap_or_default();
             if list.is_empty() {
-                ui.label("No accessibility issues found. People with disabilities should not have difficulty reading this document.");
+                ui.label(tl(ui, "No accessibility issues found. People with disabilities should not have difficulty reading this document."));
             }
             egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
                 for item in &list {
                     ui.horizontal(|ui| {
+                        // NexusOffice: the engine's issue ("Missing slide title") in the interface's language.
+                        let lang = crate::i18n::current(ui.ctx());
+                        let issue = item.get("issue").and_then(Value::as_str).unwrap_or("");
                         ui.label(format!(
-                            "Slide {}: {}{}",
-                            item.get("slide").and_then(Value::as_u64).unwrap_or(0) + 1,
-                            item.get("issue").and_then(Value::as_str).unwrap_or(""),
+                            "{}{}",
+                            lang.fill(
+                                "Slide {n}: {issue}",
+                                &[
+                                    ("n", &item.get("slide").and_then(Value::as_u64).unwrap_or(0).saturating_add(1).to_string()),
+                                    ("issue", &accessibility_issue(lang, issue))
+                                ]
+                            ),
                             item.get("name").and_then(Value::as_str).map(|n| format!(" — {n}")).unwrap_or_default()
                         ));
-                        if ui.small_button("Go to").clicked() {
+                        if ui.small_button(tl(ui, "Go to")).clicked() {
                             let _ = app.run("slide.go", json!({"index": item.get("slide").cloned().unwrap_or_default()}));
                             if let Some(id) = item.get("shape") {
                                 let _ = app.run("edit.select", json!({"ids": [id]}));
@@ -1913,22 +2091,23 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let (cur, np) = selected_language(app);
             let lang = d.get("lang", &cur);
             let mut no_proof = d.get("noProof", if np { "1" } else { "" }) == "1";
-            ui.label("Mark selected text as:");
+            ui.label(tl(ui, "Mark selected text as:"));
             egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
                 // The selection's own language first when the list doesn't have it.
                 let own = (!crate::squiggles::LANGS.iter().any(|(_, t)| t.eq_ignore_ascii_case(&cur))).then(|| (cur.clone(), cur.clone()));
                 let all = own.into_iter().chain(crate::squiggles::LANGS.iter().map(|(n, t)| (n.to_string(), t.to_string())));
                 for (name, tag) in all {
                     let installed = deckcraft_engine::spell::dictionary(&tag).is_some();
-                    let label = if installed { format!("{name}  (dictionary)") } else { name };
+                    let name = tl(ui, &name).into_owned();
+                    let label = if installed { crate::i18n::current(ui.ctx()).fill("{name}  (dictionary)", &[("name", &name)]) } else { name };
                     if ui.selectable_label(lang.eq_ignore_ascii_case(&tag), label).clicked() {
                         d.fields.insert("lang".into(), tag);
                     }
                 }
             });
             ui.add_space(4.0);
-            ui.label(egui::RichText::new("Spelling is checked for languages marked (dictionary).").small().weak());
-            if ui.checkbox(&mut no_proof, "Do not check spelling or grammar").changed() {
+            ui.label(egui::RichText::new(tl(ui, "Spelling is checked for languages marked (dictionary).")).small().weak());
+            if ui.checkbox(&mut no_proof, tl(ui, "Do not check spelling or grammar")).changed() {
                 d.fields.insert("noProof".into(), if no_proof { "1".into() } else { String::new() });
             }
             let (ok, cancel) = buttons(ui, "OK");
@@ -1943,12 +2122,12 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let mut started = false;
             for s in &shows {
                 ui.horizontal(|ui| {
-                    ui.label(format!("{} ({} slides)", s.name, s.slides.len()));
-                    if ui.small_button("Show").clicked() {
+                    ui.label(crate::i18n::current(ui.ctx()).fill("{name} ({n} slides)", &[("name", &s.name), ("n", &s.slides.len().to_string())]));
+                    if ui.small_button(tl(ui, "Show")).clicked() {
                         run(app, "show.start", json!({"custom": s.name}));
                         started = true;
                     }
-                    if ui.small_button("Delete").clicked() {
+                    if ui.small_button(tl(ui, "Delete")).clicked() {
                         let _ = app.run("show.customShow", json!({"name": s.name, "delete": true}));
                     }
                 });
@@ -1956,13 +2135,15 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             if started {
                 return true;
             }
-            field(ui, d, "New show name:", "name", "Custom Show 1");
+            let first = tl(ui, "Custom Show 1").into_owned();
+            field(ui, d, "New show name:", "name", &first);
             field(ui, d, "Slides (e.g. 1,3,5):", "slides", "1");
             let (ok, cancel) = buttons(ui, "Create");
             if ok {
                 let idx: Vec<usize> =
                     d.get("slides", "").split(',').filter_map(|s| s.trim().parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1).collect();
-                run(app, "show.customShow", json!({"name": d.get("name", "Custom Show"), "slides": idx}));
+                let fallback = lang_of(d).tr("Custom Show").into_owned();
+                run(app, "show.customShow", json!({"name": d.get("name", &fallback), "slides": idx}));
             }
             ok || cancel
         }
@@ -1973,17 +2154,18 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     .find_map(|x| if let deckcraft_model::ShapeKind::Chart(c) = &x.kind { Some(((**c).clone(), x.id)) } else { None })
             });
             let Some((c, id)) = ch else {
-                ui.label("Select a chart first.");
+                ui.label(tl(ui, "Select a chart first."));
                 let (ok, cancel) = buttons(ui, "Close");
                 return ok || cancel;
             };
-            ui.label("Edit the data: first row = series names, first column = categories.");
+            ui.label(tl(ui, "Edit the data: first row = series names, first column = categories."));
+            let lang = lang_of(d);
             let mut grid: Vec<Vec<String>> = d.params.get("grid").and_then(|g| serde_json::from_value(g.clone()).ok()).unwrap_or_else(|| {
                 let mut g = vec![std::iter::once(String::new()).chain(c.series.iter().map(|s| s.name.clone())).collect::<Vec<_>>()];
                 for (i, cat) in c.categories.iter().enumerate() {
                     let mut row = vec![cat.clone()];
                     for s in &c.series {
-                        row.push(s.values.get(i).copied().flatten().map(|v| v.to_string()).unwrap_or_default());
+                        row.push(s.values.get(i).copied().flatten().map(|v| units::format_grouped(lang, v)).unwrap_or_default());
                     }
                     g.push(row);
                 }
@@ -1998,28 +2180,57 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
             });
             ui.horizontal(|ui| {
-                if ui.button("+ Row").clicked() {
+                if ui.button(tl(ui, "+ Row")).clicked() {
                     let n = grid.first().map(|r| r.len()).unwrap_or(2);
                     grid.push(vec![String::new(); n]);
                 }
-                if ui.button("+ Series").clicked() {
+                if ui.button(tl(ui, "+ Series")).clicked() {
                     for r in grid.iter_mut() {
                         r.push(String::new());
                     }
                 }
             });
             d.params = json!({"grid": grid});
+            // NexusOffice: a cell that isn't a number is said, not dropped (the chart keeps its data).
+            if let Some(err) = d.fields.get("chartError").filter(|e| !e.is_empty()) {
+                ui.label(egui::RichText::new(err.as_str()).color(ui.visuals().error_fg_color));
+            }
             let (ok, cancel) = buttons(ui, "OK");
             if ok {
                 let names: Vec<String> = grid.first().map(|r| r.iter().skip(1).cloned().collect()).unwrap_or_default();
                 let cats: Vec<String> = grid.iter().skip(1).map(|r| r.first().cloned().unwrap_or_default()).collect();
-                let series: Vec<Value> = names.iter().enumerate().map(|(k, n)| json!({"name": n, "values": grid.iter().skip(1).map(|r| r.get(k + 1).and_then(|v| v.trim().parse::<f64>().ok())).collect::<Vec<_>>()})).collect();
+                let mut bad: Option<String> = None;
+                let mut cell = |v: &String| -> Option<f64> {
+                    let t = v.trim();
+                    if lang == Language::En {
+                        return t.parse::<f64>().ok();
+                    }
+                    let n = units::parse_grouped(lang, t);
+                    if n.is_none() && !t.is_empty() && bad.is_none() {
+                        bad = Some(t.to_string());
+                    }
+                    n
+                };
+                let series: Vec<Value> = names
+                    .iter()
+                    .enumerate()
+                    .map(|(k, n)| json!({"name": n, "values": grid.iter().skip(1).map(|r| r.get(k + 1).and_then(&mut cell)).collect::<Vec<_>>()}))
+                    .collect();
+                if let Some(t) = bad {
+                    let msg = lang.fill("“{cell}” is not a number. Fix it; the chart keeps its data.", &[("cell", &t)]);
+                    d.fields.insert("chartError".into(), msg);
+                    return false;
+                }
                 run(app, "chart.data", json!({"id": id.0, "categories": cats, "series": series}));
             }
             ok || cancel
         }
         "trim" => {
-            let seed = trim_seed(app.session.active());
+            let lang = lang_of(d);
+            let mut seed = trim_seed(app.session.active());
+            for t in [&mut seed.start, &mut seed.end, &mut seed.fade_in, &mut seed.fade_out] {
+                *t = units::localize(lang, t).into_owned();
+            }
             field(ui, d, "Start time (s):", "start", &seed.start);
             field(ui, d, "End trim (s):", "end", &seed.end);
             field(ui, d, "Fade in (s):", "fin", &seed.fade_in);
@@ -2030,17 +2241,17 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     app,
                     "media.options",
                     json!({
-                        "trimStart": seconds_text_to_ms(&d.get("start", &seed.start)),
-                        "trimEnd": seconds_text_to_ms(&d.get("end", &seed.end)),
-                        "fadeIn": seconds_text_to_ms(&d.get("fin", &seed.fade_in)),
-                        "fadeOut": seconds_text_to_ms(&d.get("fout", &seed.fade_out)),
+                        "trimStart": seconds_text_to_ms(&std_number(lang, &d.get("start", &seed.start))),
+                        "trimEnd": seconds_text_to_ms(&std_number(lang, &d.get("end", &seed.end))),
+                        "fadeIn": seconds_text_to_ms(&std_number(lang, &d.get("fin", &seed.fade_in))),
+                        "fadeOut": seconds_text_to_ms(&std_number(lang, &d.get("fout", &seed.fade_out))),
                     }),
                 );
             }
             ok || cancel
         }
         "smartart" => {
-            ui.label("Pick a graphic; type one item per line.");
+            ui.label(tl(ui, "Pick a graphic; type one item per line."));
             let kind = d.get("kind", "process");
             ui.horizontal_wrapped(|ui| {
                 for (k, l) in [
@@ -2051,12 +2262,14 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     ("pyramid", "Pyramid"),
                     ("matrix", "Matrix"),
                 ] {
-                    if ui.selectable_label(kind == k, l).clicked() {
+                    if ui.selectable_label(kind == k, tl(ui, l)).clicked() {
                         d.fields.insert("kind".into(), k.into());
                     }
                 }
             });
-            let mut v = d.get("text", "Plan\nBuild\nLaunch");
+            // NexusOffice: the sample items in the interface's language.
+            let sample = ["Plan", "Build", "Launch"].map(|l| tl(ui, l).into_owned()).join("\n");
+            let mut v = d.get("text", &sample);
             ui.add(egui::TextEdit::multiline(&mut v).desired_rows(5).desired_width(320.0));
             d.fields.insert("text".into(), v.clone());
             let (ok, cancel) = buttons(ui, "Insert");
@@ -2070,7 +2283,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             let tab = d.get("tab", "about");
             ui.horizontal(|ui| {
                 for (k, l) in [("about", "About"), ("contributors", "Contributors"), ("models", "Models")] {
-                    if ui.selectable_label(tab == k, l).clicked() {
+                    if ui.selectable_label(tab == k, tl(ui, l)).clicked() {
                         d.fields.insert("tab".into(), k.into());
                     }
                 }
@@ -2090,21 +2303,21 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
         "autocorrect" => {
             let pr = &mut app.session.prefs;
-            ui.checkbox(&mut pr.ac_two_initials, "Correct TWo INitial CApitals");
-            ui.checkbox(&mut pr.ac_sentence_caps, "Capitalize first letter of sentences");
-            ui.checkbox(&mut pr.ac_days, "Capitalize names of days");
-            ui.checkbox(&mut pr.ac_caps_lock, "Correct accidental use of cAPS LOCK key");
-            ui.checkbox(&mut pr.ac_fractions, "Replace fractions (1/2) with fraction characters (½)");
-            ui.checkbox(&mut pr.autocorrect, "Replace text as you type");
+            ui.checkbox(&mut pr.ac_two_initials, tl(ui, "Correct TWo INitial CApitals"));
+            ui.checkbox(&mut pr.ac_sentence_caps, tl(ui, "Capitalize first letter of sentences"));
+            ui.checkbox(&mut pr.ac_days, tl(ui, "Capitalize names of days"));
+            ui.checkbox(&mut pr.ac_caps_lock, tl(ui, "Correct accidental use of cAPS LOCK key"));
+            ui.checkbox(&mut pr.ac_fractions, tl(ui, "Replace fractions (1/2) with fraction characters (½)"));
+            ui.checkbox(&mut pr.autocorrect, tl(ui, "Replace text as you type"));
             ui.add_space(4.0);
             let mut from = d.get("from", "");
             let mut to = d.get("to", "");
             ui.horizontal(|ui| {
-                ui.label("Replace");
+                ui.label(tl(ui, "Replace"));
                 ui.add(egui::TextEdit::singleline(&mut from).desired_width(90.0));
-                ui.label("With");
+                ui.label(tl(ui, "With"));
                 ui.add(egui::TextEdit::singleline(&mut to).desired_width(130.0));
-                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new("Add")).clicked() {
+                if ui.add_enabled(!from.trim().is_empty(), egui::Button::new(tl(ui, "Add"))).clicked() {
                     run(app, "text.autocorrect", json!({"add": [from.trim(), to]}));
                     from.clear();
                     to.clear();
@@ -2120,7 +2333,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     for (k, v) in entries.iter().filter(|(k, _)| q.is_empty() || k.to_lowercase().starts_with(&q)) {
                         ui.label(k);
                         ui.label(v);
-                        if ui.small_button("Delete").clicked() {
+                        if ui.small_button(tl(ui, "Delete")).clicked() {
                             run(app, "text.autocorrect", json!({"remove": k}));
                         }
                         ui.end_row();
@@ -2137,17 +2350,18 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             if d.params.get("before").is_none() {
                 d.params = json!({ "before": preferences_snapshot(app) });
             }
-            ui.label(egui::RichText::new("General").font(theme::bold(13.0)));
+            ui.label(egui::RichText::new(tl(ui, "General")).font(theme::bold(13.0)));
             let mut dark = app.ui.brightness == theme::Brightness::Dark;
-            if ui.checkbox(&mut dark, "Dark appearance").changed() {
+            if ui.checkbox(&mut dark, tl(ui, "Dark appearance")).changed() {
                 let _ = app.run("view.dark", json!({"on": dark}));
             }
+            crate::nexus_toolbar::accent_row(app, ui);
             // While the pointer holds the slider its value only waits in the dialog: applying it
             // would rescale the slider under the pointer and run it to an end (#767). It applies
             // on release, and at once from the keyboard.
             let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
             let mut scale = pending.unwrap_or(app.ui.ui_scale);
-            let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text("Interface size"));
+            let r = ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut scale, 0.75..=1.75).text(tl(ui, "Interface size"))));
             if r.is_pointer_button_down_on() {
                 if r.changed() || pending.is_some() {
                     d.fields.insert("uiScale".into(), scale.to_string());
@@ -2158,13 +2372,13 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 d.fields.remove("uiScale");
             }
-            ui.label(egui::RichText::new("Editing").font(theme::bold(13.0)));
-            ui.checkbox(&mut app.session.prefs.smart_guides, "Show smart guides");
-            ui.checkbox(&mut app.session.prefs.snap_to_grid, "Snap objects to grid");
-            ui.checkbox(&mut app.session.prefs.smart_quotes, "Replace straight quotes with smart quotes");
+            ui.label(egui::RichText::new(tl(ui, "Editing")).font(theme::bold(13.0)));
+            ui.checkbox(&mut app.session.prefs.smart_guides, tl(ui, "Show smart guides"));
+            ui.checkbox(&mut app.session.prefs.snap_to_grid, tl(ui, "Snap objects to grid"));
+            ui.checkbox(&mut app.session.prefs.smart_quotes, tl(ui, "Replace straight quotes with smart quotes"));
             ui.horizontal(|ui| {
-                ui.checkbox(&mut app.session.prefs.autocorrect, "AutoCorrect as you type");
-                if ui.button("AutoCorrect Options…").clicked() {
+                ui.checkbox(&mut app.session.prefs.autocorrect, tl(ui, "AutoCorrect as you type"));
+                if ui.button(tl(ui, "AutoCorrect Options…")).clicked() {
                     *d = Dialog::new("autocorrect");
                 }
             });
@@ -2172,7 +2386,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 return false;
             }
             ui.horizontal(|ui| {
-                ui.label("Your name (comments):");
+                ui.label(tl(ui, "Your name (comments):"));
                 ui.text_edit_singleline(&mut app.session.prefs.author);
             });
             let (ok, cancel) = buttons(ui, "Done");
@@ -2186,7 +2400,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "themeFonts" => theme_fonts_dialog(app, ui, d),
         "dateTime" => date_time_dialog(app, ui, d),
         _ => {
-            ui.label(format!("“{}” is not available yet.", d.id));
+            ui.label(crate::i18n::current(ui.ctx()).fill("“{id}” is not available yet.", &[("id", &d.id)]));
             let (ok, cancel) = buttons(ui, "OK");
             ok || cancel
         }
@@ -2207,6 +2421,37 @@ fn parse_shown(s: &str) -> Option<f64> {
         return None;
     }
     t.parse().ok().filter(|v: &f64| v.is_finite())
+}
+
+/// NexusOffice: `pt` as the dialog shows a length: inches in English (upstream's text), centimetres
+/// with a decimal comma in Vietnamese.
+fn len_text(d: &Dialog, pt: f64) -> String {
+    match lang_of(d) {
+        Language::En => num_text(pt / 72.0),
+        lang => units::format_length(lang, pt),
+    }
+}
+
+/// NexusOffice: a plain number (degrees, percent) as the dialog shows it.
+fn num_shown(d: &Dialog, v: f64) -> String {
+    units::localize(lang_of(d), &num_text(v)).into_owned()
+}
+
+/// NexusOffice: a typed length in points: inches in English (upstream), centimetres (or the unit
+/// typed) in Vietnamese.
+fn parse_len(d: &Dialog, s: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => parse_shown(s).map(|inches| inches * 72.0),
+        lang => units::parse_length(lang, s),
+    }
+}
+
+/// NexusOffice: a typed plain number (degrees, percent) in the dialog's language.
+fn parse_num(d: &Dialog, s: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => parse_shown(s),
+        lang => units::parse_measure(lang, s),
+    }
 }
 
 fn put_dim(d: &mut Dialog, key: &str, exact: f64, shown: String) {
@@ -2251,13 +2496,15 @@ fn seed_size_position(app: &SlideApp, d: &mut Dialog) {
     let sw = num("scaleW").unwrap_or(100.0);
     let sh = num("scaleH").unwrap_or(100.0);
     let lock = d.params.get("lockAspect").and_then(Value::as_bool).unwrap_or(false);
-    put_dim(d, "x", x, num_text(x / 72.0));
-    put_dim(d, "y", y, num_text(y / 72.0));
-    put_dim(d, "w", w, num_text(w / 72.0));
-    put_dim(d, "h", h, num_text(h / 72.0));
-    put_dim(d, "rot", rot, num_text(rot));
-    put_dim(d, "scaleW", sw, num_text(sw));
-    put_dim(d, "scaleH", sh, num_text(sh));
+    let (tx, ty, tw, th) = (len_text(d, x), len_text(d, y), len_text(d, w), len_text(d, h));
+    let (trot, tsw, tsh) = (num_shown(d, rot), num_shown(d, sw), num_shown(d, sh));
+    put_dim(d, "x", x, tx);
+    put_dim(d, "y", y, ty);
+    put_dim(d, "w", w, tw);
+    put_dim(d, "h", h, th);
+    put_dim(d, "rot", rot, trot);
+    put_dim(d, "scaleW", sw, tsw);
+    put_dim(d, "scaleH", sh, tsh);
     d.fields.insert("baseW".into(), w.to_string());
     d.fields.insert("baseH".into(), h.to_string());
     let bit = if lock { "1" } else { "0" };
@@ -2270,7 +2517,7 @@ fn scale_of(pt: f64, base: f64) -> f64 {
 }
 
 fn current_points(d: &Dialog, key: &str) -> Option<f64> {
-    if edited(d, key) { parse_shown(&field_of(d, key)).map(|inches| inches * 72.0) } else { exact_of(d, key) }
+    if edited(d, key) { parse_len(d, &field_of(d, key)) } else { exact_of(d, key) }
 }
 
 /// Keep scale tied to size, and the other side tied when aspect is locked.
@@ -2283,51 +2530,61 @@ fn reconcile_size_fields(d: &mut Dialog) {
     let (w_s, h_s, sw_s, sh_s) = (field_of(d, "w"), field_of(d, "h"), field_of(d, "scaleW"), field_of(d, "scaleH"));
     let (prev_w, prev_h, prev_sw, prev_sh) = (field_of(d, "prevw"), field_of(d, "prevh"), field_of(d, "prevscaleW"), field_of(d, "prevscaleH"));
     if w_s != prev_w {
-        if let Some(inches) = parse_shown(&w_s) {
-            let w_pt = inches * 72.0;
+        if let Some(w_pt) = parse_len(d, &w_s) {
             d.fields.insert("wPt".into(), w_pt.to_string());
             let pct = scale_of(w_pt, base_w);
-            publish_dim(d, "scaleW", pct, num_text(pct));
+            let shown = num_shown(d, pct);
+            publish_dim(d, "scaleW", pct, shown);
             if lock {
                 let h_pt = if ar > 0.0 { w_pt / ar } else { w_pt };
-                publish_dim(d, "h", h_pt, num_text(h_pt / 72.0));
+                let shown = len_text(d, h_pt);
+                publish_dim(d, "h", h_pt, shown);
                 let hp = scale_of(h_pt, base_h);
-                publish_dim(d, "scaleH", hp, num_text(hp));
+                let shown = num_shown(d, hp);
+                publish_dim(d, "scaleH", hp, shown);
             }
         }
     } else if h_s != prev_h {
-        if let Some(inches) = parse_shown(&h_s) {
-            let h_pt = inches * 72.0;
+        if let Some(h_pt) = parse_len(d, &h_s) {
             d.fields.insert("hPt".into(), h_pt.to_string());
             let pct = scale_of(h_pt, base_h);
-            publish_dim(d, "scaleH", pct, num_text(pct));
+            let shown = num_shown(d, pct);
+            publish_dim(d, "scaleH", pct, shown);
             if lock {
                 let w_pt = h_pt * ar;
-                publish_dim(d, "w", w_pt, num_text(w_pt / 72.0));
+                let shown = len_text(d, w_pt);
+                publish_dim(d, "w", w_pt, shown);
                 let wp = scale_of(w_pt, base_w);
-                publish_dim(d, "scaleW", wp, num_text(wp));
+                let shown = num_shown(d, wp);
+                publish_dim(d, "scaleW", wp, shown);
             }
         }
     } else if sw_s != prev_sw {
-        if let Some(pct) = parse_shown(&sw_s) {
+        if let Some(pct) = parse_num(d, &sw_s) {
             let w_pt = base_w * pct / 100.0;
             d.fields.insert("scaleWPt".into(), pct.to_string());
-            publish_dim(d, "w", w_pt, num_text(w_pt / 72.0));
+            let shown = len_text(d, w_pt);
+            publish_dim(d, "w", w_pt, shown);
             if lock {
                 let h_pt = if ar > 0.0 { w_pt / ar } else { w_pt };
-                publish_dim(d, "h", h_pt, num_text(h_pt / 72.0));
-                publish_dim(d, "scaleH", pct, num_text(pct));
+                let shown = len_text(d, h_pt);
+                publish_dim(d, "h", h_pt, shown);
+                let shown = num_shown(d, pct);
+                publish_dim(d, "scaleH", pct, shown);
             }
         }
     } else if sh_s != prev_sh {
-        if let Some(pct) = parse_shown(&sh_s) {
+        if let Some(pct) = parse_num(d, &sh_s) {
             let h_pt = base_h * pct / 100.0;
             d.fields.insert("scaleHPt".into(), pct.to_string());
-            publish_dim(d, "h", h_pt, num_text(h_pt / 72.0));
+            let shown = len_text(d, h_pt);
+            publish_dim(d, "h", h_pt, shown);
             if lock {
                 let w_pt = h_pt * ar;
-                publish_dim(d, "w", w_pt, num_text(w_pt / 72.0));
-                publish_dim(d, "scaleW", pct, num_text(pct));
+                let shown = len_text(d, w_pt);
+                publish_dim(d, "w", w_pt, shown);
+                let shown = num_shown(d, pct);
+                publish_dim(d, "scaleW", pct, shown);
             }
         }
     } else if lock
@@ -2335,11 +2592,14 @@ fn reconcile_size_fields(d: &mut Dialog) {
         && let Some(w_pt) = current_points(d, "w")
     {
         let h_pt = if ar > 0.0 { w_pt / ar } else { w_pt };
-        publish_dim(d, "h", h_pt, num_text(h_pt / 72.0));
+        let shown = len_text(d, h_pt);
+        publish_dim(d, "h", h_pt, shown);
         let hp = scale_of(h_pt, base_h);
-        publish_dim(d, "scaleH", hp, num_text(hp));
+        let shown = num_shown(d, hp);
+        publish_dim(d, "scaleH", hp, shown);
         let wp = scale_of(w_pt, base_w);
-        publish_dim(d, "scaleW", wp, num_text(wp));
+        let shown = num_shown(d, wp);
+        publish_dim(d, "scaleW", wp, shown);
     }
     for key in ["x", "y", "w", "h", "rot", "scaleW", "scaleH"] {
         let v = field_of(d, key);
@@ -2350,17 +2610,54 @@ fn reconcile_size_fields(d: &mut Dialog) {
 
 fn shown_points(d: &Dialog, key: &str, label: &str) -> Result<f64, String> {
     if edited(d, key) {
-        let n = parse_shown(&field_of(d, key)).ok_or_else(|| format!("{label} must be a number"))?;
-        return Ok(n * 72.0);
+        return parse_len(d, &field_of(d, key)).ok_or_else(|| must_be_a_number(d, label));
     }
-    exact_of(d, key).ok_or_else(|| format!("{label} must be a number"))
+    exact_of(d, key).ok_or_else(|| must_be_a_number(d, label))
 }
 
 fn shown_number(d: &Dialog, key: &str, label: &str) -> Result<f64, String> {
     if edited(d, key) {
-        return parse_shown(&field_of(d, key)).ok_or_else(|| format!("{label} must be a number"));
+        return parse_num(d, &field_of(d, key)).ok_or_else(|| must_be_a_number(d, label));
     }
-    exact_of(d, key).ok_or_else(|| format!("{label} must be a number"))
+    exact_of(d, key).ok_or_else(|| must_be_a_number(d, label))
+}
+
+/// NexusOffice: Slide Size's field `key` shows `shown` for `pt` points; left as it is, it keeps `pt`
+/// exactly (the text rounds to two decimals).
+fn seed_len(d: &mut Dialog, key: &str, pt: f64, shown: String) {
+    d.fields.insert(key.into(), shown.clone());
+    d.fields.insert(format!("{key}Seed"), shown);
+    d.fields.insert(format!("{key}Pt"), pt.to_string());
+}
+
+/// NexusOffice: Slide Size's field `key` in points. English is upstream's (`fallback_pt` when the
+/// text isn't a number). Vietnamese: the exact seeded value while the text is as shown, otherwise
+/// the typed length (centimetres, or the unit typed); `None` when it isn't one.
+fn slide_len(d: &mut Dialog, key: &str, fallback_pt: f64) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => Some(num(d, key, fallback_pt / 72.0) * 72.0),
+        lang => {
+            let text = d.get(key, "");
+            if d.fields.get(&format!("{key}Seed")) == Some(&text) {
+                return Some(d.fields.get(&format!("{key}Pt")).and_then(|p| p.parse::<f64>().ok()).filter(|v| v.is_finite()).unwrap_or(fallback_pt));
+            }
+            units::parse_length(lang, &text)
+        }
+    }
+}
+
+/// NexusOffice: an issue the accessibility check reports, in `lang`.
+fn accessibility_issue(lang: Language, issue: &str) -> String {
+    if let Some(ratio) = issue.strip_prefix("Hard-to-read text contrast (").and_then(|r| r.strip_suffix(":1)")) {
+        return lang.fill("Hard-to-read text contrast ({ratio}:1)", &[("ratio", &units::localize(lang, ratio))]);
+    }
+    lang.tr(issue).into_owned()
+}
+
+/// "Width must be a number", in the dialog's language.
+fn must_be_a_number(d: &Dialog, label: &str) -> String {
+    let lang = lang_of(d);
+    lang.fill("{label} must be a number", &[("label", &lang.tr(label))])
 }
 
 fn size_position_value(d: &Dialog) -> Result<Value, String> {
@@ -2398,7 +2695,7 @@ fn size_position_value(d: &Dialog) -> Result<Value, String> {
 fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
     let mut v = field_of(d, key);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(label));
+        ui.add_sized(vec2(148.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(96.0));
     });
     d.fields.insert(key.into(), v);
@@ -2406,7 +2703,7 @@ fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
 
 fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     seed_size_position(app, d);
-    ui.label(egui::RichText::new("Size").strong());
+    ui.label(egui::RichText::new(tl(ui, "Size")).strong());
     text_row(ui, d, "Height (in):", "h");
     text_row(ui, d, "Width (in):", "w");
     text_row(ui, d, "Rotation (°):", "rot");
@@ -2414,8 +2711,8 @@ fn size_position_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool
     text_row(ui, d, "Scale width (%):", "scaleW");
     check(ui, d, "Lock aspect ratio", "lock", false);
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Position").strong());
-    ui.label("From the top-left corner of the slide");
+    ui.label(egui::RichText::new(tl(ui, "Position")).strong());
+    ui.label(tl(ui, "From the top-left corner of the slide"));
     text_row(ui, d, "Horizontal (in):", "x");
     text_row(ui, d, "Vertical (in):", "y");
     reconcile_size_fields(d);
@@ -2456,8 +2753,8 @@ const DATE_KINDS: [&str; 13] = [
     "datetime13",
 ];
 
-/// Samples `field_text` can compute for `lang`. Named months and AM/PM exist for English only;
-/// other languages keep the numeric date and the 24-hour times.
+/// Samples `field_text` can compute for `lang`. Named months exist for English and Vietnamese
+/// (AM/PM for English); other languages keep the numeric date and the 24-hour times.
 fn date_rows(lang: &str) -> Vec<(&'static str, String)> {
     let now = deckcraft_text::datetime::DateTime::now_local();
     let mut rows = Vec::new();
@@ -2474,10 +2771,26 @@ fn date_rows(lang: &str) -> Vec<(&'static str, String)> {
     rows
 }
 
+/// NexusOffice: the Date and Time dialog's languages. In the Vietnamese interface, Tiếng Việt
+/// (first, the default) and English, each named in its own language; otherwise upstream's list and
+/// Vietnamese.
+fn date_langs(ui_lang: Language) -> Vec<(&'static str, &'static str)> {
+    if ui_lang == Language::Vi {
+        return vec![("vi-VN", "Tiếng Việt"), ("en-US", "English")];
+    }
+    DATE_LANGS.iter().copied().chain([("vi-VN", "Tiếng Việt")]).collect()
+}
+
+/// The language the Date and Time dialog starts in: the interface's.
+pub fn date_default_lang(ui_lang: Language) -> &'static str {
+    if ui_lang == Language::Vi { "vi-VN" } else { "en-US" }
+}
+
 fn date_time_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    ui.set_min_width(440.0);
-    ui.label("Available formats:");
-    let lang = d.get("language", "en-US");
+    use crate::nexus_dialog as nd;
+    let ui_lang = lang_of(d);
+    let langs = date_langs(ui_lang);
+    let lang = d.get("language", date_default_lang(ui_lang));
     let rows = date_rows(&lang);
     if !rows.iter().any(|(k, _)| *k == d.get("format", "datetime1"))
         && let Some((k, _)) = rows.first()
@@ -2485,34 +2798,38 @@ fn date_time_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         d.fields.insert("format".into(), (*k).to_string());
     }
     let format = d.get("format", "datetime1");
-    egui::ScrollArea::vertical().max_height(280.0).min_scrolled_height(220.0).auto_shrink([false, false]).show(ui, |ui| {
-        for (kind, sample) in &rows {
-            if ui.selectable_label(format == *kind, sample).clicked() {
-                d.fields.insert("format".into(), (*kind).to_string());
-            }
-        }
-    });
-    let lang_label = DATE_LANGS.iter().find(|(k, _)| *k == lang).map(|(_, l)| *l).unwrap_or("English (United States)");
+    nd::section(ui, "Available formats:");
+    let samples: Vec<String> = rows.iter().map(|(_, s)| s.clone()).collect();
+    let (picked, double) = nd::list_box(ui, "date-formats", &samples, rows.iter().position(|(k, _)| *k == format), 260.0);
+    if let Some((kind, _)) = picked.and_then(|i| rows.get(i)) {
+        d.fields.insert("format".into(), (*kind).to_string());
+    }
+    ui.add_space(nd::GAP_M);
+    let lang_label = langs.iter().find(|(k, _)| *k == lang).map(|(_, l)| *l).unwrap_or("English (United States)");
+    let lang_label = tl(ui, lang_label).into_owned();
+    let lang_label = lang_label.as_str();
     ui.horizontal(|ui| {
-        ui.label("Language:");
-        let opened = egui::ComboBox::from_id_salt("date-lang").selected_text(lang_label).width(240.0).show_ui(ui, |ui| {
-            for (k, l) in DATE_LANGS {
-                if ui.selectable_label(lang == *k, *l).clicked() {
+        nd::section(ui, "Language:");
+        let opened = egui::ComboBox::from_id_salt("date-lang").selected_text(lang_label).width(220.0).show_ui(ui, |ui| {
+            for (k, l) in &langs {
+                if ui.selectable_label(lang == *k, tl(ui, l)).clicked() {
                     d.fields.insert("language".into(), (*k).to_string());
                 }
             }
         });
         opened.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, lang_label));
     });
-    ui.label(
-        egui::RichText::new("Month names and AM/PM are listed for English. Other languages list the numeric date and 24-hour time.")
-            .size(11.0)
-            .color(Tokens::get(ui.ctx()).text_dim),
-    );
+    // Languages without month and day names list fewer formats; English and Vietnamese list them all.
+    let lower = lang.to_ascii_lowercase();
+    if !(lower.starts_with("en") || lower.starts_with("vi")) {
+        ui.add_space(nd::GAP_S / 2.0);
+        nd::hint(ui, "Month and day names are listed for English and Vietnamese. Other languages list the numeric date and 24-hour time.");
+    }
+    ui.add_space(nd::GAP_S);
     let update = check(ui, d, "Update automatically", "update", true);
-    let (ok, cancel) = buttons(ui, "OK");
-    if ok {
-        let lang = d.get("language", "en-US");
+    let (ok, cancel) = nd::footer(ui, "OK", true);
+    if ok || double {
+        let lang = d.get("language", date_default_lang(ui_lang));
         let mut format = d.get("format", "datetime1");
         let probe = deckcraft_text::datetime::DateTime::new(2026, 10, 9, 20, 5, 7);
         if deckcraft_text::datetime::field_text(&format, Some(&lang), probe).is_none() {
@@ -2533,13 +2850,13 @@ fn format_spacing(v: f64) -> String {
 /// Grid Options: spacing, snap and whether the grid and guides are drawn. OK applies one
 /// `view.gridOptions` call; Cancel leaves the presentation as it was.
 fn grid_options(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    ui.label(egui::RichText::new("Snap").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Snap")).font(theme::bold(13.0)));
     let snap = check(ui, d, "Snap objects to grid", "snap", app.session.prefs.snap_to_grid);
     let smart = check(ui, d, "Snap objects to other objects", "smart", app.session.prefs.smart_guides);
-    let spacing_default = format_spacing(app.session.prefs.grid_spacing);
+    let spacing_default = units::localize(lang_of(d), &format_spacing(app.session.prefs.grid_spacing)).into_owned();
     field(ui, d, "Spacing (pt):", "spacing", &spacing_default);
     ui.add_space(6.0);
-    ui.label(egui::RichText::new("Display").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "Display")).font(theme::bold(13.0)));
     let gridlines = check(ui, d, "Display grid on screen", "gridlines", app.ui.gridlines);
     let guides = check(ui, d, "Display drawing guides on screen", "guides", app.ui.guides);
     if let Some(err) = d.fields.get("error").cloned().filter(|s| !s.is_empty()) {
@@ -2582,17 +2899,27 @@ fn pretty_equation(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
+            // The exponent: an optional sign, then digits (x^-12) or one letter (x^n); what
+            // follows ("+b^2") is not raised.
             '^' => {
-                while let Some(&n) = chars.peek() {
-                    if n.is_ascii_alphanumeric() || n == '+' || n == '-' {
+                if let Some(&n) = chars.peek()
+                    && (n == '+' || n == '-')
+                {
+                    out.push(sup(n));
+                    chars.next();
+                }
+                match chars.peek() {
+                    Some(&n) if n.is_ascii_digit() => {
+                        while let Some(&n) = chars.peek().filter(|n| n.is_ascii_digit()) {
+                            out.push(sup(n));
+                            chars.next();
+                        }
+                    }
+                    Some(&n) if n.is_ascii_alphabetic() => {
                         out.push(sup(n));
                         chars.next();
-                        if !n.is_ascii_digit() {
-                            break;
-                        }
-                    } else {
-                        break;
                     }
+                    _ => {}
                 }
             }
             '*' => out.push('·'),
@@ -2603,7 +2930,7 @@ fn pretty_equation(s: &str) -> String {
 }
 
 pub fn about(_app: &mut SlideApp, ui: &mut Ui) {
-    // NexusOffices: Nexus Slides' About (attribution to upstream in text, no community links).
+    // NexusOffice: Nexus Slide's About (attribution to upstream in text, no community links).
     crate::nexus::about_ui(ui);
 }
 
@@ -2622,7 +2949,7 @@ pub fn version_line() -> String {
     s
 }
 
-/// The app's mark, drawn in code. NexusOffices: the Nexus Slides mark (`crate::nexus`).
+/// The app's mark, drawn in code. NexusOffice: the Nexus Slide mark (`crate::nexus`).
 pub fn paint_logo(p: &egui::Painter, r: Rect) {
     crate::nexus::paint_logo(p, r);
 }
@@ -2651,7 +2978,9 @@ pub fn selected_language(app: &SlideApp) -> (String, bool) {
         _ => st.selection.shapes.first().and_then(|id| st.shape(*id)).and_then(|sh| run(sh, None)),
     };
     let props = props.unwrap_or_default();
-    (props.lang.unwrap_or_else(|| "en-US".into()), props.no_proof == Some(true))
+    // NexusOffice: text that doesn't say is in the deck's default language, if it has one.
+    let lang = props.lang.or_else(|| st.doc.default_lang().map(str::to_string)).unwrap_or_else(|| "en-US".into());
+    (lang, props.no_proof == Some(true))
 }
 
 fn seed_once(d: &mut Dialog, key: &str, val: String) {
@@ -2677,15 +3006,16 @@ fn color_label(v: &Value) -> String {
 }
 
 fn seed_font_fields(d: &mut Dialog) {
+    let lang = lang_of(d);
     seed_once(d, "family", json_text(d.params.get("family"), ""));
-    seed_once(d, "size", json_text(d.params.get("size"), "18"));
+    seed_once(d, "size", units::localize(lang, &json_text(d.params.get("size"), "18")).into_owned());
     seed_once(d, "bold", json_text(d.params.get("bold"), "0"));
     seed_once(d, "italic", json_text(d.params.get("italic"), "0"));
     seed_once(d, "underline", json_text(d.params.get("underline"), "none"));
     seed_once(d, "strike", json_text(d.params.get("strike"), "none"));
     seed_once(d, "baseline", json_text(d.params.get("baseline"), "none"));
     seed_once(d, "caps", json_text(d.params.get("caps"), "none"));
-    seed_once(d, "spacing", json_text(d.params.get("spacing"), "0"));
+    seed_once(d, "spacing", units::localize(lang, &json_text(d.params.get("spacing"), "0")).into_owned());
     let shown = d.params.get("color").map(color_label).unwrap_or_default();
     seed_once(d, "color", shown.clone());
     seed_once(d, "colorSeed", shown);
@@ -2694,9 +3024,13 @@ fn seed_font_fields(d: &mut Dialog) {
 fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, "");
     let label = choices.iter().find(|(v, _)| *v == cur).map(|(_, l)| *l).unwrap_or(cur.as_str());
-    egui::ComboBox::from_id_salt(salt).selected_text(label).width(140.0).show_ui(ui, |ui| {
-        for (v, l) in choices {
-            if ui.selectable_label(cur == *v, *l).clicked() {
+    // NexusOffice: the items in the interface's language (keyed by field and value where a word
+    // differs by place: `align.left` "Căn trái"), worked out before the list opens.
+    let shown: Vec<String> = choices.iter().map(|(v, l)| tl_in(ui, key, v, l)).collect();
+    let selected = choices.iter().position(|(v, _)| *v == cur).and_then(|i| shown.get(i).cloned()).unwrap_or_else(|| tl(ui, label).into_owned());
+    egui::ComboBox::from_id_salt(salt).selected_text(selected).width(140.0).show_ui(ui, |ui| {
+        for ((v, _), l) in choices.iter().zip(&shown) {
+            if ui.selectable_label(cur == *v, l.as_str()).clicked() {
                 d.fields.insert((*key).into(), (*v).into());
             }
         }
@@ -2705,7 +3039,7 @@ fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, key: &str, choices: &[(&str, 
 
 fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32) -> String {
     let mut v = d.get(key, "");
-    let l = ui.label(label);
+    let l = ui.label(tl_in(ui, "field", key, label));
     ui.add(egui::TextEdit::singleline(&mut v).desired_width(width)).labelled_by(l.id);
     d.fields.insert(key.into(), v.clone());
     v
@@ -2713,6 +3047,62 @@ fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32)
 
 fn finite_pt(text: &str) -> Option<f64> {
     text.trim().trim_end_matches("pt").trim().parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+/// NexusOffice: the number typed in field `key` (points, a percent, a multiple), read in the
+/// dialog's language.
+fn pt_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    let lang = lang_of(d);
+    finite_pt(&std_number(lang, &d.get(key, default)))
+}
+
+/// NexusOffice: the Paragraph dialog param field `key` was seeded from (`indentLeft` for "before").
+fn param_of(key: &str) -> &str {
+    match key {
+        "before" => "indentLeft",
+        "after" => "indentRight",
+        "by" => "specialBy",
+        other => other,
+    }
+}
+
+/// NexusOffice: in Vietnamese, field `key` still showing what it was seeded with keeps the exact
+/// value it was seeded from (the text rounds: 27 pt shows "0,95" cm); `None` when it wasn't seeded
+/// from a number. English reads the text as upstream does.
+fn kept_value(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    if lang_of(d) == Language::En {
+        return None;
+    }
+    let seed = d.fields.get(&format!("{key}Seed")).cloned()?;
+    if d.get(key, default) != seed {
+        return None;
+    }
+    match d.params.get(param_of(key)) {
+        // Seeded from the paragraph: exactly that; a malformed one is the field's default, as the
+        // seed showed it (line spacing 1, the rest 0).
+        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).unwrap_or(if key == "lineValue" { 1.0 } else { 0.0 })),
+        // Seeded from the default: an indent's 0 is exact; anything else reads from the text.
+        None => (seed == "0").then_some(0.0),
+    }
+}
+
+/// NexusOffice: a Paragraph length in points, exact while untouched ([`kept_value`]).
+fn len_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| len_field(d, key, default))
+}
+
+/// NexusOffice: a Paragraph number (points, a multiple), exact while untouched ([`kept_value`]).
+fn pt_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| pt_field(d, key, default))
+}
+
+/// NexusOffice: the length typed in field `key`, in points: inches in English (upstream),
+/// centimetres (or the unit typed) in Vietnamese.
+fn len_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => finite_pt(&d.get(key, default)).map(|inches| inches * 72.0),
+        lang => units::parse_length(lang, &d.get(key, default)),
+    }
 }
 
 /// Home › Font › Font…, the shape menu and Cmd+T. One OK applies every field together.
@@ -2725,7 +3115,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         fams.insert(0, family.clone());
     }
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Font"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Font")));
         egui::ComboBox::from_id_salt("font_dialog_family").selected_text(if family.is_empty() { " " } else { family.as_str() }).width(300.0).show_ui(
             ui,
             |ui| {
@@ -2746,7 +3136,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         check(ui, d, "Italic", "italic", false);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Underline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Underline")));
         choice(
             ui,
             d,
@@ -2758,34 +3148,30 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         let _ = labeled_text(ui, d, "Color", "color", 110.0);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Strikethrough"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Strikethrough")));
         choice(ui, d, "font_dialog_strike", "strike", &[("none", "None"), ("sng", "Single"), ("dbl", "Double")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Baseline"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Baseline")));
         choice(ui, d, "font_dialog_baseline", "baseline", &[("none", "None"), ("super", "Superscript"), ("sub", "Subscript")]);
         ui.add_space(8.0);
-        ui.label("Caps");
+        ui.label(tl(ui, "Caps"));
         choice(ui, d, "font_dialog_caps", "caps", &[("none", "None"), ("small", "Small caps"), ("all", "All caps")]);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(88.0, 20.0), egui::Label::new("Spacing"));
+        ui.add_sized(vec2(88.0, 20.0), egui::Label::new(tl(ui, "Spacing")));
         let mut spacing = d.get("spacing", "0");
         let edited = ui.add(egui::TextEdit::singleline(&mut spacing).desired_width(64.0).hint_text("pt"));
         let mut picked = None;
+        let lang = crate::i18n::current(ui.ctx());
+        let presets = [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")]
+            .map(|(v, l)| (units::localize(lang, v).into_owned(), tl(ui, l)));
         egui::ComboBox::from_id_salt("font_dialog_spacing")
-            .selected_text(match spacing.as_str() {
-                "-3" => "Very tight",
-                "-1.5" => "Tight",
-                "0" => "Normal",
-                "3" => "Loose",
-                "6" => "Very loose",
-                other => other,
-            })
+            .selected_text(presets.iter().find(|(v, _)| *v == spacing).map_or(spacing.as_str(), |(_, l)| l.as_ref()))
             .width(120.0)
             .show_ui(ui, |ui| {
-                for (v, l) in [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")] {
-                    if ui.selectable_label(spacing == v, l).clicked() {
+                for (v, l) in &presets {
+                    if ui.selectable_label(spacing == *v, l.as_ref()).clicked() {
                         picked = Some(v.to_string());
                     }
                 }
@@ -2801,7 +3187,7 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let italic = d.get("italic", "0") == "1";
     let underline = d.get("underline", "none");
     let strike = d.get("strike", "none");
-    let shown = finite_pt(&d.get("size", "18")).unwrap_or(18.0).clamp(12.0, 28.0) as f32;
+    let shown = pt_field(d, "size", "18").unwrap_or(18.0).clamp(12.0, 28.0) as f32;
     let mut sample = egui::RichText::new("AaBbCcDd").size(shown);
     if bold {
         sample = sample.strong();
@@ -2825,11 +3211,11 @@ fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             app.set_status("Choose a font");
             return false;
         }
-        let Some(size) = finite_pt(&d.get("size", "")) else {
+        let Some(size) = pt_field(d, "size", "") else {
             app.set_status("Font size must be a number");
             return false;
         };
-        let Some(spacing) = finite_pt(&d.get("spacing", "0")) else {
+        let Some(spacing) = pt_field(d, "spacing", "0") else {
             app.set_status("Character spacing must be a number");
             return false;
         };
@@ -2865,31 +3251,43 @@ fn pt_text(v: Option<&Value>, default: f64) -> String {
     }
 }
 
-fn inches_text(v: Option<&Value>) -> String {
-    crate::widgets::fmt_num(v.and_then(Value::as_f64).filter(|n| n.is_finite()).unwrap_or(0.0) / 72.0, "")
+fn inches_text(lang: Language, v: Option<&Value>) -> String {
+    let pt = v.and_then(Value::as_f64).filter(|n| n.is_finite()).unwrap_or(0.0);
+    match lang {
+        Language::En => crate::widgets::fmt_num(pt / 72.0, ""),
+        _ => units::format_length(lang, pt),
+    }
 }
 
 fn seed_paragraph_fields(d: &mut Dialog) {
+    let lang = lang_of(d);
+    let pt_text = |v: Option<&Value>, default: f64| units::localize(lang, &pt_text(v, default)).into_owned();
     seed_once(d, "align", json_text(d.params.get("align"), "left"));
-    seed_once(d, "before", inches_text(d.params.get("indentLeft")));
-    seed_once(d, "after", inches_text(d.params.get("indentRight")));
+    seed_once(d, "before", inches_text(lang, d.params.get("indentLeft")));
+    seed_once(d, "after", inches_text(lang, d.params.get("indentRight")));
     seed_once(d, "special", json_text(d.params.get("special"), "none"));
-    seed_once(d, "by", inches_text(d.params.get("specialBy")));
+    seed_once(d, "by", inches_text(lang, d.params.get("specialBy")));
+    // NexusOffice: what each length/number field showed, so OK with it untouched keeps the exact value.
+    for key in ["before", "after", "by"] {
+        let shown = d.fields.get(key).cloned().unwrap_or_default();
+        seed_once(d, &format!("{key}Seed"), shown);
+    }
     seed_once(d, "spaceBefore", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceBeforeSeed", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceAfter", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "spaceAfterSeed", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "lineKind", json_text(d.params.get("lineKind"), "multiple"));
     seed_once(d, "lineValue", pt_text(d.params.get("lineValue"), 1.0));
+    seed_once(d, "lineValueSeed", pt_text(d.params.get("lineValue"), 1.0));
 }
 
 fn paragraph_return_params(d: &mut Dialog) -> Value {
-    let before = finite_pt(&d.get("before", "0")).unwrap_or(0.0) * 72.0;
-    let after = finite_pt(&d.get("after", "0")).unwrap_or(0.0) * 72.0;
-    let by = finite_pt(&d.get("by", "0")).unwrap_or(0.0) * 72.0;
-    let space_before = finite_pt(&d.get("spaceBefore", "0")).unwrap_or(0.0);
-    let space_after = finite_pt(&d.get("spaceAfter", "0")).unwrap_or(0.0);
-    let line_value = finite_pt(&d.get("lineValue", "1")).unwrap_or(1.0);
+    let before = len_kept(d, "before", "0").unwrap_or(0.0);
+    let after = len_kept(d, "after", "0").unwrap_or(0.0);
+    let by = len_kept(d, "by", "0").unwrap_or(0.0);
+    let space_before = pt_kept(d, "spaceBefore", "0").unwrap_or(0.0);
+    let space_after = pt_kept(d, "spaceAfter", "0").unwrap_or(0.0);
+    let line_value = pt_kept(d, "lineValue", "1").unwrap_or(1.0);
     let before_same = d.get("spaceBefore", "") == d.get("spaceBeforeSeed", "");
     let after_same = d.get("spaceAfter", "") == d.get("spaceAfterSeed", "");
     let v = json!({
@@ -2910,6 +3308,11 @@ fn paragraph_return_params(d: &mut Dialog) -> Value {
     v
 }
 
+/// NexusOffice: the symbol of the unit lengths are shown in ("in", "cm").
+fn unit_symbol(ui: &Ui) -> &'static str {
+    LengthUnit::of(crate::i18n::current(ui.ctx())).symbol()
+}
+
 fn line_preset_label(kind: &str, value: &str) -> &'static str {
     if kind == "exactly" {
         "Exactly"
@@ -2928,7 +3331,7 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.set_min_width(460.0);
     seed_paragraph_fields(d);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Alignment"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Alignment")));
         choice(
             ui,
             d,
@@ -2944,22 +3347,22 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ],
         );
     });
-    ui.label(egui::RichText::new("Indentation").strong());
+    ui.label(egui::RichText::new(tl(ui, "Indentation")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Before text", "before", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
         ui.add_space(12.0);
         let _ = labeled_text(ui, d, "After text", "after", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Special"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Special")));
         choice(ui, d, "paragraph_special", "special", &[("none", "None"), ("first", "First line"), ("hanging", "Hanging")]);
         ui.add_space(8.0);
         let _ = labeled_text(ui, d, "By", "by", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
     });
-    ui.label(egui::RichText::new("Spacing").strong());
+    ui.label(egui::RichText::new(tl(ui, "Spacing")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Spacing before", "spaceBefore", 64.0);
         ui.label("pt");
@@ -2969,18 +3372,22 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     });
     let mut picked: Option<(&'static str, Option<&'static str>)> = None;
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Line spacing"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Line spacing")));
         let kind = d.get("lineKind", "multiple");
-        let value = d.get("lineValue", "1");
-        egui::ComboBox::from_id_salt("paragraph_line").selected_text(line_preset_label(&kind, &value)).width(140.0).show_ui(ui, |ui| {
-            for (label, k, v) in [
-                ("Single", "multiple", Some("1")),
-                ("1.5 lines", "multiple", Some("1.5")),
-                ("Double", "multiple", Some("2")),
-                ("Multiple", "multiple", None),
-                ("Exactly", "exactly", None),
-            ] {
-                if ui.selectable_label(line_preset_label(&kind, &value) == label, label).clicked() {
+        // NexusOffice: "1,5" in Vietnamese is the 1.5 lines preset too.
+        let value = d.get("lineValue", "1").replace(',', ".");
+        let presets = [
+            ("Single", "multiple", Some("1")),
+            ("1.5 lines", "multiple", Some("1.5")),
+            ("Double", "multiple", Some("2")),
+            ("Multiple", "multiple", None),
+            ("Exactly", "exactly", None),
+        ]
+        .map(|(label, k, v)| (label, tl_in(ui, "lineSpacing", label, label), k, v));
+        let current = line_preset_label(&kind, &value);
+        egui::ComboBox::from_id_salt("paragraph_line").selected_text(tl_in(ui, "lineSpacing", current, current)).width(140.0).show_ui(ui, |ui| {
+            for (label, shown, k, v) in presets {
+                if ui.selectable_label(line_preset_label(&kind, &value) == label, shown).clicked() {
                     picked = Some((k, v));
                 }
             }
@@ -2991,16 +3398,17 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     if let Some((kind, value)) = picked {
         d.fields.insert("lineKind".into(), kind.into());
         if let Some(v) = value {
-            d.fields.insert("lineValue".into(), v.into());
-        } else if kind == "exactly" && finite_pt(&d.get("lineValue", "1")).is_some_and(|n| n <= 9.99) {
+            let shown = units::localize(lang_of(d), v).into_owned();
+            d.fields.insert("lineValue".into(), shown);
+        } else if kind == "exactly" && pt_field(d, "lineValue", "1").is_some_and(|n| n <= 9.99) {
             d.fields.insert("lineValue".into(), "18".into());
-        } else if kind == "multiple" && finite_pt(&d.get("lineValue", "1")).is_some_and(|n| n > 9.99) {
+        } else if kind == "multiple" && pt_field(d, "lineValue", "1").is_some_and(|n| n > 9.99) {
             d.fields.insert("lineValue".into(), "1".into());
         }
     }
     let mut open_tabs = false;
     ui.horizontal(|ui| {
-        if ui.button("Tabs…").clicked() {
+        if ui.button(tl(ui, "Tabs…")).clicked() {
             open_tabs = true;
         }
     });
@@ -3017,36 +3425,36 @@ fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         return true;
     }
     if ok {
-        let Some(before_in) = finite_pt(&d.get("before", "")) else {
+        let Some(before_in) = len_kept(d, "before", "") else {
             app.set_status("Indent before text must be a number of inches");
             return false;
         };
-        let Some(after_in) = finite_pt(&d.get("after", "")) else {
+        let Some(after_in) = len_kept(d, "after", "") else {
             app.set_status("Indent after text must be a number of inches");
             return false;
         };
-        let Some(by_in) = finite_pt(&d.get("by", "")) else {
+        let Some(by_in) = len_kept(d, "by", "") else {
             app.set_status("Special indent must be a number of inches");
             return false;
         };
-        let Some(space_before) = finite_pt(&d.get("spaceBefore", "")) else {
+        let Some(space_before) = pt_kept(d, "spaceBefore", "") else {
             app.set_status("Spacing before must be a number");
             return false;
         };
-        let Some(space_after) = finite_pt(&d.get("spaceAfter", "")) else {
+        let Some(space_after) = pt_kept(d, "spaceAfter", "") else {
             app.set_status("Spacing after must be a number");
             return false;
         };
-        let Some(line_value) = finite_pt(&d.get("lineValue", "")) else {
+        let Some(line_value) = pt_kept(d, "lineValue", "") else {
             app.set_status("Line spacing must be a number");
             return false;
         };
         let mut params = json!({
             "align": d.get("align", "left"),
-            "indentLeft": before_in * 72.0,
-            "indentRight": after_in * 72.0,
+            "indentLeft": before_in,
+            "indentRight": after_in,
             "special": d.get("special", "none"),
-            "specialBy": by_in * 72.0,
+            "specialBy": by_in,
             "spaceBefore": space_before,
             "spaceAfter": space_after,
             "spaceBeforeKind": if d.get("spaceBefore", "") == d.get("spaceBeforeSeed", "") { d.params.get("spaceBeforeKind").and_then(Value::as_str).unwrap_or("pts") } else { "pts" },
@@ -3078,8 +3486,21 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             .map(|a| a.iter().filter_map(|t| Some(format!("{}:{}", t["pos"].as_f64()? / 72.0, t["align"].as_str().unwrap_or("l")))).collect())
             .unwrap_or_default();
         d.fields.insert("stops".into(), stops.join("|"));
-        d.fields.insert("default".into(), format!("{}", r["defaultTab"].as_f64().unwrap_or(72.0) / 72.0));
+        let default_pt = r["defaultTab"].as_f64().unwrap_or(72.0);
+        let shown = match lang_of(d) {
+            Language::En => format!("{}", default_pt / 72.0),
+            lang => units::format_length(lang, default_pt),
+        };
+        d.fields.insert("defaultSeed".into(), shown.clone());
+        d.fields.insert("defaultPt".into(), default_pt.to_string());
+        d.fields.insert("default".into(), shown);
     }
+    // NexusOffice: positions show in the interface's unit (the stops list keeps inches).
+    let lang = lang_of(d);
+    let at_text = |inches: f64| match lang {
+        Language::En => format!("{inches:.2}\""),
+        _ => format!("{} cm", units::format_length(lang, inches * 72.0)),
+    };
     let mut stops: Vec<(f64, String)> = d
         .get("stops", "")
         .split('|')
@@ -3090,17 +3511,20 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         .collect();
     field(ui, d, "Default tab stops (in):", "default", "1");
     ui.add_space(6.0);
-    ui.label("Tab stops:");
+    ui.label(tl(ui, "Tab stops:"));
     let mut remove = None;
     egui::Grid::new("tab_stops").num_columns(3).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
         if stops.is_empty() {
-            ui.label("(none)");
+            ui.label(tl(ui, "(none)"));
             ui.end_row();
         }
         for (i, (pos, align)) in stops.iter().enumerate() {
-            ui.label(format!("{pos:.2}\""));
-            ui.label(TAB_KINDS.iter().find(|k| k.0 == align).map(|k| k.1).unwrap_or("Left"));
-            if ui.small_button("Clear").on_hover_text(format!("Clear the tab at {pos:.2}\"")).clicked() {
+            ui.label(at_text(*pos));
+            let (k, l) = TAB_KINDS.iter().find(|k| k.0 == align).copied().unwrap_or(("l", "Left"));
+            ui.label(tl_in(ui, "tab", k, l));
+            let at = at_text(*pos);
+            let tip = crate::i18n::current(ui.ctx()).fill("Clear the tab at {pos}", &[("pos", &at)]);
+            if ui.small_button(tl(ui, "Clear")).on_hover_text(tip).clicked() {
                 remove = Some(i);
             }
             ui.end_row();
@@ -3111,30 +3535,30 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label("Tab stop position (in):");
+        ui.label(tl(ui, "Tab stop position (in):"));
         let mut v = d.get("newpos", "");
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(60.0));
         d.fields.insert("newpos".into(), v);
     });
     let cur = d.get("newalign", "l");
     ui.horizontal(|ui| {
-        ui.label("Alignment:");
+        ui.label(tl(ui, "Alignment:"));
         for (k, label) in TAB_KINDS {
-            if ui.radio(cur == k, label).clicked() {
+            if ui.radio(cur == k, tl_in(ui, "tab", k, label)).clicked() {
                 d.fields.insert("newalign".into(), k.into());
             }
         }
     });
     ui.horizontal(|ui| {
-        if ui.button("Set").clicked()
-            && let Some(p) = Some(num(d, "newpos", f64::NAN)).filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
+        if ui.button(tl(ui, "Set")).clicked()
+            && let Some(p) = typed_inches(d, "newpos").filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
         {
             stops.retain(|(q, _)| (q - p).abs() > 0.005);
             stops.push((p, d.get("newalign", "l")));
             stops.sort_by(|a, b| a.0.total_cmp(&b.0));
             d.fields.insert("newpos".into(), String::new());
         }
-        if ui.button("Clear All").clicked() {
+        if ui.button(tl(ui, "Clear All")).clicked() {
             stops.clear();
         }
     });
@@ -3142,7 +3566,13 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let (ok, cancel) = buttons(ui, "OK");
     if ok {
         let set: Vec<Value> = stops.iter().map(|(p, a)| json!({"pos": p * 72.0, "align": a})).collect();
-        let dt = num(d, "default", 1.0).clamp(0.02, 56.0) * 72.0;
+        // NexusOffice: in Vietnamese the default stop left as shown keeps its exact value.
+        let untouched = lang_of(d) != Language::En && d.fields.get("defaultSeed") == d.fields.get("default");
+        let exact = d.fields.get("defaultPt").and_then(|p| p.parse::<f64>().ok()).filter(|v| v.is_finite());
+        let dt = match exact.filter(|_| untouched) {
+            Some(pt) => pt.clamp(0.02 * 72.0, 56.0 * 72.0),
+            None => typed_inches(d, "default").unwrap_or(1.0).clamp(0.02, 56.0) * 72.0,
+        };
         if let Err(e) = app.run("format.tabs", json!({"set": set, "defaultTab": dt})) {
             app.set_status(e);
         } else if let Some(ret) = d.params.get_mut("returnParams").and_then(Value::as_object_mut) {
@@ -3152,6 +3582,15 @@ fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
     }
     ok || cancel
+}
+
+/// NexusOffice: a length typed in the Tabs dialog's field `key`, in inches (the dialog's own unit):
+/// inches in English (upstream), centimetres (or the unit typed) in Vietnamese.
+fn typed_inches(d: &mut Dialog, key: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => Some(num(d, key, f64::NAN)).filter(|v| v.is_finite()),
+        lang => units::parse_length(lang, &d.get(key, "")).map(|pt| pt / 72.0),
+    }
 }
 
 /// Home › Find / Replace: step through matches (slide text, table cells, notes) or replace them.
@@ -3170,11 +3609,11 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let has = !text.is_empty();
-        if ui.add_enabled(has, egui::Button::new("Find Next")).clicked() || (has && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
+        if ui.add_enabled(has, egui::Button::new(tl(ui, "Find Next"))).clicked() || (has && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
             find_next = true;
         }
         if replace_mode {
-            if ui.add_enabled(has, egui::Button::new("Replace")).clicked() {
+            if ui.add_enabled(has, egui::Button::new(tl(ui, "Replace"))).clicked() {
                 let cur: Option<Value> = serde_json::from_str(&d.get("cur", "")).ok();
                 if let Some(at) = cur {
                     let mut p = q.clone();
@@ -3187,27 +3626,30 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 find_next = true;
             }
-            if ui.add_enabled(has, egui::Button::new("Replace All")).clicked() {
+            if ui.add_enabled(has, egui::Button::new(tl(ui, "Replace All"))).clicked() {
                 let mut p = q.clone();
                 p["with"] = json!(d.get("with", ""));
                 let msg = match app.session.execute("text.replace", &p) {
-                    Ok(v) => format!("Replaced {} occurrence(s).", v.get("replaced").and_then(Value::as_u64).unwrap_or(0)),
-                    Err(_) => format!("Nexus Slides can't find “{text}”."),
+                    Ok(v) => {
+                        lang_of(d).fill("Replaced {n} occurrence(s).", &[("n", &v.get("replaced").and_then(Value::as_u64).unwrap_or(0).to_string())])
+                    }
+                    Err(_) => lang_of(d).fill("Nexus Slide can't find “{text}”.", &[("text", &text)]),
                 };
                 d.fields.insert("status".into(), msg);
                 d.fields.remove("cur");
             }
-        } else if ui.button("Replace…").clicked() {
+        } else if ui.button(tl(ui, "Replace…")).clicked() {
             d.fields.insert("replace".into(), "1".into());
         }
-        if ui.button("Close").clicked() {
+        if ui.button(tl(ui, "Close")).clicked() {
             close = true;
         }
     });
     if find_next {
         let list = app.session.execute("text.find", &q).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
         if list.is_empty() {
-            d.fields.insert("status".into(), format!("Nexus Slides can't find “{text}”."));
+            let msg = lang_of(d).fill("Nexus Slide can't find “{text}”.", &[("text", &text)]);
+            d.fields.insert("status".into(), msg);
             d.fields.remove("cur");
         } else {
             let n = d.get("next", "0").parse::<usize>().unwrap_or(0) % list.len();
@@ -3218,11 +3660,21 @@ fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             }
             d.fields.insert("cur".into(), m.to_string());
             d.fields.insert("next".into(), (n + 1).to_string());
-            let where_ = if m.get("shape").is_some_and(Value::is_null) { " (notes)" } else { "" };
-            d.fields.insert(
-                "status".into(),
-                format!("Match {} of {} on slide {}{where_}.", n + 1, list.len(), m.get("slide").and_then(Value::as_u64).unwrap_or(0) + 1),
+            let lang = lang_of(d);
+            let template = if m.get("shape").is_some_and(Value::is_null) {
+                "Match {n} of {total} on slide {slide} (notes)."
+            } else {
+                "Match {n} of {total} on slide {slide}."
+            };
+            let msg = lang.fill(
+                template,
+                &[
+                    ("n", &n.saturating_add(1).to_string()),
+                    ("total", &list.len().to_string()),
+                    ("slide", &m.get("slide").and_then(Value::as_u64).unwrap_or(0).saturating_add(1).to_string()),
+                ],
             );
+            d.fields.insert("status".into(), msg);
         }
     }
     let status = d.get("status", "");
@@ -3260,10 +3712,10 @@ fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result<Value, Str
     };
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Size:"));
-        egui::ComboBox::from_id_salt("gif_size").selected_text(size_label(&size)).show_ui(ui, |ui| {
+        ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Size:")));
+        egui::ComboBox::from_id_salt("gif_size").selected_text(tl(ui, size_label(&size))).show_ui(ui, |ui| {
             for k in SIZE_PRESETS.iter().map(|(k, _)| *k).chain(["custom"]) {
-                if ui.selectable_label(size == k, size_label(k)).clicked() {
+                if ui.selectable_label(size == k, tl(ui, size_label(k))).clicked() {
                     d.fields.insert("gifSize".into(), k.into());
                 }
             }
@@ -3282,7 +3734,7 @@ fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result<Value, Str
     let width = if size == "custom" {
         let w = num(d, "gifWidth", 960.0).round();
         if !(f64::from(MIN_WIDTH)..=f64::from(MAX_WIDTH)).contains(&w) {
-            return Err(format!("Width: enter {MIN_WIDTH} to {MAX_WIDTH} pixels"));
+            return Err(lang_of(d).fill("Width: enter {min} to {max} pixels", &[("min", &MIN_WIDTH.to_string()), ("max", &MAX_WIDTH.to_string())]));
         }
         json!(w as u32)
     } else {
@@ -3290,12 +3742,14 @@ fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result<Value, Str
     };
     let seconds = num(d, "gifSeconds", f64::NAN);
     if deckcraft_engine::gif_export::check_seconds(seconds).is_err() {
-        return Err(format!("Seconds per slide: enter {MIN_SECONDS} to {MAX_SECONDS}"));
+        let lang = lang_of(d);
+        let (min, max) = (units::localize(lang, &MIN_SECONDS.to_string()).into_owned(), units::localize(lang, &MAX_SECONDS.to_string()).into_owned());
+        return Err(lang.fill("Seconds per slide: enter {min} to {max}", &[("min", &min), ("max", &max)]));
     }
     let mut p = json!({"width": width, "secondsPerSlide": seconds, "loop": forever, "includeHidden": hidden});
     let (from, to) = (num(d, "gifFrom", 1.0).round(), num(d, "gifTo", n as f64).round());
     if !(from >= 1.0 && from <= to && to <= n as f64) {
-        return Err(format!("Slides: choose a range from 1 to {n}"));
+        return Err(lang_of(d).fill("Slides: choose a range from 1 to {n}", &[("n", &n.to_string())]));
     }
     if from > 1.0 || to < n as f64 {
         p["slides"] = json!(((from as usize - 1)..(to as usize)).collect::<Vec<_>>());
