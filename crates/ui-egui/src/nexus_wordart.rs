@@ -19,7 +19,7 @@ use crate::theme::{self, Tokens};
 pub const COLUMNS: usize = 4;
 /// A tile's size, points.
 pub const TILE: Vec2 = vec2(72.0, 60.0);
-const GAP: f32 = 6.0;
+const GAP: f32 = crate::nexus_dialog::GAP_S;
 
 /// What picking a tile does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -69,8 +69,7 @@ pub fn menu(app: &mut SlideApp, ui: &mut Ui, mode: Mode) {
 pub fn gallery(app: &mut SlideApp, ui: &mut Ui, mode: Mode) -> Option<&'static str> {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
-    ui.label(egui::RichText::new(crate::i18n::tl(ui, "WordArt Styles")).font(theme::font(12.0)).color(t.text_dim));
-    ui.add_space(2.0);
+    crate::nexus_dialog::section(ui, "WordArt Styles");
     let current = match mode {
         Mode::Restyle => app.session.active().and_then(|d| d.selected_shapes().first().and_then(|s| wa::style_of(s))).map(|s| s.id),
         Mode::Insert => None,
@@ -90,7 +89,15 @@ pub fn gallery(app: &mut SlideApp, ui: &mut Ui, mode: Mode) -> Option<&'static s
         let on = current == Some(style.id);
         let p = ui.painter();
         // A tile is a little slide: white, whatever the interface's appearance.
-        let border = if focused || resp.hovered() || on { t.accent } else { t.border };
+        // Frames from the shared dialog kit: neutral at 3:1, darker on hover, the focus colour
+        // when focused or current.
+        let border = if focused || on {
+            crate::nexus_dialog::focus_color(&t)
+        } else if resp.hovered() {
+            crate::nexus_dialog::input_border_hover(&t)
+        } else {
+            crate::nexus_dialog::input_border(&t)
+        };
         p.rect(rect, CornerRadius::same(4), Color32::WHITE, Stroke::new(if focused || on { 2.0 } else { 1.0 }, border), StrokeKind::Inside);
         if resp.hovered() && !focused {
             p.rect_filled(rect.shrink(2.0), CornerRadius::same(3), t.accent.gamma_multiply(0.08));
@@ -100,7 +107,7 @@ pub fn gallery(app: &mut SlideApp, ui: &mut Ui, mode: Mode) -> Option<&'static s
                 let [w, h] = tex.size();
                 let ppp = ctx.pixels_per_point().max(0.1);
                 let img = vec2(w as f32 / ppp, h as f32 / ppp);
-                let k = ((TILE.x - 6.0) / img.x.max(1.0)).min((TILE.y - 6.0) / img.y.max(1.0)).min(1.0);
+                let k = ((TILE.x - 14.0) / img.x.max(1.0)).min((TILE.y - 12.0) / img.y.max(1.0)).min(1.0);
                 let r = Rect::from_center_size(rect.center(), img * k);
                 p.image(tex.id(), r, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
             }
@@ -183,13 +190,45 @@ fn tiles(app: &SlideApp, ctx: &egui::Context) -> Vec<Option<TextureHandle>> {
         let id = sh.id;
         slide.shapes = vec![sh];
         // Points → pixels: the sample box (120 × 100 pt) shown in a tile, at the screen's density.
-        let scale = f64::from(ppp.max(0.5)) * 0.62;
+        let scale = f64::from(ppp.clamp(0.5, 4.0));
         let tex = deckcraft_render::render_shape(doc, &slide, id, scale)
+            .map(|img| ink(&img))
             .map(|img| crate::textures::upload(ctx, format!("nexus-wordart-{}", style.id), crate::textures::to_color_image(&img, false)));
         out.push(tex);
     }
     ctx.data_mut(|d| d.insert_temp(cache_id, (key, out.clone())));
     out
+}
+
+/// `img` cut down to what is drawn (with a pixel to spare), so every tile centres its ink.
+fn ink(img: &deckcraft_render::Image) -> deckcraft_render::Image {
+    let (w, h) = (img.width as usize, img.height as usize);
+    let mut b: Option<(usize, usize, usize, usize)> = None;
+    for y in 0..h {
+        for x in 0..w {
+            let a = img.pixels.get((y * w + x) * 4 + 3).copied().unwrap_or(0);
+            if a > 8 {
+                b = Some(match b {
+                    Some((x0, y0, x1, y1)) => (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
+                    None => (x, y, x, y),
+                });
+            }
+        }
+    }
+    let Some((x0, y0, x1, y1)) = b else { return img.clone() };
+    let (x0, y0) = (x0.saturating_sub(1), y0.saturating_sub(1));
+    let (x1, y1) = ((x1 + 1).min(w.saturating_sub(1)), (y1 + 1).min(h.saturating_sub(1)));
+    let (cw, ch) = (x1 - x0 + 1, y1 - y0 + 1);
+    let mut pixels = Vec::with_capacity(cw * ch * 4);
+    for y in y0..=y1 {
+        if let Some(row) = img.pixels.get((y * w + x0) * 4..(y * w + x1 + 1) * 4) {
+            pixels.extend_from_slice(row);
+        }
+    }
+    if pixels.len() != cw * ch * 4 {
+        return img.clone();
+    }
+    deckcraft_render::Image { width: cw as u32, height: ch as u32, pixels }
 }
 
 /// "Aa" in `style`, as the tile shows it: the WordArt's own font and look, with room under it

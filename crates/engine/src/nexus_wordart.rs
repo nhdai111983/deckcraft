@@ -334,6 +334,10 @@ pub(crate) fn insert(s: &mut Session, p: &Value) -> Result<Value> {
         for para in &mut t.paragraphs {
             para.props.align = Some(Align::Center);
             for r in &mut para.runs {
+                if text == DEFAULT_TEXT.1 {
+                    // Our Vietnamese prompt is Vietnamese, whatever the deck's own language.
+                    r.props.lang = Some("vi-VN".into());
+                }
                 r.props.size = Some(SIZE);
                 r.props.font = Some("+mj-lt".into());
                 style.apply(&mut r.props);
@@ -353,7 +357,8 @@ pub(crate) fn insert(s: &mut Session, p: &Value) -> Result<Value> {
         resize_text(s, id, (SIZE * k).max(12.0))?;
         crate::cmd::text::fit_text_box(s, id)?;
     }
-    place(s, id)?;
+    // A reflection hangs under the box: keep room for it too.
+    place(s, id, if style.reflection { 0.6 } else { 0.0 })?;
     // Typing replaces the text: all of it selected, in edit mode.
     let end = s.doc()?.shape(id).and_then(|sh| sh.text.as_ref()).map(deckcraft_model::edit::end).unwrap_or((0, 0));
     s.select(|_, sel| {
@@ -496,12 +501,13 @@ pub fn free_spot(slide: (f64, f64), w: f64, h: f64, obstacles: &[(Rect, f64)]) -
     best
 }
 
-/// Moves new WordArt `id` to free space ([`free_spot`]).
-fn place(s: &mut Session, id: deckcraft_model::ShapeId) -> Result<()> {
+/// Moves new WordArt `id` to free space ([`free_spot`]), with room under it for `below` of its
+/// height (a reflection).
+fn place(s: &mut Session, id: deckcraft_model::ShapeId, below: f64) -> Result<()> {
     let st = s.doc()?;
     let size = st.doc.slide_size;
     let Some(x) = st.shape(id).and_then(|sh| sh.xfrm) else { return Ok(()) };
-    let (left, top) = free_spot((size.width, size.height), x.w, x.h, &obstacles(s, id));
+    let (left, top) = free_spot((size.width, size.height), x.w, x.h * (1.0 + below), &obstacles(s, id));
     change_quietly(s, id, |sh| {
         if let Some(x) = sh.xfrm.as_mut() {
             x.x = left;
@@ -643,6 +649,21 @@ mod tests {
             assert!(r.x0 >= 0.0 && r.y0 >= 0.0 && r.x1 <= size.width && r.y1 <= size.height, "{r:?}");
         }
 
+        // A reflection hangs under its box: it keeps off what is under it too (text filling the
+        // lower half of the slide here, so the WordArt goes above it).
+        let mut s = deck(Some("Blank"));
+        let size = s.doc().unwrap().doc.slide_size;
+        let top = size.height * 0.55;
+        s.execute("insert.textBox", &json!({"text": "Nội dung", "rect": [0.0, top, size.width, size.height - top]})).unwrap();
+        s.execute("text.exit", &json!({})).unwrap();
+        s.execute("insert.wordArt", &json!({"style": "dusk"})).unwrap();
+        let all = wordart(&s);
+        assert_eq!(all.len(), 2);
+        let body = rect(&s, &all[0]);
+        let r = rect(&s, &all[1]);
+        let with_reflection = Rect::new(r.x0, r.y0, r.x1, r.y1 + r.height() * 0.6);
+        assert_eq!(overlap(with_reflection, body), 0.0, "reflection over the text: {r:?} {body:?}");
+
         // An empty Title Only slide: under the title's prompt, centred in the space below it.
         let mut s = deck(Some("Title Only"));
         s.execute("insert.wordArt", &json!({})).unwrap();
@@ -674,6 +695,7 @@ mod tests {
         let sh = wordart(&s).pop().unwrap();
         let body = sh.text.as_ref().unwrap();
         assert_eq!(body.text(), DEFAULT_TEXT.1);
+        assert_eq!(body.paragraphs[0].runs[0].props.lang.as_deref(), Some("vi-VN"), "Vietnamese text, checked as Vietnamese");
         assert_eq!(body.body.wrap, Some(false));
         let sel = s.doc().unwrap().selection.clone();
         assert_eq!(sel.shapes, vec![sh.id]);

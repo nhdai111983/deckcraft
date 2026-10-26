@@ -20,6 +20,8 @@ use serde_json::json;
 
 fn window(setup: impl FnOnce(&mut SlideApp)) -> Harness<'static, SlideApp> {
     let mut session = Session::new();
+    // A deck started from the Vietnamese interface is in Vietnamese (as in the app).
+    session.new_language = Some("vi-VN".into());
     if let Err(e) = session.execute("file.new", &json!({})) {
         eprintln!("new deck: {e}");
     }
@@ -27,7 +29,7 @@ fn window(setup: impl FnOnce(&mut SlideApp)) -> Harness<'static, SlideApp> {
     app.wps = true;
     app.ui.language = Language::Vi;
     setup(&mut app);
-    let mut h = Harness::builder().with_size(egui::vec2(1440.0, 860.0)).with_pixels_per_point(1.0).wgpu().build_ui_state(
+    let mut h = Harness::builder().with_size(egui::vec2(1680.0, 900.0)).with_pixels_per_point(1.0).wgpu().build_ui_state(
         |ui, app: &mut SlideApp| {
             app.logic(ui.ctx());
             app.ui(ui);
