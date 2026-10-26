@@ -344,7 +344,7 @@ pub enum Changed {
 /// their outline, effects and text included. Anything else that differs is [`Changed::Unknown`].
 /// `editing`: the shape whose text is being typed (its empty placeholder draws empty list markers
 /// instead of the prompt).
-pub fn changed_area(pres: &Presentation, old: &Slide, new: &Slide, editing: Option<deckcraft_model::ShapeId>) -> Changed {
+pub fn changed_area(pres: &Presentation, old: &deckcraft_model::Slide, new: &deckcraft_model::Slide, editing: Option<deckcraft_model::ShapeId>) -> Changed {
     if old.id != new.id
         || old.layout != new.layout
         || old.background != new.background
