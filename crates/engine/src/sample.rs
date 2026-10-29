@@ -15,7 +15,10 @@ fn last_id(v: &Value) -> u64 {
 
 /// Open the sample presentation in a new document.
 pub fn open_sample(s: &mut Session) -> Result<()> {
-    open_sample_in(s, None)
+    // NexusOffice: in the language new presentations start in (`Session::new_language`): the
+    // sample opened from the Vietnamese interface is the Vietnamese one, in vi-VN.
+    let language = s.new_language.clone();
+    open_sample_in(s, language.as_deref())
 }
 
 /// [`open_sample`] in `language` (NexusOffice): `vi` writes the deck's Vietnamese text
