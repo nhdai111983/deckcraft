@@ -83,6 +83,15 @@ foreach ($check in @(@('deckcraft.exe', 2), @('deckcraft-cli.exe', 3))) {
   if ($h.Subsystem -ne $check[1]) { throw "$($check[0]) has PE subsystem $($h.Subsystem), expected $($check[1])" }
   Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"
 }
+
+# The Start menu shortcut is not advertised and names no MSI icon, so it shows the icon embedded in
+# deckcraft.exe (#1114). -SkipBuild takes whatever binary is already there, which may come from a
+# build without DECKCRAFT_REQUIRE_WINRES=1 whose resource compilation failed: refuse an exe with no
+# icon instead of shipping shortcuts with a generic one. ExtractIconEx with index -1 counts them.
+Add-Type -Namespace NexusSlides -Name Shell -MemberDefinition '[DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern uint ExtractIconEx(string file, int index, IntPtr[] large, IntPtr[] small, uint icons);'
+$Icons = [NexusSlides.Shell]::ExtractIconEx((Join-Path $Bin 'deckcraft.exe'), -1, $null, $null, 0)
+if ($Icons -eq 0) { throw 'deckcraft.exe has no embedded icon: rebuild it with DECKCRAFT_REQUIRE_WINRES=1 (omit -SkipBuild)' }
+Write-Output "ok deckcraft.exe: $Icons embedded icon group(s)"
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
@@ -133,6 +142,9 @@ Invoke-Native 'wix build' {
     -d "FontLicences=$FontLicences" `
     -o $Msi
 }
+# NexusOffices: upstream's check-install-policy.ps1 checks its own contract (ArtCraft suite folder,
+# per-user/per-machine scope, its registry keys); the Nexus Slides MSI is per-machine with its own
+# folder and keys, so that check does not apply (nexus/BRANDING_PATCH.md).
 # wix writes its debug symbols (.wixpdb) next to the MSI; keep them out of the release assets.
 Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Msi, '.wixpdb'))
 & (Join-Path $PSScriptRoot 'sign.ps1') $Msi

@@ -62,9 +62,15 @@
     <ComponentGroup Id="DeckcraftFiles" Directory="INSTALLFOLDER">
       <Component Id="DeckcraftApp" Guid="F3911F7B-4F9F-4BA6-8D06-B513AB237AF1">
         <File Id="DeckcraftExe" Source="$(var.BinDir)\deckcraft.exe" Name="nexus-slides.exe" KeyPath="yes">
+          <!-- No Icon here, so the shortcut shows the icon embedded in nexus-slides.exe (build.rs). An
+               MSI Icon is cached under %APPDATA%\Microsoft\Installer\{ProductCode}\, and every
+               update is a major upgrade with a new ProductCode that deletes the old folder. A
+               taskbar pin is a copy of this shortcut that the update never touches, so it kept
+               pointing at the deleted file and lost its icon (upstream #1114). The exe's path survives
+               updates; the shortcut is not advertised, so it targets that path and its icon is the
+               exe's own. The Icon above stays for ARPPRODUCTICON (Apps and features). -->
           <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Nexus Slides"
-              Description="Nexus Slides presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="yes"
-              Icon="DeckcraftIcon.ico" IconIndex="0" />
+              Description="Nexus Slides presentations and slide shows" WorkingDirectory="INSTALLFOLDER" Advertise="no" />
         </File>
 
         <!-- ProgId: how Explorer opens a file with Nexus Slides. Written as plain registry values,

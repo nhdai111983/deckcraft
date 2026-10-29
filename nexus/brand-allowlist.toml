@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------------------------
 
 [[allow]]
-path = "{apps/deckcraft-cli/src/main.rs,apps/deckcraft-web/src/main.rs,apps/deckcraft/src/display.rs,apps/deckcraft/src/graphics.rs,apps/deckcraft/src/logging.rs,apps/deckcraft/src/main.rs,crates/anim/src/lib.rs,crates/bitstream/src/lib.rs,crates/color/src/lib.rs,crates/engine/src/cmd/file.rs,crates/engine/src/cmd/format.rs,crates/engine/src/cmd/richclip.rs,crates/engine/src/cmd/smartart.rs,crates/engine/src/cmd/text.rs,crates/engine/src/icons.rs,crates/engine/src/lib.rs,crates/engine/src/nexus.rs,crates/engine/src/sounds.rs,crates/engine/src/spell.rs,crates/engine/src/tests.rs,crates/engine/src/tools.rs,crates/fonts/build.rs,crates/fonts/src/fontdb.rs,crates/fonts/src/lib.rs,crates/format/src/lib.rs,crates/geom/src/lib.rs,crates/geom/src/warp.rs,crates/mcp/src/backend.rs,crates/mcp/src/lib.rs,crates/media/src/lib.rs,crates/media/src/probe.rs,crates/metafile/src/lib.rs,crates/model/src/lib.rs,crates/pdf/src/lib.rs,crates/pptx/src/cfb.rs,crates/pptx/src/dgm.rs,crates/pptx/src/lib.rs,crates/pptx/src/maps.rs,crates/pptx/src/read/chartex.rs,crates/pptx/src/read/mod.rs,crates/pptx/src/read/shapes.rs,crates/pptx/src/tables.rs,crates/pptx/src/write/mod.rs,crates/render/src/camera.rs,crates/render/src/chartex.rs,crates/render/src/lib.rs,crates/render/src/tests.rs,crates/text/src/tests.rs,crates/ui-egui/examples/icon_gallery.rs,crates/ui-egui/src/backstage.rs,crates/ui-egui/src/icons.rs,crates/ui-egui/src/lib.rs,crates/ui-egui/src/nexus.rs,crates/ui-egui/src/ribbon.rs,crates/ui-egui/src/theme.rs,crates/ui-egui/src/uifonts.rs,xtask/src/layers.rs}"
+path = "{apps/deckcraft-cli/src/main.rs,apps/deckcraft-web/src/main.rs,apps/deckcraft/src/apple_events.rs,apps/deckcraft/src/display.rs,apps/deckcraft/src/graphics.rs,apps/deckcraft/src/logging.rs,apps/deckcraft/src/main.rs,crates/anim/src/lib.rs,crates/bitstream/src/lib.rs,crates/color/src/lib.rs,crates/engine/src/cmd/file.rs,crates/engine/src/cmd/format.rs,crates/engine/src/cmd/format/painter.rs,crates/engine/src/cmd/richclip.rs,crates/engine/src/cmd/smartart.rs,crates/engine/src/cmd/text.rs,crates/engine/src/cmd/text/layout.rs,crates/engine/src/icons.rs,crates/engine/src/lib.rs,crates/engine/src/nexus.rs,crates/engine/src/sounds.rs,crates/engine/src/spell.rs,crates/engine/src/tests.rs,crates/engine/src/tools.rs,crates/fonts/build.rs,crates/fonts/src/fontdb.rs,crates/fonts/src/lib.rs,crates/fonts/src/tests.rs,crates/format/src/lib.rs,crates/geom/src/lib.rs,crates/geom/src/warp.rs,crates/mcp/src/backend.rs,crates/mcp/src/lib.rs,crates/media/src/lib.rs,crates/media/src/probe.rs,crates/metafile/src/lib.rs,crates/model/src/lib.rs,crates/pdf/src/lib.rs,crates/pptx/src/cfb.rs,crates/pptx/src/dgm.rs,crates/pptx/src/lib.rs,crates/pptx/src/maps.rs,crates/pptx/src/read.rs,crates/pptx/src/read/chartex.rs,crates/pptx/src/read/shapes.rs,crates/pptx/src/tables.rs,crates/pptx/src/write.rs,crates/render/src/camera.rs,crates/render/src/chartex.rs,crates/render/src/lib.rs,crates/render/src/renderer.rs,crates/render/src/tests.rs,crates/render/src/text_draw.rs,crates/text/src/tests.rs,crates/ui-egui/examples/icon_gallery.rs,crates/ui-egui/src/app/clipboard.rs,crates/ui-egui/src/app/files.rs,crates/ui-egui/src/backstage.rs,crates/ui-egui/src/backstage/files.rs,crates/ui-egui/src/backstage/info.rs,crates/ui-egui/src/dialogs/body.rs,crates/ui-egui/src/dialogs/updates_ui.rs,crates/ui-egui/src/icons.rs,crates/ui-egui/src/lib.rs,crates/ui-egui/src/nexus.rs,crates/ui-egui/src/ribbon.rs,crates/ui-egui/src/ribbon/home.rs,crates/ui-egui/src/theme.rs,crates/ui-egui/src/uifonts.rs,xtask/src/layers.rs}"
 pattern = '^\s*//.*'
 reason = "Chú thích Rust (//, ///, //!) trong đúng các file này: không biên dịch vào binary, người dùng không thấy"
 
@@ -16,9 +16,19 @@ pattern = '^description = ".*"$'
 reason = "Mô tả crate nội bộ (publish = false), không hiện cho người dùng"
 
 [[allow]]
-path = "crates/fonts/src/lib.rs"
+path = "{crates/fonts/src/lib.rs,crates/fonts/src/tests.rs}"
 pattern = '"DeckCraft (Legacy|Legacy Semibold|Colr Squares)"'
-reason = "Tên họ phông thử nghiệm trong module #[cfg(test)] (từ craft-fonts), không phát hành"
+reason = "Tên họ phông thử nghiệm trong module #[cfg(test)] (từ craft-fonts), không phát hành (upstream 2026-10 tách test sang tests.rs)"
+
+[[allow]]
+path = "apps/deckcraft/Cargo.toml"
+pattern = '^\s*#.*'
+reason = "Chú thích TOML (Cargo bỏ qua), không hiện cho người dùng"
+
+[[allow]]
+path = "{Cargo.toml,Cargo.lock}"
+pattern = 'github\.com/storytold/(egui|winit)\.git'
+reason = "Nguồn build: upstream vá egui 0.37/winit bằng fork git của họ ([patch.crates-io], ghim rev trong Cargo.lock), như craft-libs; không chạy lúc dùng, người dùng không thấy"
 
 [[allow]]
 path = "{crates/engine/src/tests.rs,crates/render/src/tests.rs}"
@@ -78,6 +88,21 @@ reason = "Dòng đầu chú thích XML của file WiX (ghi công), không hiện
 path = ".github/workflows/{release.yml,windows-arm64.yml}"
 pattern = 'app-(title|dir): DeckCraft'
 reason = "CI phát hành của upstream (đã tắt trên fork); NexusOffices phát hành bằng nexus-release.yml (Task 12)"
+
+[[allow]]
+path = ".github/workflows/windows-arm64.yml"
+pattern = 'install-relative-path: Programs/ArtCraft/DeckCraft'
+reason = "CI phát hành của upstream (đã tắt trên fork), như dòng trên"
+
+[[allow]]
+path = "{packaging/windows/install-policy.json,packaging/windows/install-policy.wxi,packaging/windows/check-install-policy.ps1,packaging/windows/test-install-policy.ps1,packaging/windows/INSTALLATION.md}"
+pattern = '.*'
+reason = "Hợp đồng cài đặt MSI dual-scope của upstream (thư mục ArtCraft, khoá Software\\DeckCraft); deckcraft.wxs/package.ps1 của Nexus không include/gọi các file này (MSI Nexus per-machine, thư mục và khoá riêng; NexusOffices installer mới là kênh phát hành). NỢ trong BRANDING_PATCH.md"
+
+[[allow]]
+path = "packaging/windows/package.ps1"
+pattern = "^# NexusOffices: upstream's check-install-policy\\.ps1 checks its own contract \\(ArtCraft suite folder,$"
+reason = "Chú thích PowerShell giải thích vì sao không gọi check-install-policy.ps1 của upstream"
 
 [[allow]]
 path = ".github/workflows/{nexus-ci.yml,nexus-sync.yml}"
@@ -142,3 +167,8 @@ reason = "Ghi công trong mô tả AppStream"
 path = "README.md"
 pattern = '(dựa trên DeckCraft của ArtCraft|developed from DeckCraft by ArtCraft) \(MIT/Apache-2\.0\)\.'
 reason = "Câu ghi công bắt buộc trong README (chỉ chữ, không logo/link)"
+
+[[allow]]
+path = "crates/ui-egui/src/dialogs/updates_ui.rs"
+pattern = 'assert!\(!text\.contains\("DeckCraft"\) && !text\.contains\("http"\), "\{text\}"\);'
+reason = "Test (#[cfg(test)]) khẳng định câu Check for Updates… của Nexus không nêu tên upstream"
