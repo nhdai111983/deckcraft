@@ -417,7 +417,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("view.dark", "Dark Mode", None, "{on?: bool}"),
     ("view.grayscale", "Grayscale", None, "{on?: bool}"),
     ("view.newWindow", "New Window", None, "{on?: bool, slide?: index, delta?: int}"),
-    ("show.start", "Slide Show", Some("F5"), "{from?: index, custom?: name}"),
+    ("show.start", "Slide Show", Some("F5"), "{from?: index, custom?: name, presenter?: bool}"),
     ("show.presenter", "Presenter View", None, "{on?: bool}"),
     ("show.end", "End Show", None, "{}"),
     ("animation.preview", "Preview Animations", None, "{on?: bool}"),
@@ -564,6 +564,10 @@ pub struct SlideApp {
     /// fonts to the window's instead of replacing them, leaves the window alone (no title, no
     /// drag, no close prompt of its own) and its top row doesn't move or maximise the window.
     pub embedded: bool,
+    /// NexusOffice: how many displays the computer has, when the host knows (`None`: unknown, taken
+    /// as one). Play from Start opens Presenter View only with a second display
+    /// ([`SlideApp::start_show`]).
+    pub displays: Option<usize>,
     /// NexusOffice: the rectangle the app was last drawn in (its tab, when [`embedded`](Self::embedded)),
     /// which "Lưu thay đổi?" dims and centres on.
     pub(crate) drawn_in: egui::Rect,
@@ -646,6 +650,7 @@ impl SlideApp {
             toolbar: false,
             wps: false,
             embedded: false,
+            displays: None,
             drawn_in: egui::Rect::NOTHING,
             file_dialog: None,
             replace_blank: None,
@@ -1205,6 +1210,10 @@ impl SlideApp {
             "show.start" => {
                 if let Some(name) = p.get("custom").and_then(Value::as_str).filter(|s| !s.is_empty()) {
                     self.start_custom_show(name, false);
+                } else if p.get("presenter").and_then(Value::as_bool) == Some(true) {
+                    // NexusOffice: Presenter View asked for, on any display.
+                    let from = p.get("from").and_then(Value::as_u64).map_or_else(|| self.show_start_index(), |v| v as usize);
+                    self.start_presenter_view(from);
                 } else if p.get("from").is_some() {
                     let from = p.get("from").and_then(Value::as_u64).map(|v| v as usize).unwrap_or(0);
                     self.start_show(from, false);
@@ -1344,10 +1353,23 @@ impl SlideApp {
     }
 
     pub fn start_show(&mut self, from: usize, reading: bool) {
+        // NexusOffice (QC-SLD-02): "Use Presenter View" applies when there is a second display, as
+        // in PowerPoint; on one display (or when the host can't tell) the show is just full screen.
+        let presenter = self.ui.presenter_view && !reading && self.displays.is_some_and(|n| n >= 2);
+        self.start_show_as(from, reading, presenter);
+    }
+
+    /// NexusOffice: Presenter View on request (Alt+F5, `show.start` with `presenter: true`): the
+    /// presenter's window beside the show, whatever the displays.
+    pub fn start_presenter_view(&mut self, from: usize) {
+        self.start_show_as(from, false, true);
+    }
+
+    fn start_show_as(&mut self, from: usize, reading: bool, presenter: bool) {
         self.anim_preview = None;
         self.media.stop_owned(media::Owner::Editor);
         if let Some(d) = self.session.active() {
-            self.show = Some(show::Show::new(&d.doc, from, reading, self.ui.presenter_view && !reading));
+            self.show = Some(show::Show::new(&d.doc, from, reading, presenter));
         }
     }
 

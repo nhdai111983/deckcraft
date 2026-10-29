@@ -233,11 +233,11 @@ pub fn notes_pane(app: &mut SlideApp, ui: &mut Ui) {
                             ui.close();
                         }
                     }
-                    if ui.button("Ignore All").clicked() {
+                    if ui.button(crate::i18n::tl(ui, "Ignore All")).clicked() {
                         app.squiggles.ignore(&w.word);
                         ui.close();
                     }
-                    if w.delete_from.is_none() && ui.button("Add to Dictionary").clicked() {
+                    if w.delete_from.is_none() && ui.button(crate::i18n::tl(ui, "Add to Dictionary")).clicked() {
                         if let Err(e) = app.session.execute("review.addToDictionary", &json!({"word": w.word})) {
                             app.set_status(e.to_string());
                         }
