@@ -28,12 +28,17 @@ impl Default for Runtime {
 /// NexusOffices: never turns the start-up check on (see the module docs).
 pub(crate) fn enable(_app: &mut SlideApp) {}
 
-/// The message Help › Check for Updates… shows instead of checking upstream's releases.
-pub(crate) const NEXUS_UPDATES: &str = "Nexus Slides is updated with NexusOffices: install the latest NexusOffices to get a newer version.";
+/// The message Help › Check for Updates… shows instead of checking upstream's releases
+/// (English, Vietnamese). The fork has no interface-language switch yet, so the English text is
+/// shown; the Vietnamese one is for the Vietnamese interface (nx/vi-dialogs).
+pub(crate) const NEXUS_UPDATES: (&str, &str) = (
+    "New versions of Nexus Slides arrive through the NexusOffices installer: install the latest NexusOffices to update.",
+    "Phiên bản mới của Nexus Slides được cập nhật qua bộ cài NexusOffices: cài NexusOffices mới nhất để cập nhật.",
+);
 
 /// Help > Check for Updates…: NexusOffices: says where updates come from; checks nothing.
 pub(crate) fn request_check(app: &mut SlideApp) {
-    app.notify(NEXUS_UPDATES);
+    app.notify(NEXUS_UPDATES.0);
 }
 
 pub(crate) fn tick(app: &mut SlideApp, ctx: &egui::Context) {
@@ -80,6 +85,17 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput::default(), |ui| tick(&mut app, ui.ctx())).textures_delta.clear();
         assert!(matches!(app.updates_rt.updater.status(), Status::Idle), "no check was started");
+    }
+
+    /// The Check for Updates… message names the NexusOffices installer in both languages.
+    #[test]
+    fn nexus_update_message_names_the_installer_in_en_and_vi() {
+        let (en, vi) = NEXUS_UPDATES;
+        assert!(en.contains("NexusOffices installer") && en.contains("Nexus Slides"), "{en}");
+        assert!(vi.contains("bộ cài NexusOffices") && vi.contains("Nexus Slides"), "{vi}");
+        for text in [en, vi] {
+            assert!(!text.contains("DeckCraft") && !text.contains("http"), "{text}");
+        }
     }
 
     #[test]

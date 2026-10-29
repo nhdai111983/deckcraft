@@ -167,3 +167,8 @@ reason = "Ghi công trong mô tả AppStream"
 path = "README.md"
 pattern = '(dựa trên DeckCraft của ArtCraft|developed from DeckCraft by ArtCraft) \(MIT/Apache-2\.0\)\.'
 reason = "Câu ghi công bắt buộc trong README (chỉ chữ, không logo/link)"
+
+[[allow]]
+path = "crates/ui-egui/src/dialogs/updates_ui.rs"
+pattern = 'assert!\(!text\.contains\("DeckCraft"\) && !text\.contains\("http"\), "\{text\}"\);'
+reason = "Test (#[cfg(test)]) khẳng định câu Check for Updates… của Nexus không nêu tên upstream"

@@ -93,7 +93,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `crates/ui-egui/src/lib.rs` | `pub mod nexus;`; nhãn `app.about` "About Nexus Slides"; `app.links` "Project Links" | Có — `APP_NAME` |
 | `crates/ui-egui/src/app/commands.rs` | `app.links` trả {appPage, github, issues} (upstream tách `lib.rs` → `app/*`) | Có |
 | `crates/ui-egui/src/app/files.rs` | 2 thông báo trạng thái (không mở được / không xuất được) nêu Nexus Slides | Có — `APP_NAME` |
-| `crates/ui-egui/src/dialogs/updates_ui.rs` | **Tắt trình cập nhật của upstream** (`craft_update`, thêm 2026-10): nó kiểm tra và tải bản phát hành `storytold/deckcraft` (DeckCraft, không phải Nexus Slides) lúc khởi động. Nexus: `enable()` không làm gì, Help › Check for Updates… chỉ báo "cập nhật qua NexusOffices", không gọi mạng; có test `nexus_never_checks_upstream_releases` | Có — nên PR upstream một cờ build tắt updater / chọn repo |
+| `crates/ui-egui/src/dialogs/updates_ui.rs` | **Tắt trình cập nhật của upstream** (`craft_update`, thêm 2026-10): nó kiểm tra và tải bản phát hành `storytold/deckcraft` (DeckCraft, không phải Nexus Slides) lúc khởi động. Nexus: `enable()` không làm gì, Help › Check for Updates… chỉ báo bản mới đến qua bộ cài NexusOffices (câu en + vi trong `NEXUS_UPDATES`; hiện hiển thị en vì fork chưa có chọn ngôn ngữ giao diện), không gọi mạng; test `nexus_never_checks_upstream_releases`, `nexus_update_message_names_the_installer_in_en_and_vi` | Có — nên PR upstream một cờ build tắt updater / chọn repo |
 | `crates/ui-egui/src/dialogs.rs` | Tiêu đề About/quit/mặc định | Có |
 | `crates/ui-egui/src/dialogs/about.rs` | About → `nexus::about_ui` (bỏ link Discord/getartcraft, ghi công chữ); `paint_logo` → logo Nexus (upstream tách `dialogs.rs` → `dialogs/*`) | Có |
 | `crates/ui-egui/src/dialogs/photo_album.rs` | Theme album `Nexus` | Có |
@@ -157,6 +157,7 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 
 | File | Lý do | Thay được bằng white-label? |
 |---|---|---|
+| `.github/workflows/sonarcloud.yml` | Upstream (2026-10) thêm SonarCloud chạy cả trên PR với `secrets: inherit` gọi workflow `storytold/craft-common-actions/...@main` — trên fork sẽ trao mọi secret của fork (vd. `NEXUS_TOOLS_TOKEN`) cho code fork không kiểm soát. Thêm `if: github.repository == 'storytold/deckcraft'` | Không (an toàn bí mật) |
 | `crates/model/src/trendline.rs` | Sửa tạm lỗi `clippy::manual_range_contains` (clippy 1.97) có sẵn ở upstream, để `clippy -D warnings` sạch (xem `nexus/UPSTREAM_PRS.md`); bỏ khi upstream sửa | Không (không phải thương hiệu) |
 
 ## Rà soát gọi mạng (guard §5)
