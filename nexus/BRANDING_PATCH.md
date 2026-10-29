@@ -157,6 +157,7 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 
 | File | Lý do | Thay được bằng white-label? |
 |---|---|---|
+| `crates/model/src/trendline.rs` | Sửa tạm lỗi `clippy::manual_range_contains` (clippy 1.97) có sẵn ở upstream, để `clippy -D warnings` sạch (xem `nexus/UPSTREAM_PRS.md`); bỏ khi upstream sửa | Không (không phải thương hiệu) |
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:

@@ -73,7 +73,7 @@ fn main() -> ExitCode {
         Some("app") => report(app(rest)),
         Some("mcp") => report(mcp(rest)),
         Some("links") => {
-            use deckcraft_engine::links::*;
+            use deckcraft_engine::links::{APP_PAGE, GITHUB, ISSUES};
             outln!("App page  {APP_PAGE}\nGitHub    {GITHUB}\nIssues    {ISSUES}");
             ExitCode::SUCCESS
         }
