@@ -1636,6 +1636,11 @@ mod frame_memo_tests {
     fn the_frame_follows_every_change_and_is_reused_without_one() {
         let mut s = Session::with_new();
         s.execute("insert.textBox", &json!({"rect": [10, 10, 300, 60], "text": "Xin"})).unwrap();
+        // Into the box's text, the caret at its end.
+        let _ = s.execute("text.exit", &json!({}));
+        let id = s.doc().unwrap().selection.shapes[0];
+        s.execute("text.edit", &json!({"id": id.0})).unwrap();
+        s.execute("text.move", &json!({"to": "end"})).unwrap();
         let before = caret(&s);
         // Asked again without a change: the very same layout (held, not laid out again).
         let st = s.doc().unwrap();
