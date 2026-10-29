@@ -67,7 +67,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
 /// Shift+Tab demote and promote, Backspace in an empty line removes it.
 fn smartart(app: &mut SlideApp, ui: &mut Ui) {
     let Some((gid, d)) = app.session.active().and_then(deckcraft_engine::cmd::smartart::selected) else {
-        ui.label("Select a SmartArt graphic to edit its text.");
+        ui.label(crate::i18n::tl(ui, "Select a SmartArt graphic to edit its text."));
         return;
     };
     let texts: Vec<String> = d.nodes.iter().map(|n| n.text.clone()).collect();
@@ -79,7 +79,7 @@ fn smartart(app: &mut SlideApp, ui: &mut Ui) {
     let mut action: Option<(&str, Value)> = None;
     let mut commit: Option<usize> = None;
     let mut focus_row: Option<usize> = None;
-    ui.label(egui::RichText::new("Type your text here").color(Tokens::get(ui.ctx()).text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Type your text here")).color(Tokens::get(ui.ctx()).text_dim));
     ui.add_space(4.0);
     for (i, node) in d.nodes.iter().enumerate() {
         let Some(draft) = drafts.get_mut(i) else { break };
@@ -118,10 +118,10 @@ fn smartart(app: &mut SlideApp, ui: &mut Ui) {
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        if ui.button("+ Add").clicked() {
+        if ui.button(crate::i18n::tl(ui, "+ Add")).clicked() {
             action = Some(("smartArt.addNode", json!({"index": app.ui.smartart_row.min(d.nodes.len().saturating_sub(1)), "position": "after"})));
         }
-        if ui.button("Remove").clicked() && !d.nodes.is_empty() {
+        if ui.button(crate::i18n::tl(ui, "Remove")).clicked() && !d.nodes.is_empty() {
             action = Some(("smartArt.removeNode", json!({"index": app.ui.smartart_row.min(d.nodes.len() - 1)})));
         }
     });
@@ -1032,13 +1032,13 @@ fn animation(app: &mut SlideApp, ui: &mut Ui) {
     let selected: Vec<u32> = st.selection.shapes.iter().map(|i| i.0).collect();
     ui.horizontal(|ui| {
         let playing = app.anim_preview_active();
-        if ui.button(if playing { "■ Stop" } else { "▶ Play All" }).clicked() {
+        if ui.button(tl(ui, if playing { "■ Stop" } else { "▶ Play All" })).clicked() {
             run(app, "animation.preview", json!({"on": !playing}));
         }
     });
     ui.separator();
     if anims.is_empty() {
-        ui.label(egui::RichText::new("Select an object on the slide and add an animation from the Animations tab.").color(t.text_dim));
+        ui.label(egui::RichText::new(tl(ui, "Select an object on the slide and add an animation from the Animations tab.")).color(t.text_dim));
         return;
     }
     let bars = animtimeline::bars(anims.len(), &effects);
@@ -1050,7 +1050,11 @@ fn animation(app: &mut SlideApp, ui: &mut Ui) {
         if a.start == AnimStart::OnClick {
             click += 1;
         }
-        let name = names.iter().find(|(id, _)| *id == a.shape.0).map(|(_, n)| n.clone()).unwrap_or_else(|| format!("Shape {}", a.shape));
+        let name = names
+            .iter()
+            .find(|(id, _)| *id == a.shape.0)
+            .map(|(_, n)| n.clone())
+            .unwrap_or_else(|| crate::i18n::current(ui.ctx()).fill("Shape {n}", &[("n", &a.shape.to_string())]));
         let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
         let sel = selected.contains(&a.shape.0);
         if sel || resp.hovered() {
@@ -1141,21 +1145,21 @@ fn animation(app: &mut SlideApp, ui: &mut Ui) {
         }
         resp.context_menu(|ui| {
             for (l, v) in [("Start On Click", "onClick"), ("Start With Previous", "withPrevious"), ("Start After Previous", "afterPrevious")] {
-                if ui.button(l).clicked() {
+                if ui.button(tl(ui, l)).clicked() {
                     run(app, "animation.timing", json!({"index": i, "start": v}));
                     ui.close();
                 }
             }
             ui.separator();
-            if ui.button("Move Up").clicked() {
+            if ui.button(crate::i18n::tl(ui, "Move Up")).clicked() {
                 run(app, "animation.move", json!({"index": i, "to": i.saturating_sub(1)}));
                 ui.close();
             }
-            if ui.button("Move Down").clicked() {
+            if ui.button(crate::i18n::tl(ui, "Move Down")).clicked() {
                 run(app, "animation.move", json!({"index": i, "to": i + 1}));
                 ui.close();
             }
-            if ui.button("Remove").clicked() {
+            if ui.button(crate::i18n::tl(ui, "Remove")).clicked() {
                 run(app, "animation.remove", json!({"index": i}));
                 ui.close();
             }
@@ -1182,33 +1186,45 @@ fn animation(app: &mut SlideApp, ui: &mut Ui) {
 fn revisions(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let Ok(v) = app.session.execute("review.revisions", &json!({})) else {
-        ui.label(egui::RichText::new("Compare this presentation with a revised copy from Review › Compare.").color(t.text_dim));
+        ui.label(egui::RichText::new(tl(ui, "Compare this presentation with a revised copy from Review › Compare.")).color(t.text_dim));
         return;
     };
     let changes = v["changes"].as_array().cloned().unwrap_or_default();
-    ui.label(egui::RichText::new(format!("Compared with {}", v["name"].as_str().unwrap_or("?"))).color(t.text_dim));
+    ui.label(
+        egui::RichText::new(crate::i18n::current(ui.ctx()).fill("Compared with {name}", &[("name", v["name"].as_str().unwrap_or("?"))]))
+            .color(t.text_dim),
+    );
     if v["byPosition"].as_bool() == Some(true) {
-        ui.label(egui::RichText::new("Not a copy of this presentation: slides are matched by position.").size(11.0).color(t.text_faint));
+        ui.label(egui::RichText::new(tl(ui, "Not a copy of this presentation: slides are matched by position.")).size(11.0).color(t.text_faint));
     }
     ui.add_space(4.0);
     if changes.is_empty() {
-        ui.label("No differences left.");
-        if ui.button("End Review").clicked() {
+        ui.label(crate::i18n::tl(ui, "No differences left."));
+        if ui.button(crate::i18n::tl(ui, "End Review")).clicked() {
             run(app, "review.endCompare", json!({}));
             app.ui.pane = None;
         }
         return;
     }
-    if ui.button(format!("Accept All ({})", changes.len())).clicked() {
+    if ui.button(crate::i18n::current(ui.ctx()).fill("Accept All ({n})", &[("n", &changes.len().to_string())])).clicked() {
         run(app, "review.accept", json!({"all": true}));
     }
     ui.separator();
     for (i, c) in changes.iter().enumerate() {
         let slide = c["slide"].as_u64().unwrap_or(0);
         let (head, col) = match c["kind"].as_str().unwrap_or("") {
-            "inserted" => (format!("Slide inserted after {slide}"), Color32::from_rgb(0x2E, 0xA3, 0x6F)),
-            "deleted" => (format!("Slide {} deleted", slide.saturating_add(1)), Color32::from_rgb(0xD8, 0x3F, 0x6B)),
-            _ => (format!("Slide {} changed", slide.saturating_add(1)), Color32::from_rgb(0x2E, 0x6F, 0xD8)),
+            "inserted" => (
+                crate::i18n::current(ui.ctx()).fill("Slide inserted after {slide}", &[("slide", &slide.to_string())]),
+                Color32::from_rgb(0x2E, 0xA3, 0x6F),
+            ),
+            "deleted" => (
+                crate::i18n::current(ui.ctx()).fill("Slide {n} deleted", &[("n", &slide.saturating_add(1).to_string())]),
+                Color32::from_rgb(0xD8, 0x3F, 0x6B),
+            ),
+            _ => (
+                crate::i18n::current(ui.ctx()).fill("Slide {n} changed", &[("n", &slide.saturating_add(1).to_string())]),
+                Color32::from_rgb(0x2E, 0x6F, 0xD8),
+            ),
         };
         egui::Frame::NONE.fill(t.chrome).corner_radius(CornerRadius::same(6)).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -1220,7 +1236,7 @@ fn revisions(app: &mut SlideApp, ui: &mut Ui) {
                     run(app, "slide.go", json!({"index": (slide as usize).min(max)}));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Accept").clicked() {
+                    if ui.small_button(crate::i18n::tl(ui, "Accept")).clicked() {
                         run(app, "review.accept", json!({"index": i}));
                     }
                 });
@@ -1235,7 +1251,7 @@ fn revisions(app: &mut SlideApp, ui: &mut Ui) {
 
 fn comments(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    if ui.button("+ New Comment").clicked() {
+    if ui.button(crate::i18n::tl(ui, "+ New Comment")).clicked() {
         app.dialog = Some(crate::dialogs::Dialog::new("comment"));
     }
     ui.separator();
@@ -1245,12 +1261,16 @@ fn comments(app: &mut SlideApp, ui: &mut Ui) {
         .map(|st| st.doc.slides.iter().enumerate().filter(|(_, sl)| !sl.comments.is_empty()).map(|(i, sl)| (i, sl.comments.clone())).collect())
         .unwrap_or_default();
     if threads.is_empty() {
-        ui.label(egui::RichText::new("No comments.").color(t.text_dim));
+        ui.label(egui::RichText::new(tl(ui, "No comments.")).color(t.text_dim));
         return;
     }
     let focus = app.ui.comment_focus;
     for (si, list) in threads {
-        ui.label(egui::RichText::new(format!("Slide {}", si + 1)).font(theme::bold(12.0)).color(t.text_dim));
+        ui.label(
+            egui::RichText::new(crate::i18n::current(ui.ctx()).fill("Slide {n}", &[("n", &(si + 1).to_string())]))
+                .font(theme::bold(12.0))
+                .color(t.text_dim),
+        );
         ui.add_space(2.0);
         for (i, c) in list.iter().enumerate() {
             comment_card(app, ui, si, i, c, focus == Some((si, i)));
@@ -1284,7 +1304,7 @@ fn comment_card(app: &mut SlideApp, ui: &mut Ui, slide: usize, index: usize, c: 
                         focus_comment(app, slide, index);
                     }
                     let when = c.date.replace('T', " ").trim_end_matches('Z').to_string();
-                    let when = if c.resolved { format!("{when} · Resolved") } else { when };
+                    let when = if c.resolved { crate::i18n::current(ui.ctx()).fill("{when} · Resolved", &[("when", &when)]) } else { when };
                     ui.label(egui::RichText::new(when).size(10.5).color(t.text_faint));
                 });
             });
@@ -1301,14 +1321,14 @@ fn comment_card(app: &mut SlideApp, ui: &mut Ui, slide: usize, index: usize, c: 
             ui.horizontal(|ui| {
                 let id = ui.id().with(("reply", slide, index));
                 let mut txt: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
-                let r = ui.add(egui::TextEdit::singleline(&mut txt).hint_text("Reply…").desired_width(ui.available_width() - 70.0));
+                let r = ui.add(egui::TextEdit::singleline(&mut txt).hint_text(tl(ui, "Reply…")).desired_width(ui.available_width() - 70.0));
                 if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !txt.trim().is_empty() {
                     focus_comment(app, slide, index);
                     run(app, "comment.reply", json!({"index": index, "text": txt}));
                     txt.clear();
                 }
                 ui.data_mut(|d| d.insert_temp(id, txt));
-                if ui.small_button(if c.resolved { "Reopen" } else { "Resolve" }).clicked() {
+                if ui.small_button(tl(ui, if c.resolved { "Reopen" } else { "Resolve" })).clicked() {
                     focus_comment(app, slide, index);
                     run(app, "comment.resolve", json!({"index": index, "resolved": !c.resolved}));
                 }
@@ -1344,7 +1364,7 @@ struct IdeaThumbs {
 
 fn designer(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    ui.label(egui::RichText::new("Pick a design for this slide. Ideas are generated on your device.").color(t.text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Pick a design for this slide. Ideas are generated on your device.")).color(t.text_dim));
     ui.add_space(6.0);
     let Some(st) = app.session.active() else { return };
     let doc = st.doc.clone();
@@ -1407,7 +1427,7 @@ fn designer(app: &mut SlideApp, ui: &mut Ui) {
         clicked
     };
     if ideas.is_empty() {
-        ui.label(egui::RichText::new("Add a title with a picture or some text to get layout ideas.").color(t.text_dim));
+        ui.label(egui::RichText::new(tl(ui, "Add a title with a picture or some text to get layout ideas.")).color(t.text_dim));
     }
     for (id, label) in &ideas {
         if thumb(ui, &format!("layout:{id}"), label) {
@@ -1415,7 +1435,7 @@ fn designer(app: &mut SlideApp, ui: &mut Ui) {
         }
     }
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Themes (whole presentation)").color(t.text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Themes (whole presentation)")).color(t.text_dim));
     ui.add_space(4.0);
     for th in &themes {
         if thumb(ui, &format!("theme:{}", th.name), &th.name) {
@@ -1553,25 +1573,25 @@ mod tests {
 fn thesaurus(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let mut q = app.thesaurus_query.clone();
-    let edit = ui.add(egui::TextEdit::singleline(&mut q).hint_text("Search for a word").desired_width(f32::INFINITY));
+    let edit = ui.add(egui::TextEdit::singleline(&mut q).hint_text(tl(ui, "Search for a word")).desired_width(f32::INFINITY));
     if edit.changed() {
         app.thesaurus_query = q.clone();
     }
     ui.add_space(6.0);
     let senses = deckcraft_engine::thesaurus::lookup(&q);
     if q.trim().is_empty() {
-        ui.label(egui::RichText::new("Select a word on the slide, or type one above.").color(t.text_dim));
+        ui.label(egui::RichText::new(tl(ui, "Select a word on the slide, or type one above.")).color(t.text_dim));
         return;
     }
     if senses.is_empty() {
-        ui.label(egui::RichText::new(format!("No synonyms for \"{}\".", q.trim())).color(t.text_dim));
+        ui.label(egui::RichText::new(crate::i18n::current(ui.ctx()).fill("No synonyms for \"{word}\".", &[("word", q.trim())])).color(t.text_dim));
         return;
     }
     let editing = app.session.active().is_some_and(|d| d.selection.text.is_some());
     for sense in senses {
         ui.label(egui::RichText::new(&sense.word).font(theme::bold(13.0)));
         for syn in sense.synonyms {
-            let r = ui.add(egui::Button::new(&syn).frame(false)).on_hover_text(if editing { "Insert" } else { "Look up" });
+            let r = ui.add(egui::Button::new(&syn).frame(false)).on_hover_text(tl(ui, if editing { "Insert" } else { "Look up" }));
             if r.clicked() {
                 if editing {
                     run(app, "review.replaceWord", json!({"with": syn}));

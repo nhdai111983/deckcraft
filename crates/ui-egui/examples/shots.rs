@@ -85,8 +85,13 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| ".".into()));
     let prefix = args.next().unwrap_or_else(|| "dc-".into());
-    let only_dialogs = args.next().as_deref() == Some("dialogs");
+    let mode = args.next();
+    let only_dialogs = mode.as_deref() == Some("dialogs");
     let name = |n: &str| format!("{prefix}{n}.png");
+    if mode.as_deref() == Some("qc") {
+        qc_shots(&dir, &name);
+        return;
+    }
     use deckcraft_ui_egui::i18n::Language;
     use deckcraft_ui_egui::nexus_wps;
 
@@ -223,4 +228,96 @@ fn main() {
     act(&mut h, "Home", true);
     act(&mut h, "Font ⏵", false);
     shot(&mut h, &dir, &name("menu"));
+}
+
+/// NexusOffice QC (`shots <dir> <prefix> qc`): the context menus, the show, presenter view, the
+/// panes and the galleries the QC sweep found in English, in Vietnamese.
+fn qc_shots(dir: &std::path::Path, name: &dyn Fn(&str) -> String) {
+    use deckcraft_ui_egui::i18n::Language;
+    let wps = |a: &mut SlideApp| {
+        a.wps = true;
+        a.ui.language = Language::Vi;
+    };
+    let right_click = |h: &mut Harness<'_, SlideApp>, at: egui::Pos2| {
+        h.input_mut().events.push(egui::Event::PointerMoved(at));
+        h.run_steps(1);
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(1);
+        }
+        h.run_steps(4);
+    };
+    // The slide's context menu (an empty spot of a blank slide) and a shape's.
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        let _ = a.run("slide.new", serde_json::json!({"layout": "blank"}));
+    });
+    right_click(&mut h, egui::pos2(700.0, 600.0));
+    shot(&mut h, dir, &name("qc-menu-slide"));
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        let _ = a.run("slide.new", serde_json::json!({"layout": "blank"}));
+        let _ = a.run("shape.insert", serde_json::json!({"preset": "rect", "rect": [300, 150, 300, 200]}));
+    });
+    right_click(&mut h, egui::pos2(760.0, 420.0));
+    shot(&mut h, dir, &name("qc-menu-shape"));
+    // A thumbnail's menu.
+    let mut h = window(1440.0, 900.0, wps);
+    right_click(&mut h, egui::pos2(130.0, 200.0));
+    shot(&mut h, dir, &name("qc-menu-thumb"));
+    // Presenter View (asked for) and the show's controls.
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.start_presenter_view(0);
+    });
+    shot(&mut h, dir, &name("qc-presenter"));
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.start_show(0, false);
+    });
+    shot(&mut h, dir, &name("qc-show"));
+    // Panes.
+    for pane in ["animation", "comments", "designer", "thesaurus"] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            a.ui.pane = Some(pane.into());
+        });
+        shot(&mut h, dir, &name(&format!("qc-pane-{pane}")));
+    }
+    // The Layout and Shapes galleries, Design › Effects.
+    for (tab, label, file) in [("Home", "Bố trí", "qc-layouts"), ("Insert", "Hình", "qc-shapes"), ("Design", "Hiệu ứng", "qc-effects")] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            a.ui.tab = tab.into();
+        });
+        h.run_steps(20);
+        act(&mut h, label, true);
+        shot(&mut h, dir, &name(file));
+    }
+    // The Symbol dialog without empty boxes, and a new shape with centred text on a dark theme.
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new("symbol"));
+    });
+    shot(&mut h, dir, &name("qc-symbol"));
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        let _ = a.run("design.theme", serde_json::json!({"name": "Nocturne"}));
+        let _ = a.run("slide.new", serde_json::json!({"layout": "title"}));
+        let _ = a.run("slide.new", serde_json::json!({"layout": "blank"}));
+        if let Ok(v) = a.run("shape.insert", serde_json::json!({"preset": "rect", "rect": [300, 150, 360, 200]})) {
+            let _ = a.run("text.edit", serde_json::json!({"id": v["id"]}));
+            let _ = a.run("text.insert", serde_json::json!({"text": "Chữ căn giữa"}));
+            let _ = a.run("text.exit", serde_json::json!({}));
+        }
+        let _ = a.run("slide.go", serde_json::json!({"index": 1}));
+    });
+    shot(&mut h, dir, &name("qc-dark-theme-prompt"));
+    let _ = h.state_mut().run("slide.go", serde_json::json!({"index": 2}));
+    shot(&mut h, dir, &name("qc-shape-text"));
 }

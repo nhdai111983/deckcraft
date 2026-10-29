@@ -201,7 +201,9 @@ fn insert_shape(s: &mut Session, p: &Value) -> Result<Value> {
         x.flip_v = fl.contains('v');
     }
     if !line_like {
-        shape.text = Some(TextBody { paragraphs: vec![], ..Default::default() });
+        // NexusOffice (QC-SLD-08): one empty, centred paragraph (as PowerPoint writes a new shape),
+        // so the first text typed into it is centred too.
+        shape.text = Some(TextBody { paragraphs: vec![deckcraft_model::Paragraph::default()], ..Default::default() });
         if let Some(t) = str_param(p, "text") {
             shape.text = Some(TextBody::from_text(t));
         }

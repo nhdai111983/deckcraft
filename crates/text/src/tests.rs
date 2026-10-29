@@ -1467,3 +1467,32 @@ fn empty_plain_paragraphs_and_soft_breaks_have_no_bullet_preview() {
     assert_eq!(l.lines.len(), 2);
     assert!(l.empty_bullets.is_empty(), "a soft line break is not a new list item");
 }
+
+/// QC-SLD-09: a placeholder's prompt ("Bấm để thêm tiêu đề") is grey on a light theme, and light
+/// on a theme whose text is light (a dark background): never dark grey on dark blue.
+#[test]
+fn prompts_stay_readable_on_dark_themes() {
+    let grey = Rgba::rgb(0x59, 0x59, 0x59);
+    let lum = |c: Rgba| 0.2126 * f64::from(c.r) + 0.7152 * f64::from(c.g) + 0.0722 * f64::from(c.b);
+    for (text, light) in [(Rgba::rgb(0x11, 0x11, 0x11), false), (Rgba::rgb(0xFF, 0xFF, 0xFF), true), (Rgba::rgb(0xE8, 0xEC, 0xF5), true)] {
+        let (p, mut sh) = setup("Bấm để thêm tiêu đề", 400.0, 100.0);
+        for para in &mut sh.text.as_mut().unwrap().paragraphs {
+            for r in &mut para.runs {
+                r.props.fill = Some(Fill::Solid { color: deckcraft_model::ColorRef::rgb(text) });
+            }
+        }
+        let ctx = Ctx::for_slide(&p, &p.slides[0]).unwrap();
+        let l = layout(
+            &ctx,
+            &sh,
+            sh.text.as_ref().unwrap(),
+            &Opts { rect: Rect::new(0.0, 0.0, 400.0, 100.0), fields: &NoFields, prompt_color: Some(grey), no_shrink: false },
+        );
+        let c = l.runs.first().map(|r| r.color).unwrap();
+        if light {
+            assert!(lum(c) > 160.0, "{text:?}: the prompt is light ({c:?})");
+        } else {
+            assert_eq!(c, grey, "light theme: upstream's grey");
+        }
+    }
+}

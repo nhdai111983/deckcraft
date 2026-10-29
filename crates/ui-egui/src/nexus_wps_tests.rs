@@ -1476,3 +1476,182 @@ fn untouched_defaults_in_paragraph_and_tabs_keep_their_value_in_vietnamese() {
     assert!(h.state().dialog.is_none());
     assert_eq!(para(&h).and_then(|p| p.props.default_tab), Some(27.0), "the untouched default stop keeps 27 pt");
 }
+
+/// Nexus Slide in `lang` as [`harness`] draws it, plus `menu` drawn in a pop-up as a context menu
+/// would draw it (the canvas's, a thumbnail's).
+fn menu_harness(setup: impl FnOnce(&mut SlideApp), menu: fn(&mut SlideApp, &mut egui::Ui)) -> H {
+    let mut session = Session::new();
+    session.untitled_prefix = Language::Vi.untitled_prefix().to_string();
+    session.new_language = Language::Vi.document_language().map(str::to_string);
+    session.execute("file.new", &json!({})).unwrap();
+    let mut a = SlideApp::new(session, Services::default());
+    a.wps = true;
+    a.embedded = true;
+    a.ui.language = Language::Vi;
+    setup(&mut a);
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 1000.0)).with_max_steps(64).build_ui_state(
+        move |ui, app: &mut SlideApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+            egui::Area::new(Id::new("qc-context-menu")).fixed_pos(egui::pos2(500.0, 300.0)).show(&ctx, |ui| {
+                egui::Frame::menu(ui.style()).show(ui, |ui| menu(app, ui));
+            });
+        },
+        a,
+    );
+    h.run_steps(16);
+    h
+}
+
+/// QC-SLD-01…06: the context menus (slide, thumbnail, shape, text), the slide show's controls,
+/// presenter view, Reading View, the panes and views the QC sweep found in English, and the
+/// Layout and Shapes galleries are Vietnamese in the Vietnamese interface.
+#[test]
+fn context_menus_the_show_panes_and_galleries_are_vietnamese() {
+    let mut missing = std::collections::BTreeSet::new();
+    let none = |_: &mut SlideApp, _: &mut egui::Ui| {};
+    // Context menus.
+    let menus: Vec<(&str, Box<dyn Fn(&mut SlideApp)>, fn(&mut SlideApp, &mut egui::Ui))> = vec![
+        ("canvas menu (slide)", Box::new(|a: &mut SlideApp| a.run("edit.deselect", json!({})).map(|_| ()).unwrap()), crate::canvas::canvas_menu),
+        (
+            "canvas menu (shape)",
+            Box::new(|a: &mut SlideApp| {
+                a.run("shape.insert", json!({"preset": "rect", "rect": [100, 100, 300, 200]})).unwrap();
+            }),
+            crate::canvas::canvas_menu,
+        ),
+        (
+            "canvas menu (text)",
+            Box::new(|a: &mut SlideApp| {
+                a.run("insert.textBox", json!({"rect": [100, 100, 300, 60], "text": "x"})).unwrap();
+            }),
+            crate::canvas::canvas_menu,
+        ),
+        ("thumbnail menu", Box::new(|_: &mut SlideApp| {}), |a, ui| crate::thumbs::slide_menu(a, ui, 0)),
+    ];
+    for (place, setup, menu) in menus {
+        let mut h = menu_harness(setup, menu);
+        h.run_steps(4);
+        english_in(&mut h, place, &mut missing);
+    }
+    // The show: its controls, presenter view (asked for), Reading View.
+    for (place, setup) in [
+        ("slide show", Box::new(|a: &mut SlideApp| a.start_show(0, false)) as Box<dyn Fn(&mut SlideApp)>),
+        ("presenter view", Box::new(|a: &mut SlideApp| a.start_presenter_view(0))),
+        ("reading view", Box::new(|a: &mut SlideApp| a.start_show(0, true))),
+    ] {
+        let mut h = menu_harness(
+            |a| {
+                a.run("slide.new", json!({})).unwrap();
+                setup(a);
+            },
+            none,
+        );
+        h.run_steps(6);
+        english_in(&mut h, place, &mut missing);
+    }
+    // Panes and views.
+    for pane in ["animation", "comments", "designer", "thesaurus", "selection", "smartart"] {
+        let mut h = menu_harness(|a| a.ui.pane = Some(pane.into()), none);
+        h.run_steps(6);
+        // The Selection pane lists the shapes' names: the presentation's own text.
+        let names: Vec<String> =
+            h.state().session.active().and_then(|d| d.current_slide()).map(|s| s.shapes.iter().map(|x| x.name.clone()).collect()).unwrap_or_default();
+        let mut found = std::collections::BTreeSet::new();
+        english_in(&mut h, &format!("pane {pane}"), &mut found);
+        missing.extend(found.into_iter().filter(|m| !names.iter().any(|n| m.ends_with(&format!("{n:?}")))));
+    }
+    for (place, view) in
+        [("slide sorter", crate::ViewMode::Sorter), ("outline", crate::ViewMode::Outline), ("notes page", crate::ViewMode::NotesPage)]
+    {
+        let mut h = menu_harness(|a| a.ui.view = view, none);
+        h.run_steps(6);
+        english_in(&mut h, place, &mut missing);
+    }
+    let mut h = menu_harness(
+        |a| {
+            a.run("slide.new", json!({})).unwrap();
+            let _ = a.run("view.newWindow", json!({}));
+        },
+        none,
+    );
+    h.run_steps(8);
+    // The new window's title is the presentation's name and its number ("Trình chiếu 1:2").
+    let title = h.state().session.active().map(|d| d.title()).unwrap_or_default();
+    let mut found = std::collections::BTreeSet::new();
+    english_in(&mut h, "new window", &mut found);
+    missing.extend(found.into_iter().filter(|m| !m.contains(&format!("\"{title}:"))));
+    // The Layout and Shapes galleries (Trang chủ › Bố trí, Chèn › Hình).
+    for (tab, button) in [("Home", "Bố trí"), ("Insert", "Hình")] {
+        let mut h = menu_harness(|a| a.ui.tab = tab.into(), none);
+        h.run_steps(8);
+        if let Some(n) = h.query_all_by_label(button).max_by(|a, b| a.rect().min.y.total_cmp(&b.rect().min.y)) {
+            n.click();
+        } else {
+            missing.insert(format!("{tab}: no {button:?} button"));
+            continue;
+        }
+        h.run_steps(6);
+        english_in(&mut h, &format!("{tab} › {button}"), &mut missing);
+    }
+    // QC-SLD-07: Design's Colors / Fonts / Effects are named in Vietnamese for screen readers too,
+    // and the Effects gallery's schemes are Vietnamese.
+    let mut h = menu_harness(|a| a.ui.tab = "Design".into(), none);
+    h.run_steps(8);
+    for l in ["Colors", "Fonts", "Effects"] {
+        if h.query_by_label(l).is_some() {
+            missing.insert(format!("Design: accessible name {l:?}"));
+        }
+    }
+    if let Some(n) = h.query_all_by_label("Hiệu ứng").max_by(|a, b| a.rect().min.y.total_cmp(&b.rect().min.y)) {
+        n.click();
+        h.run_steps(6);
+        english_in(&mut h, "Design › Hiệu ứng", &mut missing);
+    } else {
+        missing.insert("Design: no Hiệu ứng button".into());
+    }
+    let missing: Vec<String> = missing.into_iter().collect();
+    assert!(missing.is_empty(), "untranslated ({}):\n{}", missing.len(), missing.join("\n"));
+}
+
+/// The Symbol dialog offers only symbols the interface fonts can draw (no empty boxes).
+#[test]
+fn the_symbol_dialog_shows_no_empty_boxes() {
+    use egui_kittest::kittest::NodeT as _;
+    let h = menu_harness(|a| a.dialog = Some(crate::dialogs::Dialog::new("symbol")), |_, _| {});
+    let font = egui::FontId::proportional(16.0);
+    let mut buttons = 0;
+    let mut boxes = Vec::new();
+    for n in h.query_all_by_role(egui::accesskit::Role::Button) {
+        let label = n.accesskit_node().label().unwrap_or_default();
+        let mut cs = label.chars();
+        let (Some(c), None) = (cs.next(), cs.next()) else { continue };
+        if c.is_ascii() {
+            continue;
+        }
+        buttons += 1;
+        if !h.ctx.fonts_mut(|f| f.has_glyph(&font, c)) {
+            boxes.push(format!("{c} U+{:04X}", c as u32));
+        }
+    }
+    assert!(buttons > 60, "the dialog's symbols are drawn ({buttons})");
+    assert!(boxes.is_empty(), "symbols drawn as empty boxes: {boxes:?}");
+}
+
+/// QC-SLD-02: F5 on a computer with one display (or when the host can't tell) plays the show full
+/// screen without Presenter View; with a second display it opens Presenter View as before (the
+/// "Use Presenter View" setting on); Alt+F5 asks for Presenter View on any display.
+#[test]
+fn f5_opens_presenter_view_only_with_a_second_display_or_alt_f5() {
+    let presenter_after = |displays: Option<usize>, mods: egui::Modifiers| {
+        let mut h = harness((1600.0, 1000.0), Language::Vi, false, |a| a.displays = displays);
+        h.event(egui::Event::Key { key: egui::Key::F5, physical_key: None, pressed: true, repeat: false, modifiers: mods });
+        h.run_steps(3);
+        h.state().show.as_ref().map(|s| s.presenter)
+    };
+    assert_eq!(presenter_after(None, egui::Modifiers::NONE), Some(false), "unknown displays: one");
+    assert_eq!(presenter_after(Some(1), egui::Modifiers::NONE), Some(false));
+    assert_eq!(presenter_after(Some(2), egui::Modifiers::NONE), Some(true));
+    assert_eq!(presenter_after(Some(1), egui::Modifiers::ALT), Some(true), "Alt+F5 asks for it");
+}
