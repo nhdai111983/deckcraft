@@ -221,6 +221,48 @@ pub fn tr<'a>(ctx: &egui::Context, text: &'a str) -> Cow<'a, str> {
     current(ctx).tr(text)
 }
 
+/// `text` in the language of the frame `ui` is drawing (the dialogs' and panes' labels).
+pub fn tl<'a>(ui: &egui::Ui, text: &'a str) -> Cow<'a, str> {
+    let lang = current(ui.ctx());
+    #[cfg(test)]
+    misses::note(lang, text);
+    lang.tr(text)
+}
+
+/// `label` where a word means something else in another place ("Double" line spacing is not a
+/// double underline, "Width" of a line is its weight): the catalogue's `{place}.{value}` entry
+/// when there is one, otherwise `label` through [`tl`].
+pub fn tl_in(ui: &egui::Ui, place: &str, value: &str, label: &str) -> String {
+    let lang = current(ui.ctx());
+    match lang.lookup(&format!("{place}.{value}")) {
+        Some(t) => t.to_string(),
+        None => tl(ui, label).into_owned(),
+    }
+}
+
+/// Tests: every label [`tl`] was asked for that the catalogue doesn't translate, so a test can
+/// open a dialog in Vietnamese and list what is still English, drop-down items included.
+#[cfg(test)]
+pub(crate) mod misses {
+    use std::cell::RefCell;
+    use std::collections::BTreeSet;
+
+    thread_local! {
+        static MISSES: RefCell<BTreeSet<String>> = const { RefCell::new(BTreeSet::new()) };
+    }
+
+    pub(crate) fn note(lang: super::Language, text: &str) {
+        if lang == super::Language::Vi && !text.is_empty() && lang.tr(text) == text {
+            MISSES.with(|m| m.borrow_mut().insert(text.to_string()));
+        }
+    }
+
+    /// What [`super::tl`] couldn't translate since the last call, sorted.
+    pub(crate) fn take() -> Vec<String> {
+        MISSES.with(|m| std::mem::take(&mut *m.borrow_mut())).into_iter().collect()
+    }
+}
+
 /// The Vietnamese catalogue (English, Vietnamese), for audits.
 pub fn vi_entries() -> &'static [(&'static str, &'static str)] {
     vi::ENTRIES

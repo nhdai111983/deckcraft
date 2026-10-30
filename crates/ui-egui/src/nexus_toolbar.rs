@@ -951,9 +951,9 @@ pub fn accent_row(app: &mut SlideApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label("Accent color");
+        ui.label(crate::i18n::tl(ui, "Accent color"));
         ui.add_space(4.0);
-        if ui.selectable_label(current.is_none(), "App color").clicked() {
+        if ui.selectable_label(current.is_none(), crate::i18n::tl(ui, "App color")).clicked() {
             let _ = app.run("ui.accent", json!({"value": null}));
         }
         for (name, c) in theme::ACCENT_PRESETS {
@@ -966,7 +966,7 @@ pub fn accent_row(app: &mut SlideApp, ui: &mut Ui) {
                 ui.painter().circle_stroke(r.center(), 10.0, Stroke::new(1.0, t.text_dim));
             }
             resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::RadioButton, true, on, name));
-            if resp.on_hover_text(name).clicked() {
+            if resp.on_hover_text(crate::i18n::tl(ui, name)).clicked() {
                 let _ = app.run("ui.accent", json!({"value": theme::to_hex(c)}));
             }
         }
@@ -974,7 +974,7 @@ pub fn accent_row(app: &mut SlideApp, ui: &mut Ui) {
         let c = current.unwrap_or(theme::APP_COLOR);
         let mut rgb = [c.r(), c.g(), c.b()];
         let picker = ui.color_edit_button_srgb(&mut rgb);
-        if picker.on_hover_text("Any color").changed() {
+        if picker.on_hover_text(crate::i18n::tl(ui, "Any color")).changed() {
             let _ = app.run("ui.accent", json!({"value": theme::to_hex(Color32::from_rgb(rgb[0], rgb[1], rgb[2]))}));
         }
     });

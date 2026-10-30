@@ -6,6 +6,7 @@ use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
+use crate::i18n::{tl, tl_in};
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -88,7 +89,8 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let shown = if lang != crate::i18n::Language::En && matches!(d.id.as_str(), "close" | "quit") {
         lang.tr("Save changes?").into_owned()
     } else {
-        lang.tr(title(&d.id)).into_owned()
+        // A title can differ from the ribbon's word for the same thing ("Đoạn văn", the group "Đoạn").
+        lang.lookup(&format!("dialog.{}", d.id)).map_or_else(|| lang.tr(title(&d.id)).into_owned(), str::to_string)
     };
     let mut window = egui::Window::new(shown)
         .id(egui::Id::unique(("dialog", d.id.clone())))
@@ -159,7 +161,7 @@ fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
     ui.horizontal(|ui| {
-        let l = ui.add_sized(vec2(120.0, 20.0), egui::Label::new(label));
+        let l = ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0)).labelled_by(l.id);
     });
     d.fields.insert(key.into(), v);
@@ -167,7 +169,7 @@ fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
 
 fn check(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: bool) -> bool {
     let mut v = d.get(key, if default { "1" } else { "0" }) == "1";
-    ui.checkbox(&mut v, label);
+    ui.checkbox(&mut v, tl(ui, label));
     d.fields.insert(key.into(), if v { "1".into() } else { "0".into() });
     v
 }
@@ -204,7 +206,7 @@ fn exact_of(d: &Dialog, key: &str) -> Option<f64> {
 fn text_row(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str) {
     let mut v = field_of(d, key);
     ui.horizontal(|ui| {
-        let l = ui.add_sized(vec2(148.0, 20.0), egui::Label::new(label));
+        let l = ui.add_sized(vec2(148.0, 20.0), egui::Label::new(tl(ui, label)));
         ui.add(egui::TextEdit::singleline(&mut v).desired_width(96.0)).labelled_by(l.id);
     });
     d.fields.insert(key.into(), v);
@@ -272,9 +274,13 @@ fn color_label(v: &Value) -> String {
 fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, name: &str, key: &str, choices: &[(&str, &str)]) {
     let cur = d.get(key, "");
     let label = choices.iter().find(|(v, _)| *v == cur).map(|(_, l)| *l).unwrap_or(cur.as_str());
-    let combo = craft_ui::ComboBox::from_id_salt(salt).selected_text(label).width(140.0).show_ui(ui, |ui| {
-        for (v, l) in choices {
-            if ui.selectable_label(cur == *v, *l).clicked() {
+    // NexusOffice: the items in the interface's language (keyed by field and value where a word
+    // differs by place: `align.left` "Căn trái"), worked out before the list opens.
+    let shown: Vec<String> = choices.iter().map(|(v, l)| tl_in(ui, key, v, l)).collect();
+    let selected = choices.iter().position(|(v, _)| *v == cur).and_then(|i| shown.get(i).cloned()).unwrap_or_else(|| tl(ui, label).into_owned());
+    let combo = craft_ui::ComboBox::from_id_salt(salt).selected_text(selected).width(140.0).show_ui(ui, |ui| {
+        for ((v, _), l) in choices.iter().zip(&shown) {
+            if ui.selectable_label(cur == *v, l.as_str()).clicked() {
                 d.fields.insert((*key).into(), (*v).into());
             }
         }
@@ -284,7 +290,7 @@ fn choice(ui: &mut Ui, d: &mut Dialog, salt: &str, name: &str, key: &str, choice
 
 fn labeled_text(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, width: f32) -> String {
     let mut v = d.get(key, "");
-    let l = ui.label(label);
+    let l = ui.label(tl_in(ui, "field", key, label));
     ui.add(egui::TextEdit::singleline(&mut v).desired_width(width)).labelled_by(l.id);
     d.fields.insert(key.into(), v.clone());
     v

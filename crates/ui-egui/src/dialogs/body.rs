@@ -20,6 +20,7 @@ use super::theme_fonts::theme_fonts_dialog;
 use super::trim::{seconds_text_to_ms, trim_seed};
 use super::zoom::zoom_dialog;
 use super::{Dialog, SlideApp, Tokens, Ui, Value, buttons, check, field, field_of, json, num, theme, vec2};
+use crate::i18n::tl;
 
 /// Returns true when the dialog should close.
 pub(super) fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
@@ -379,7 +380,7 @@ fn dlg_bullets(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let tab = d.get("tab", if numbered { "numbered" } else { "bulleted" });
     ui.horizontal(|ui| {
         for (k, l) in [("bulleted", "Bulleted"), ("numbered", "Numbered")] {
-            if ui.selectable_label(tab == k, l).clicked() {
+            if ui.selectable_label(tab == k, tl(ui, l)).clicked() {
                 d.fields.insert("tab".into(), k.into());
             }
         }
@@ -432,20 +433,21 @@ fn dlg_bullets(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ];
     let color = d.get("color", "");
     ui.horizontal(|ui| {
-        let field = ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Color:"));
+        let field = ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Color:")));
+        let colors = colors.map(|(k, l)| (k, tl(ui, l)));
         let combo = craft_ui::ComboBox::from_id_salt("bullet-color")
-            .selected_text(colors.iter().find(|c| c.0 == color).map_or("Automatic", |c| c.1))
+            .selected_text(colors.iter().find(|c| c.0 == color).map_or(tl(ui, "Automatic"), |c| c.1.clone()))
             .show_ui(ui, |ui| {
-                for (k, l) in colors {
-                    if ui.selectable_label(color == k, l).clicked() {
-                        d.fields.insert("color".into(), k.into());
+                for (k, l) in &colors {
+                    if ui.selectable_label(color == *k, l.as_ref()).clicked() {
+                        d.fields.insert("color".into(), (*k).into());
                     }
                 }
             });
         let _ = combo.response.labelled_by(field.id);
     });
     ui.horizontal(|ui| {
-        if ui.button("None").on_hover_text("Remove bullets and numbering").clicked() {
+        if ui.button(tl(ui, "None")).on_hover_text(tl(ui, "Remove bullets and numbering")).clicked() {
             d.fields.insert("none".into(), "1".into());
         }
     });
@@ -1297,23 +1299,23 @@ fn dlg_about(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 
 fn dlg_autocorrect(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let pr = &mut app.session.prefs;
-    ui.checkbox(&mut pr.ac_two_initials, "Correct TWo INitial CApitals");
-    ui.checkbox(&mut pr.ac_sentence_caps, "Capitalize first letter of sentences");
-    ui.checkbox(&mut pr.ac_days, "Capitalize names of days");
-    ui.checkbox(&mut pr.ac_caps_lock, "Correct accidental use of cAPS LOCK key");
-    ui.checkbox(&mut pr.ac_fractions, "Replace fractions (1/2) with fraction characters (½)");
+    ui.checkbox(&mut pr.ac_two_initials, tl(ui, "Correct TWo INitial CApitals"));
+    ui.checkbox(&mut pr.ac_sentence_caps, tl(ui, "Capitalize first letter of sentences"));
+    ui.checkbox(&mut pr.ac_days, tl(ui, "Capitalize names of days"));
+    ui.checkbox(&mut pr.ac_caps_lock, tl(ui, "Correct accidental use of cAPS LOCK key"));
+    ui.checkbox(&mut pr.ac_fractions, tl(ui, "Replace fractions (1/2) with fraction characters (½)"));
     ui.checkbox(&mut pr.ac_ordinals, "Ordinals (1st) with superscript");
     ui.checkbox(&mut pr.ac_lists, "Automatic bulleted and numbered lists");
-    ui.checkbox(&mut pr.autocorrect, "Replace text as you type");
+    ui.checkbox(&mut pr.autocorrect, tl(ui, "Replace text as you type"));
     ui.add_space(4.0);
     let mut from = d.get("from", "");
     let mut to = d.get("to", "");
     ui.horizontal(|ui| {
-        let l = ui.label("Replace");
+        let l = ui.label(tl(ui, "Replace"));
         ui.add(egui::TextEdit::singleline(&mut from).desired_width(90.0)).labelled_by(l.id);
-        let l = ui.label("With");
+        let l = ui.label(tl(ui, "With"));
         ui.add(egui::TextEdit::singleline(&mut to).desired_width(130.0)).labelled_by(l.id);
-        if ui.add_enabled(!from.trim().is_empty(), egui::Button::new("Add")).clicked() {
+        if ui.add_enabled(!from.trim().is_empty(), egui::Button::new(tl(ui, "Add"))).clicked() {
             run(app, "text.autocorrect", json!({"add": [from.trim(), to]}));
             from.clear();
             to.clear();
@@ -1329,7 +1331,7 @@ fn dlg_autocorrect(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             for (k, v) in entries.iter().filter(|(k, _)| q.is_empty() || k.to_lowercase().starts_with(&q)) {
                 ui.label(k);
                 ui.label(v);
-                if ui.small_button("Delete").clicked() {
+                if ui.small_button(tl(ui, "Delete")).clicked() {
                     run(app, "text.autocorrect", json!({"remove": k}));
                 }
                 ui.end_row();
@@ -1346,9 +1348,9 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     if d.params.get("before").is_none() {
         d.params = json!({ "before": preferences_snapshot(app) });
     }
-    ui.label(egui::RichText::new("General").font(theme::bold(13.0)));
+    ui.label(egui::RichText::new(tl(ui, "General")).font(theme::bold(13.0)));
     let mut dark = app.ui.brightness == theme::Brightness::Dark;
-    if ui.checkbox(&mut dark, "Dark appearance").changed() {
+    if ui.checkbox(&mut dark, tl(ui, "Dark appearance")).changed() {
         let _ = app.run("view.dark", json!({"on": dark}));
     }
     crate::nexus_toolbar::accent_row(app, ui);
@@ -1357,8 +1359,9 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     // on release, and at once from the keyboard.
     let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
     let mut scale = pending.unwrap_or(app.ui.ui_scale);
-    let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75));
-    // No visible label here (the row is laid out to fit); the accessible name only.
+    let r = ui.add(egui::Slider::new(&mut scale, 0.75..=1.75).text(tl(ui, "Interface size")));
+    // NexusOffice: the slider shows its name (in the interface's language); the accessible name
+    // stays upstream's.
     let enabled = r.enabled();
     r.widget_info(|| egui::WidgetInfo::slider(enabled, f64::from(scale), "Interface size"));
     if r.is_pointer_button_down_on() {
@@ -1378,13 +1381,13 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         ui.radio_value(units, deckcraft_geom::Unit::Inches, "Inches");
         ui.radio_value(units, deckcraft_geom::Unit::Centimeters, "Centimeters");
     });
-    ui.label(egui::RichText::new("Editing").font(theme::bold(13.0)));
-    ui.checkbox(&mut app.session.prefs.smart_guides, "Show smart guides");
-    ui.checkbox(&mut app.session.prefs.snap_to_grid, "Snap objects to grid");
-    ui.checkbox(&mut app.session.prefs.smart_quotes, "Replace straight quotes with smart quotes");
+    ui.label(egui::RichText::new(tl(ui, "Editing")).font(theme::bold(13.0)));
+    ui.checkbox(&mut app.session.prefs.smart_guides, tl(ui, "Show smart guides"));
+    ui.checkbox(&mut app.session.prefs.snap_to_grid, tl(ui, "Snap objects to grid"));
+    ui.checkbox(&mut app.session.prefs.smart_quotes, tl(ui, "Replace straight quotes with smart quotes"));
     ui.horizontal(|ui| {
-        ui.checkbox(&mut app.session.prefs.autocorrect, "AutoCorrect as you type");
-        if ui.button("AutoCorrect Options…").clicked() {
+        ui.checkbox(&mut app.session.prefs.autocorrect, tl(ui, "AutoCorrect as you type"));
+        if ui.button(tl(ui, "AutoCorrect Options…")).clicked() {
             *d = Dialog::new("autocorrect");
         }
     });
@@ -1392,7 +1395,7 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         return false;
     }
     ui.horizontal(|ui| {
-        let label = ui.label("Your name (comments):");
+        let label = ui.label(tl(ui, "Your name (comments):"));
         // Name the field for assistive technology; a bare text edit next to a label is an
         // unnamed input in egui 0.37's accessibility tree.
         let _ = ui.add(egui::TextEdit::singleline(&mut app.session.prefs.author)).labelled_by(label.id);

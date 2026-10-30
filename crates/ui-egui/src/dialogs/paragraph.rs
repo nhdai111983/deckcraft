@@ -1,4 +1,5 @@
 use super::{Dialog, SlideApp, Ui, Value, buttons, choice, finite_pt, inches_text, json, json_text, labeled_text, pt_text, seed_once, vec2};
+use crate::i18n::{tl, tl_in};
 
 fn seed_paragraph_fields(d: &mut Dialog) {
     seed_once(d, "align", json_text(d.params.get("align"), "left"));
@@ -58,7 +59,7 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     ui.set_min_width(460.0);
     seed_paragraph_fields(d);
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Alignment"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Alignment")));
         choice(
             ui,
             d,
@@ -75,7 +76,7 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
             ],
         );
     });
-    ui.label(egui::RichText::new("Indentation").strong());
+    ui.label(egui::RichText::new(tl(ui, "Indentation")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Before text", "before", 64.0);
         ui.label("in");
@@ -84,13 +85,13 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
         ui.label("in");
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Special"));
+        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Special")));
         choice(ui, d, "paragraph_special", "Special", "special", &[("none", "None"), ("first", "First line"), ("hanging", "Hanging")]);
         ui.add_space(8.0);
         let _ = labeled_text(ui, d, "By", "by", 64.0);
         ui.label("in");
     });
-    ui.label(egui::RichText::new("Spacing").strong());
+    ui.label(egui::RichText::new(tl(ui, "Spacing")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Spacing before", "spaceBefore", 64.0);
         ui.label("pt");
@@ -100,19 +101,24 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     });
     let mut picked: Option<(&'static str, Option<&'static str>)> = None;
     ui.horizontal(|ui| {
-        let field = ui.add_sized(vec2(110.0, 20.0), egui::Label::new("Line spacing"));
+        let field = ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Line spacing")));
         let kind = d.get("lineKind", "multiple");
         let value = d.get("lineValue", "1");
-        let combo =
-            craft_ui::ComboBox::from_id_salt("paragraph_line").selected_text(line_preset_label(&kind, &value)).width(140.0).show_ui(ui, |ui| {
-                for (label, k, v) in [
-                    ("Single", "multiple", Some("1")),
-                    ("1.5 lines", "multiple", Some("1.5")),
-                    ("Double", "multiple", Some("2")),
-                    ("Multiple", "multiple", None),
-                    ("Exactly", "exactly", None),
-                ] {
-                    if ui.selectable_label(line_preset_label(&kind, &value) == label, label).clicked() {
+        let presets = [
+            ("Single", "multiple", Some("1")),
+            ("1.5 lines", "multiple", Some("1.5")),
+            ("Double", "multiple", Some("2")),
+            ("Multiple", "multiple", None),
+            ("Exactly", "exactly", None),
+        ]
+        .map(|(label, k, v)| (label, tl_in(ui, "lineSpacing", label, label), k, v));
+        let current = line_preset_label(&kind, &value);
+        let combo = craft_ui::ComboBox::from_id_salt("paragraph_line")
+            .selected_text(tl_in(ui, "lineSpacing", current, current))
+            .width(140.0)
+            .show_ui(ui, |ui| {
+                for (label, shown, k, v) in presets {
+                    if ui.selectable_label(line_preset_label(&kind, &value) == label, shown).clicked() {
                         picked = Some((k, v));
                     }
                 }
@@ -133,7 +139,7 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     }
     let mut open_tabs = false;
     ui.horizontal(|ui| {
-        if ui.button("Tabs…").clicked() {
+        if ui.button(tl(ui, "Tabs…")).clicked() {
             open_tabs = true;
         }
     });

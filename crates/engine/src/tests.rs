@@ -560,6 +560,15 @@ fn every_command_survives_empty_and_hostile_params() {
             let _ = s.execute(id, &p);
         }
     }
+    // NexusOffice: a starter's `language` is input too: junk is English, `vi_VN` Vietnamese, and
+    // a language without a template is a plain new presentation.
+    for (lang, title) in
+        [(json!(5), "Weekly briefing"), (json!(""), "Weekly briefing"), (json!("xx"), "Weekly briefing"), (json!("vi_VN"), "Giao ban tuần")]
+    {
+        s.execute("file.new", &json!({"template": "Briefing", "language": lang})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.slides[0].title(), title);
+    }
+    s.execute("file.new", &json!({"language": "vi"})).unwrap();
     assert!(s.active().is_some());
     for d in s.documents() {
         assert!(d.doc.validate().is_empty(), "{:?}", d.doc.validate());

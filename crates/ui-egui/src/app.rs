@@ -319,7 +319,9 @@ impl SlideApp {
     pub fn fresh_status(&mut self) -> Option<String> {
         let (msg, at) = self.status.clone()?;
         if now_ms() - at < STATUS_LINGER_MS {
-            Some(msg)
+            // NexusOffice: a message the catalogue knows ("Choose a font") in the interface's
+            // language; the control channel still reads `status` as the command left it.
+            Some(self.ui.language.tr(&msg).into_owned())
         } else {
             self.status = None;
             None

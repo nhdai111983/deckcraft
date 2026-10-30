@@ -22,6 +22,7 @@ pub mod keys;
 pub mod links;
 pub mod media_refs;
 pub mod nexus;
+pub mod nexus_vi;
 pub mod recovery;
 pub mod sample;
 pub mod sounds;

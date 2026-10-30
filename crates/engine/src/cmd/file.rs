@@ -17,7 +17,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "New Presentation",
             ["File"],
             Some("Cmd+N"),
-            "{theme?: name, template?: starter name, size?: [w,h] pt, blank?: bool}",
+            "{theme?: name, template?: starter name, language?: tag (vi: the starter in Vietnamese), size?: [w,h] pt, blank?: bool}",
             always,
             new
         ),
@@ -111,7 +111,8 @@ fn new(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let size = slide_size(p);
     let (doc, template_name) = if let Some(name) = template {
-        let doc = crate::templates::build(name, size)?;
+        // NexusOffice: `language` ("vi") picks the starter's Vietnamese text.
+        let doc = crate::templates::build_in(name, size, str_param(p, "language"))?;
         let chosen = crate::templates::find(name).map(|t| t.name);
         (doc, chosen)
     } else {
