@@ -70,7 +70,7 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(noundo "file.recovery.save", "Save AutoRecover Information", [], None, "{} → {written}", has_doc, recovery_save),
         cmd!(query "file.recovery.list", "Recovered Presentations", [], None, "{} → [{uid, path, title, saved}]", always, recovery_list),
         cmd!(noundo "file.recovery.open", "Open Recovered Presentations", [], None, "{} → {opened: [document index]}", always, recovery_open),
-        cmd!(noundo "file.recovery.discard", "Discard Recovered Presentations", [], None, "{uid?: one entry (else all)}", always, recovery_discard),
+        cmd!(noundo "file.recovery.discard", "Discard Recovered Presentations", [], None, "{uid?: one entry (else those of the presentations open here)}", always, recovery_discard),
         cmd!(noundo "file.revert", "Revert", [], None, "{}", has_doc, revert),
         cmd!(noundo "window.next", "Next Window", ["Window"], Some("Cmd+`"), "{index?}", has_doc, next_window),
     ]
@@ -748,11 +748,9 @@ fn recovery_discard(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = recovery_dir(s)?;
     match p.get("uid").and_then(Value::as_u64) {
         Some(uid) => crate::recovery::discard(&dir, uid),
-        None => {
-            for (uid, _) in crate::recovery::list(&dir) {
-                crate::recovery::discard(&dir, uid);
-            }
-        }
+        // This session's presentations only: never what a crash left, another window's live
+        // entries, or (a host with one session per tab) the other tabs'.
+        None => crate::recovery::discard_session(s, &dir),
     }
     ok()
 }

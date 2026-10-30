@@ -179,6 +179,24 @@ fn every_page_renders() {
     assert!(h.state_mut().run("app.backstage", json!({"page": "share"})).is_err(), "Share (cloud) isn't offered");
 }
 
+/// Open offers "Recover Unsaved Presentations" when there is a recovery folder, except in a host
+/// window (NexusOffice: one session per tab), which offers what a crash left itself.
+#[test]
+fn open_offers_recovery_only_when_not_embedded() {
+    let dir = temp_dir("recover-button");
+    for embedded in [false, true] {
+        let mut app = new_app();
+        app.session.recovery_dir = Some(dir.clone());
+        app.embedded = embedded;
+        let mut h = harness(app);
+        h.state_mut().run("app.backstage", json!({"page": "open"})).unwrap();
+        h.run_steps(6);
+        assert_eq!(page(&h), Some(Page::Open));
+        assert!(h.query_by_label("Browse").is_some(), "the Open page is drawn (embedded: {embedded})");
+        assert_eq!(h.query_by_label("Recover Unsaved Presentations").is_some(), !embedded, "embedded: {embedded}");
+    }
+}
+
 /// A starter template from File › New opens its deck and leaves the File tab.
 #[test]
 fn new_template_opens_a_starter_deck() {
