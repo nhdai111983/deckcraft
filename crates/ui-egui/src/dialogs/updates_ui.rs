@@ -1,7 +1,7 @@
 //! One background check at start-up (and on demand from Help) for a newer release, and the modal
 //! prompt that offers to update and restart. The flow itself is `craft_update::updater::Updater`.
 //!
-//! NexusOffices: Nexus Slides is installed and updated by the NexusOffices installer, never from
+//! NexusOffice: Nexus Slide is installed and updated by the NexusOffice installer, never from
 //! upstream's DeckCraft releases (`craft_update::suite::DECKCRAFT` downloads `storytold/deckcraft`
 //! assets). So the start-up check is never turned on and Help › Check for Updates… only says where
 //! updates come from: the app makes no network request of its own.
@@ -25,18 +25,18 @@ impl Default for Runtime {
     }
 }
 
-/// NexusOffices: never turns the start-up check on (see the module docs).
+/// NexusOffice: never turns the start-up check on (see the module docs).
 pub(crate) fn enable(_app: &mut SlideApp) {}
 
 /// The message Help › Check for Updates… shows instead of checking upstream's releases
 /// (English, Vietnamese). The fork has no interface-language switch yet, so the English text is
 /// shown; the Vietnamese one is for the Vietnamese interface (nx/vi-dialogs).
 pub(crate) const NEXUS_UPDATES: (&str, &str) = (
-    "New versions of Nexus Slides arrive through the NexusOffices installer: install the latest NexusOffices to update.",
-    "Phiên bản mới của Nexus Slides được cập nhật qua bộ cài NexusOffices: cài NexusOffices mới nhất để cập nhật.",
+    "New versions of Nexus Slide arrive through the NexusOffice installer: install the latest NexusOffice to update.",
+    "Phiên bản mới của Nexus Slide được cập nhật qua bộ cài NexusOffice: cài NexusOffice mới nhất để cập nhật.",
 );
 
-/// Help > Check for Updates…: NexusOffices: says where updates come from; checks nothing.
+/// Help > Check for Updates…: NexusOffice: says where updates come from; checks nothing.
 pub(crate) fn request_check(app: &mut SlideApp) {
     app.notify(NEXUS_UPDATES.0);
 }
@@ -75,7 +75,7 @@ pub(crate) fn show(app: &mut SlideApp, ctx: &egui::Context) {
 mod tests {
     use super::*;
 
-    /// NexusOffices: neither the start-up hook nor Help › Check for Updates… starts a check.
+    /// NexusOffice: neither the start-up hook nor Help › Check for Updates… starts a check.
     #[test]
     fn nexus_never_checks_upstream_releases() {
         let mut app = SlideApp::new(deckcraft_engine::Session::new(), crate::Services::default());
@@ -87,12 +87,12 @@ mod tests {
         assert!(matches!(app.updates_rt.updater.status(), Status::Idle), "no check was started");
     }
 
-    /// The Check for Updates… message names the NexusOffices installer in both languages.
+    /// The Check for Updates… message names the NexusOffice installer in both languages.
     #[test]
     fn nexus_update_message_names_the_installer_in_en_and_vi() {
         let (en, vi) = NEXUS_UPDATES;
-        assert!(en.contains("NexusOffices installer") && en.contains("Nexus Slides"), "{en}");
-        assert!(vi.contains("bộ cài NexusOffices") && vi.contains("Nexus Slides"), "{vi}");
+        assert!(en.contains("NexusOffice installer") && en.contains("Nexus Slide"), "{en}");
+        assert!(vi.contains("bộ cài NexusOffice") && vi.contains("Nexus Slide"), "{vi}");
         for text in [en, vi] {
             assert!(!text.contains("DeckCraft") && !text.contains("http"), "{text}");
         }

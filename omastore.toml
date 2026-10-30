@@ -3,9 +3,9 @@ categories = ["Office"]
 icon = "nexus/assets/hicolor/256x256/apps/vn.sonnytech.nexus.slides.png"
 
 [linux.x86_64]
-asset = "NexusSlides-{version}-linux-x86_64.tar.gz"
-exec = "NexusSlides-{version}-linux-x86_64/bin/nexus-slides"
+asset = "NexusSlide-{version}-linux-x86_64.tar.gz"
+exec = "NexusSlide-{version}-linux-x86_64/bin/nexus-slide"
 
 [linux.aarch64]
-asset = "NexusSlides-{version}-linux-aarch64.tar.gz"
-exec = "NexusSlides-{version}-linux-aarch64/bin/nexus-slides"
+asset = "NexusSlide-{version}-linux-aarch64.tar.gz"
+exec = "NexusSlide-{version}-linux-aarch64/bin/nexus-slide"

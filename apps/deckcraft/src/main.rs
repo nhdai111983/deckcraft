@@ -138,7 +138,7 @@ fn services() -> Services {
 const APP_ID: &str = deckcraft_engine::nexus::APP_ID;
 
 const USAGE: &str = "\
-Usage: nexus-slides [--control PORT] [--sample] [--show] [FILE...]
+Usage: nexus-slide [--control PORT] [--sample] [--show] [FILE...]
 
   --control PORT  JSON control server on 127.0.0.1:PORT
   --sample        open the sample presentation
@@ -177,7 +177,7 @@ fn startup(mut control_port: Option<u16>, args: impl IntoIterator<Item = String>
 }
 
 fn app_icon() -> Option<egui::IconData> {
-    let png: &[u8] = include_bytes!("../../../nexus/assets/nexus-slides-256.png");
+    let png: &[u8] = include_bytes!("../../../nexus/assets/nexus-slide-256.png");
     eframe::icon_data::from_png_bytes(png).map_err(|e| log::warn!("app icon: {e}")).ok()
 }
 
@@ -201,7 +201,7 @@ fn main() -> eframe::Result {
                 return Ok(());
             }
             Startup::Version => {
-                println!("nexus-slides {}", env!("CARGO_PKG_VERSION"));
+                println!("nexus-slide {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             Startup::Run { control_port, files, sample, show } => (control_port, files, sample, show),
@@ -241,7 +241,7 @@ fn main() -> eframe::Result {
         display::Choice::None => {
             // winit's own error says little to someone who started DeckCraft from a console.
             log::error!("no display: DISPLAY and WAYLAND_DISPLAY are not set");
-            eprintln!("Nexus Slides needs a graphical session: neither DISPLAY nor WAYLAND_DISPLAY is set.");
+            eprintln!("Nexus Slide needs a graphical session: neither DISPLAY nor WAYLAND_DISPLAY is set.");
             false
         }
     };

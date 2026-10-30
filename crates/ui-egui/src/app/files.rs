@@ -63,7 +63,7 @@ fn command_for(purpose: FilePurpose, name: &str, bytes: &[u8]) -> Result<&'stati
         FilePurpose::Open => open_command(name),
         FilePurpose::Infer => infer_command(name, bytes),
     };
-    cmd.ok_or_else(|| format!("{name}: Nexus Slides can't open this kind of file"))
+    cmd.ok_or_else(|| format!("{name}: Nexus Slide can't open this kind of file"))
 }
 
 impl SlideApp {
@@ -139,7 +139,7 @@ impl SlideApp {
             "deckcraft" => ("deckcraft", "deckcraft", false),
             "gif" => ("gif", "gif", false),
             other => {
-                self.set_status(format!("Nexus Slides can't export “{other}”"));
+                self.set_status(format!("Nexus Slide can't export “{other}”"));
                 return false;
             }
         };

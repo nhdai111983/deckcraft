@@ -16,7 +16,7 @@ pub(super) fn credits_block(ui: &mut Ui, models: bool) -> Rect {
 }
 
 pub fn about(_app: &mut SlideApp, ui: &mut Ui) {
-    // NexusOffices: Nexus Slides' About (attribution to upstream in text, no community links).
+    // NexusOffice: Nexus Slide's About (attribution to upstream in text, no community links).
     crate::nexus::about_ui(ui);
 }
 
@@ -35,7 +35,7 @@ pub fn version_line() -> String {
     s
 }
 
-/// The app's mark, drawn in code. NexusOffices: the Nexus Slides mark (`crate::nexus`).
+/// The app's mark, drawn in code. NexusOffice: the Nexus Slide mark (`crate::nexus`).
 pub fn paint_logo(p: &egui::Painter, r: Rect) {
     crate::nexus::paint_logo(p, r);
 }

@@ -111,7 +111,7 @@ fn next_scheme(
 ) -> Result<deckcraft_color::ColorScheme> {
     let mut next = current.clone();
     if let Some(name) = given {
-        // NexusOffices: upstream's theme name finds the Nexus scheme; a name saved with colours is
+        // NexusOffice: upstream's theme name finds the Nexus scheme; a name saved with colours is
         // the user's own and is kept as given.
         let lookup = crate::nexus::theme_alias(name);
         if let Some(builtin) = builtin_color_schemes().into_iter().find(|c| c.name.eq_ignore_ascii_case(lookup)) {

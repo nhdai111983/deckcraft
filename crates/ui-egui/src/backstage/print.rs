@@ -84,9 +84,9 @@ pub(super) fn print(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
             dim(
                 ui,
                 if app.services.pick_save.is_some() {
-                    "Nexus Slides prints through a PDF: it opens in your PDF viewer, where you choose the printer."
+                    "Nexus Slide prints through a PDF: it opens in your PDF viewer, where you choose the printer."
                 } else {
-                    "Nexus Slides prints through a PDF: it downloads, ready to print from your browser or PDF viewer."
+                    "Nexus Slide prints through a PDF: it downloads, ready to print from your browser or PDF viewer."
                 },
             );
             ui.add_space(14.0);

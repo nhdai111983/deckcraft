@@ -4,7 +4,7 @@ use super::{Backstage, Icon, Outcome, Page, RichText, Sense, SlideApp, Tokens, U
 /// Save As and Change File Type: (id for [`SlideApp::export_as`], label, detail).
 pub const SAVE_TYPES: [(&str, &str, &str); 7] = [
     ("pptx", "PowerPoint Presentation (*.pptx)", "Opens in PowerPoint and other presentation apps"),
-    ("deckcraft", "Nexus Slides Presentation (*.deckcraft)", "Nexus Slides' own format: everything is kept"),
+    ("deckcraft", "Nexus Slide Presentation (*.deckcraft)", "Nexus Slide's own format: everything is kept"),
     ("pdf", "PDF (*.pdf)", "A fixed copy that keeps its layout on any device"),
     ("outline", "Outline (*.txt)", "The slide titles and bullet text as plain text"),
     ("rtf", "Outline/RTF (*.rtf)", "The slide titles and bullet text for word processors"),
@@ -212,7 +212,7 @@ pub(super) fn account(app: &mut SlideApp, ui: &mut Ui) {
                 .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Appearance"));
             ui.add_space(16.0);
             heading(ui, "User Information");
-            dim(ui, "Nexus Slides has no accounts: there is nothing to sign in to, and your presentations stay on your device.");
+            dim(ui, "Nexus Slide has no accounts: there is nothing to sign in to, and your presentations stay on your device.");
         });
         ui.add_space(40.0);
         ui.vertical(|ui| {
@@ -229,8 +229,8 @@ pub(super) fn account(app: &mut SlideApp, ui: &mut Ui) {
             if task(
                 ui,
                 Icon::Help,
-                "About Nexus Slides",
-                "About Nexus Slides",
+                "About Nexus Slide",
+                "About Nexus Slide",
                 "The version, the people and models who built it, and where to find us.",
                 true,
             ) {

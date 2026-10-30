@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build and package Nexus Slides for Linux (<arch> is x86_64 or aarch64, or riscv64 when cross-compiling):
+# Build and package Nexus Slide for Linux (<arch> is x86_64 or aarch64, or riscv64 when cross-compiling):
 #
-#   $DIST/NexusSlides-<version>-linux-<arch>.AppImage  any distro with glibc >= the build host's
-#   $DIST/NexusSlides-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
-#   $DIST/NexusSlides-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
-#   $DIST/NexusSlides-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
-#   $DIST/NexusSlides-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
+#   $DIST/NexusSlide-<version>-linux-<arch>.AppImage  any distro with glibc >= the build host's
+#   $DIST/NexusSlide-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
+#   $DIST/NexusSlide-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
+#   $DIST/NexusSlide-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
+#   $DIST/NexusSlide-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
 #
 # Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"]
 #
@@ -43,10 +43,10 @@ case "$ARCH" in
   aarch64 | arm64) ARCH=aarch64; DEB_ARCH=arm64 ;;
   *) echo "unsupported architecture $ARCH" >&2; exit 2 ;;
 esac
-export DECKCRAFT_MAINTAINER="${DECKCRAFT_MAINTAINER:-Sonnytech <nhdai111983@users.noreply.github.com>}"
-BASENAME="NexusSlides-$VERSION-linux-$ARCH"
+export DECKCRAFT_MAINTAINER="${DECKCRAFT_MAINTAINER:-SonnyTech <nhdai111983@users.noreply.github.com>}"
+BASENAME="NexusSlide-$VERSION-linux-$ARCH"
 
-echo "==> Nexus Slides $VERSION for Linux $ARCH ($FORMATS)"
+echo "==> Nexus Slide $VERSION for Linux $ARCH ($FORMATS)"
 
 if [[ "$SKIP_BUILD" = 0 ]]; then
   if [[ -n "${CROSS_TARGET:-}" ]]; then
@@ -61,9 +61,9 @@ STAGE="$WORK/root"
 rm -rf "$WORK"
 
 # ---- stage an FHS tree (shared by every format) -------------------------------------------------
-install -Dm755 "$BIN/deckcraft" "$STAGE/usr/bin/nexus-slides"
-install -Dm755 "$BIN/deckcraft-cli" "$STAGE/usr/bin/nexus-slides-cli"
-"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/nexus-slides" "$STAGE/usr/bin/nexus-slides-cli" 2>/dev/null || true
+install -Dm755 "$BIN/deckcraft" "$STAGE/usr/bin/nexus-slide"
+install -Dm755 "$BIN/deckcraft-cli" "$STAGE/usr/bin/nexus-slide-cli"
+"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/nexus-slide" "$STAGE/usr/bin/nexus-slide-cli" 2>/dev/null || true
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
 install -Dm644 "$HERE/$APP_ID.mime.xml" "$STAGE/usr/share/mime/packages/$APP_ID.xml"
 mkdir -p "$STAGE/usr/share/metainfo"
@@ -71,8 +71,8 @@ sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$DECKCRAFT_BUILD_DATE/g" \
   "$HERE/$APP_ID.metainfo.xml.in" >"$STAGE/usr/share/metainfo/$APP_ID.metainfo.xml"
 mkdir -p "$STAGE/usr/share/icons"
 cp -R "$ROOT/nexus/assets/hicolor" "$STAGE/usr/share/icons/"
-mkdir -p "$STAGE/usr/share/doc/nexus-slides"
-copy_docs "$STAGE/usr/share/doc/nexus-slides"
+mkdir -p "$STAGE/usr/share/doc/nexus-slide"
+copy_docs "$STAGE/usr/share/doc/nexus-slide"
 
 if command -v desktop-file-validate >/dev/null; then
   desktop-file-validate "$STAGE/usr/share/applications/$APP_ID.desktop"
@@ -125,10 +125,10 @@ if has appimage; then
     echo "no pinned AppImage runtime for $ARCH; build the AppImage on x86_64 or aarch64" >&2
     exit 2
   fi
-  APPDIR="$WORK/NexusSlides.AppDir"
+  APPDIR="$WORK/NexusSlide.AppDir"
   cp -R "$STAGE" "$APPDIR"
-  # NexusOffices: usr/share/doc (licences, NOTICE, ATTRIBUTION.md, OFL texts) stays inside the AppImage.
-  ln -s usr/bin/nexus-slides "$APPDIR/AppRun"
+  # NexusOffice: usr/share/doc (licences, NOTICE, ATTRIBUTION.md, OFL texts) stays inside the AppImage.
+  ln -s usr/bin/nexus-slide "$APPDIR/AppRun"
   cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
   cp "$ROOT/nexus/assets/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
   ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
@@ -172,7 +172,7 @@ if has appimage; then
   # each AppImage on GitHub Releases. `latest` is the newest published release that is not a
   # pre-release. A fork's builds point at its own releases through GITHUB_REPOSITORY.
   REPO="${GITHUB_REPOSITORY:-nhdai111983/deckcraft}"
-  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|NexusSlides-*-linux-$ARCH.AppImage.zsync"
+  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|NexusSlide-*-linux-$ARCH.AppImage.zsync"
   # Extract-and-run: works without FUSE (containers, CI). The output embeds the static runtime,
   # so users don't need libfuse2 either. With zsyncmake on the host (CI installs the zsync
   # package) appimagetool also writes the .zsync, into its working directory, hence the cd.
@@ -186,9 +186,9 @@ if has appimage; then
 fi
 
 if [[ -z "${CROSS_TARGET:-}" ]]; then
-  "$STAGE/usr/bin/nexus-slides-cli" --version
+  "$STAGE/usr/bin/nexus-slide-cli" --version
 elif [[ -n "${EMULATOR:-}" ]]; then
-  "$EMULATOR" "$STAGE/usr/bin/nexus-slides-cli" --version
+  "$EMULATOR" "$STAGE/usr/bin/nexus-slide-cli" --version
 fi
 echo "==> done"
 ls -lh "$DIST"

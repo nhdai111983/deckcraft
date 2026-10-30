@@ -289,7 +289,7 @@ pub fn menu_tree() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
                 ("Set Up Show…", "show.setup"),
             ],
         ),
-        ("Help", vec![("About Nexus Slides", "app.about"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")]),
+        ("Help", vec![("About Nexus Slide", "app.about"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")]),
     ]
 }
 
