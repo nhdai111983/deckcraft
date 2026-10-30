@@ -13,10 +13,14 @@ pub mod control;
 pub mod dialogs;
 pub mod doc_window;
 pub mod eyedropper;
+pub mod file_dialogs;
+pub mod i18n;
 pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
+pub mod nexus_toolbar;
+pub mod nexus_wps;
 pub mod opening;
 pub mod ribbon;
 pub mod settings;
@@ -38,6 +42,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use control::{ControlRequest, ControlResponse};
+pub use file_dialogs::{FileDialogAnswer, FileDialogRequest};
 
 mod app;
 mod clock;
@@ -143,6 +148,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("app.find", "Find…", Some("Cmd+F"), "{}"),
     ("app.replace", "Replace…", Some("Cmd+H"), "{}"),
     ("app.links", "Project Links", None, "{}"),
+    ("ui.accent", "Accent Color", None, "{value?: \"#RRGGBB\" | \"\" | null} (\"\" or null: the app's own Amber; no value reads it) → {accent}"),
 ];
 
 pub struct Perf {
@@ -319,6 +325,27 @@ pub struct SlideApp {
     next_file_id: u64,
     /// Picks and drops whose bytes have not arrived yet.
     pending_files: Vec<PendingFile>,
+    /// NexusOffice layout: a menu bar and one tool row instead of the ribbon ([`nexus_toolbar`]).
+    /// The Nexus apps turn it on; off (the default) keeps upstream's ribbon.
+    pub toolbar: bool,
+    /// NexusOffice layout in the style of WPS Office ([`nexus_wps`]): no title bar; one row with
+    /// File, the Quick Access Toolbar, the ribbon tabs, the save state, Search, Comments and Share;
+    /// under it the current tab's groups as one flat strip whose trailing groups fold into a "…"
+    /// panel. Wins over [`toolbar`](Self::toolbar). Off keeps upstream's title bar and ribbon.
+    pub wps: bool,
+    /// Hosted inside another program's window (a tab of the NexusOffice window): the app adds its
+    /// fonts to the window's instead of replacing them, leaves the window alone (no title, no
+    /// drag, no close prompt of its own) and its top row doesn't move or maximise the window.
+    pub embedded: bool,
+    /// The host's file dialog being shown ([`file_dialogs`]).
+    pub(crate) file_dialog: Option<file_dialogs::PendingDialog>,
+    /// NexusOffice: the untouched new presentation (its uid) a presentation being opened replaces.
+    replace_blank: Option<u64>,
+    /// View › Notes Page's draft: (document uid, slide index, the notes it started from, the
+    /// draft). On the app (not egui's memory) so [`SlideApp::has_drafts`] sees it.
+    pub(crate) page_notes: Option<(u64, usize, deckcraft_model::text::TextBody, notes::Draft)>,
+    /// The Alt Text field's draft: (document uid, shape, the text it started from, the draft).
+    pub(crate) alt_draft: Option<(u64, deckcraft_model::ShapeId, String, String)>,
     /// Owner/generation/cause bookkeeping for the canvas text IME producer.
     ime_tracker: egui::ime_context::ImeContextTracker,
     /// Canvas IME geometry for this pass: the caret while editing, or the selected shape.

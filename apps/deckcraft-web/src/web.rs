@@ -41,6 +41,9 @@ pub fn start() {
                     deckcraft_ui_egui::install_ime_pass_hooks(&cc.egui_ctx);
                     let inbox: Inbox = Inbox::default();
                     let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
+                    // NexusOffice layout in the style of WPS Office, in Vietnamese.
+                    app.wps = true;
+                    app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
                     let q = query();
                     if !q.contains("blank") {
                         if let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {

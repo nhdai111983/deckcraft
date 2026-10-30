@@ -1,6 +1,8 @@
+use crate::FileDialogRequest;
+
 use super::{
     FilePlace, FilePurpose, FileTarget, InboxEvent, LocatedPlace, PendingFile, RECENT_MAX, SlideApp, Target, UiRequest, Value, ViewMode, dialogs,
-    json, media,
+    file_dialogs, json, media,
 };
 
 fn purpose_of(purpose: &str) -> FilePurpose {
@@ -144,6 +146,11 @@ impl SlideApp {
             }
         };
         let suggested = self.suggested_name(ext);
+        // NexusOffice: the host's dialog answers later; the copy is written then.
+        let copy = file_dialogs::AfterPick::Export { format: format.into(), ext: ext.into(), all, extra: extra.clone() };
+        if self.ask_file(FileDialogRequest::Save { name: suggested.clone(), types: vec![ext.to_string()] }, copy) {
+            return true;
+        }
         if let Some(pick) = self.services.pick_save.as_mut() {
             let Some(path) = pick(&suggested) else { return false };
             let mut params = json!({"path": path, "format": format, "all": all});
@@ -152,7 +159,7 @@ impl SlideApp {
             }
             return match self.run("file.export", params) {
                 Ok(_) => {
-                    self.set_status(format!("Exported {path}"));
+                    self.set_status(self.ui.language.fill("Exported {path}", &[("path", &path)]));
                     true
                 }
                 Err(_) => false,
@@ -202,7 +209,7 @@ impl SlideApp {
     pub fn print_pdf(&mut self, params: Value) -> bool {
         let Some((title, doc)) = self.session.active().map(|d| (d.title(), d.doc.clone())) else { return false };
         let mut params = if params.is_object() { params } else { json!({}) };
-        if self.services.pick_save.is_none() {
+        if !self.has_file_system() {
             // Web: the browser hands the PDF to the user.
             let bytes = deckcraft_engine::cmd::file::pdf_bytes(&doc, &params);
             return self.download(&format!("{title}.pdf"), bytes);
@@ -224,6 +231,9 @@ impl SlideApp {
     }
 
     pub(crate) fn pick_and_open(&mut self) {
+        if self.ask_file(FileDialogRequest::Open { purpose: "open".into() }, file_dialogs::AfterPick::Open) {
+            return;
+        }
         if let Some(pick) = self.services.pick_open.as_mut() {
             if let Some(path) = pick("open") {
                 self.open_path_in_background(&path);
@@ -274,7 +284,7 @@ impl SlideApp {
 
     /// Transitions › Sound › Other Sound…: pick an audio file for the selected slides.
     pub(crate) fn pick_transition_sound(&mut self) {
-        if self.services.pick_open.is_some() {
+        if self.can_pick_files() {
             self.pick_and_insert("audio", "transition.sound");
         }
     }
@@ -282,17 +292,26 @@ impl SlideApp {
     /// Home › New Slide › Reuse Slides…: pick a presentation and insert all its slides after the
     /// current one (desktop only: the browser picker opens what it picks as a document).
     pub(super) fn pick_and_reuse(&mut self, keep: bool) {
+        if self.ask_file(FileDialogRequest::Open { purpose: "open".into() }, file_dialogs::AfterPick::Reuse { keep }) {
+            return;
+        }
         let Some(pick) = self.services.pick_open.as_mut() else {
             self.set_status("Reuse Slides needs the desktop app".to_string());
             return;
         };
         let Some(path) = pick("open") else { return };
+        self.reuse_from_path(&path, keep);
+    }
+
+    /// Reuse Slides with the presentation at `path` (picked by the desktop picker or, NexusOffice,
+    /// the host's file dialog): offer its slides to choose from.
+    pub(crate) fn reuse_from_path(&mut self, path: &str, keep: bool) {
         // Read the file once: the list shown and the slides inserted come from the same bytes, even
         // if the file changes while the dialog is open. Without a reader the path is used as is.
         let mut source = json!({});
-        match self.services.read.as_ref().map(|r| r(&path)) {
+        match self.services.read.as_ref().map(|r| r(path)) {
             Some(Ok(bytes)) => {
-                let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 source["name"] = json!(name);
                 source["data"] = json!(deckcraft_engine::cmd::base64_encode(&bytes));
             }
@@ -329,7 +348,9 @@ impl SlideApp {
         match result {
             Ok(()) => {
                 self.reuse_target = None;
-                self.set_status(format!("Inserted {} slides", picked.len()));
+                let n = picked.len().to_string();
+                let msg = self.ui.language.fill("Inserted {n} slides", &[("n", &n)]);
+                self.set_status(msg);
                 true
             }
             Err(e) => {
@@ -345,6 +366,10 @@ impl SlideApp {
 
     /// Pick a file and run `cmd` with it (`name` + `data`, or `path`) added to `extra`.
     pub(super) fn pick_and_run(&mut self, purpose: &str, cmd: &str, extra: &Value) {
+        let after = file_dialogs::AfterPick::Run { cmd: cmd.into(), extra: extra.clone() };
+        if self.ask_file(FileDialogRequest::Open { purpose: purpose.into() }, after) {
+            return;
+        }
         if let Some(pick) = self.services.pick_open.as_mut() {
             if let Some(path) = pick(purpose) {
                 let mut args = if extra.is_object() { extra.clone() } else { json!({}) };
@@ -381,15 +406,18 @@ impl SlideApp {
     pub fn save_as_dialog(&mut self, format: &str) {
         let name = self.session.active().map(|d| d.title()).unwrap_or_else(|| "Presentation".into());
         let ext = if format == "pptx" { "pptx" } else { "deckcraft" };
+        // NexusOffice: the host's dialog offers only presentation types, the asked-for one first,
+        // and answers later; the save happens then.
+        let types: Vec<String> =
+            std::iter::once(ext).chain(file_dialogs::PRESENTATION_TYPES.iter().copied().filter(|t| *t != ext)).map(String::from).collect();
+        if self.ask_file(FileDialogRequest::Save { name: format!("{name}.{ext}"), types }, file_dialogs::AfterPick::Save { then_close: false }) {
+            return;
+        }
         let suggested = format!("{name}.{ext}");
         if let Some(pick) = self.services.pick_save.as_mut() {
             if let Some(path) = pick(&suggested) {
                 match self.session.execute("file.saveAs", &json!({"path": path})) {
-                    Ok(_) => {
-                        self.set_status(format!("Saved {path}"));
-                        self.ui.recent.retain(|p| *p != path);
-                        self.ui.recent.insert(0, path);
-                    }
+                    Ok(_) => self.note_saved(&path),
                     Err(e) => self.set_status(e.to_string()),
                 }
             }
@@ -406,6 +434,8 @@ impl SlideApp {
     /// Save every presentation with unsaved changes (asking for a location where needed).
     /// Returns false if one wasn't saved (cancelled or failed).
     pub fn save_all(&mut self) -> bool {
+        // Typing still in a field is part of what is saved.
+        self.commit_drafts();
         let dirty: Vec<usize> = self.session.documents().iter().enumerate().filter(|(_, d)| d.is_dirty()).map(|(i, _)| i).collect();
         for i in dirty {
             self.session.set_active(i);
@@ -418,18 +448,27 @@ impl SlideApp {
     }
 
     pub fn save(&mut self) {
+        // NexusOffice: typing still in a field (notes, Alt Text…) is saved with the presentation.
+        if !self.commit_drafts() {
+            return;
+        }
         if self.session.active().and_then(|d| d.path.clone()).is_some() {
             match self.session.execute("file.save", &json!({})) {
-                Ok(_) => self.set_status("Saved"),
+                Ok(_) => {
+                    let saved = self.ui.language.tr("Saved").into_owned();
+                    self.set_status(saved);
+                }
                 Err(e) => self.set_status(e.to_string()),
             }
         } else {
-            self.save_as_dialog("deckcraft");
+            // NexusOffice: a hosted window saves new presentations as PowerPoint by default (the
+            // format everyone they share with opens); upstream's own format stays one choice away.
+            self.save_as_dialog(if self.services.file_dialog.is_some() { "pptx" } else { "deckcraft" });
         }
     }
 
     /// Act on requests commands left for the UI.
-    pub(super) fn drain_requests(&mut self) {
+    pub(crate) fn drain_requests(&mut self) {
         for r in std::mem::take(&mut self.session.ui_requests) {
             match r {
                 UiRequest::Dialog { id, params } => {
@@ -442,7 +481,7 @@ impl SlideApp {
                 UiRequest::Message { text } => self.set_status(text),
                 UiRequest::PickFile { purpose } => {
                     if purpose == "saveAs" {
-                        self.save_as_dialog("deckcraft");
+                        self.save_as_dialog(if self.services.file_dialog.is_some() { "pptx" } else { "deckcraft" });
                     }
                 }
                 UiRequest::Media { action, shape, ms } => {

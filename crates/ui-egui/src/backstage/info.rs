@@ -1,5 +1,5 @@
 use super::files::task;
-use super::{Backstage, Icon, Outcome, Page, RichText, Sense, SlideApp, Tokens, Ui, Value, dim, heading, json, theme, vec2};
+use super::{Backstage, Icon, Outcome, Page, RichText, Sense, SlideApp, Tokens, Ui, Value, dim, dim_raw, heading, json, theme, vec2};
 
 /// Save As and Change File Type: (id for [`SlideApp::export_as`], label, detail).
 pub const SAVE_TYPES: [(&str, &str, &str); 7] = [
@@ -36,19 +36,19 @@ pub(super) fn info(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
     let dirty = v.get("dirty").and_then(Value::as_bool).unwrap_or(false);
     ui.label(RichText::new(&title).font(theme::font(24.0)).color(t.accent));
     match &path {
-        Some(p) => dim(ui, p),
+        Some(p) => dim_raw(ui, p),
         None => dim(ui, "Not saved yet"),
     }
     if let Some(p) = &path {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button("Copy path").clicked() {
+            if ui.button(crate::i18n::tr(ui.ctx(), "Copy path")).clicked() {
                 ui.ctx().copy_text(p.clone());
                 app.set_status("Copied the path");
             }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(dir) = std::path::Path::new(p).parent().and_then(std::path::Path::to_str)
-                && ui.button("Open file location").clicked()
+                && ui.button(crate::i18n::tr(ui.ctx(), "Open file location")).clicked()
             {
                 app.open_url(&format!("file:///{}", dir.replace('\\', "/").trim_start_matches('/')));
             }
@@ -84,7 +84,7 @@ pub(super) fn info(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
             let size = v.get("bytes").and_then(Value::as_u64).map(format_bytes);
             egui::Grid::new("backstage_props").num_columns(2).spacing(vec2(18.0, 7.0)).show(ui, |ui| {
                 let row = |ui: &mut Ui, k: &str, val: String| {
-                    ui.label(RichText::new(k).color(t.text_dim));
+                    ui.label(RichText::new(crate::i18n::tr(ui.ctx(), k)).color(t.text_dim));
                     ui.label(val);
                     ui.end_row();
                 };
@@ -96,9 +96,11 @@ pub(super) fn info(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
                 for (i, (key, label, hint)) in PROPERTIES.iter().enumerate() {
                     let saved = props.get(*key).and_then(Value::as_str).unwrap_or("").to_string();
                     let Some(draft) = bs.props.get_mut(i) else { continue };
-                    let l = ui.label(RichText::new(*label).color(t.text_dim));
+                    let l = ui.label(RichText::new(crate::i18n::tr(ui.ctx(), label)).color(t.text_dim));
                     let id = ui.make_persistent_id(("backstage_prop", *key));
-                    let resp = ui.add(egui::TextEdit::singleline(draft).id(id).hint_text(*hint).desired_width(300.0)).labelled_by(l.id);
+                    let resp = ui
+                        .add(egui::TextEdit::singleline(draft).id(id).hint_text(crate::i18n::tr(ui.ctx(), hint)).desired_width(300.0))
+                        .labelled_by(l.id);
                     if resp.lost_focus() && *draft != saved {
                         // Commit first: a click on another field takes the focus before this one is drawn.
                         let mut p = serde_json::Map::new();
@@ -111,7 +113,7 @@ pub(super) fn info(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
                     }
                     ui.end_row();
                 }
-                row(ui, "Location", path.clone().unwrap_or_else(|| "Not saved yet".into()));
+                row(ui, "Location", path.clone().unwrap_or_else(|| crate::i18n::tr(ui.ctx(), "Not saved yet").into_owned()));
             });
         });
     });
@@ -150,26 +152,29 @@ pub(super) fn save_as(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage, out: 
     let t = Tokens::get(ui.ctx());
     let (title, path) = app.session.active().map(|d| (d.title(), d.path.clone())).unwrap_or_default();
     ui.label(RichText::new(&title).font(theme::font(15.0)).color(t.text));
-    dim(ui, path.as_deref().unwrap_or("Not saved yet"));
+    match path.as_deref() {
+        Some(p) => dim_raw(ui, p),
+        None => dim(ui, "Not saved yet"),
+    }
     ui.add_space(14.0);
-    let current = SAVE_TYPES.iter().find(|s| s.0 == bs.file_type).map_or(SAVE_TYPES[0].1, |s| s.1);
+    let current = crate::i18n::tr(ui.ctx(), SAVE_TYPES.iter().find(|s| s.0 == bs.file_type).map_or(SAVE_TYPES[0].1, |s| s.1)).into_owned();
     ui.horizontal(|ui| {
         craft_ui::ComboBox::from_id_salt("backstage_save_type")
             .width(340.0)
             .selected_text(current)
             .show_ui(ui, |ui| {
                 for (id, label, _) in SAVE_TYPES {
-                    if ui.selectable_label(bs.file_type == id, label).clicked() {
+                    if ui.selectable_label(bs.file_type == id, crate::i18n::tr(ui.ctx(), label)).clicked() {
                         bs.file_type = id;
                     }
                 }
             })
             .response
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Save as type"));
-        let web = app.services.pick_save.is_none();
-        let label = if web { "Download" } else { "Save" };
+        let web = !app.has_file_system();
+        let label = crate::i18n::tr(ui.ctx(), if web { "Download" } else { "Save" }).into_owned();
         let save = ui.add(egui::Button::new(RichText::new(label).color(t.accent_text)).fill(t.accent).min_size(vec2(84.0, 26.0)));
-        if save.on_hover_text(if web { "Download the file" } else { "Choose where to save" }).clicked() {
+        if save.on_hover_text(crate::i18n::tr(ui.ctx(), if web { "Download the file" } else { "Choose where to save" })).clicked() {
             let fmt = bs.file_type;
             let done = if matches!(fmt, "pptx" | "deckcraft") {
                 let before = app.session.active().map(|d| (d.path.clone(), d.is_dirty()));
@@ -198,18 +203,30 @@ pub(super) fn account(app: &mut SlideApp, ui: &mut Ui) {
             ui.set_width(340.0);
             heading(ui, "Appearance");
             let dark = app.ui.brightness == theme::Brightness::Dark;
+            let current = crate::i18n::tr(ui.ctx(), if dark { "Dark" } else { "Light" }).into_owned();
             craft_ui::ComboBox::from_id_salt("backstage_appearance")
                 .width(260.0)
-                .selected_text(if dark { "Dark" } else { "Light" })
+                .selected_text(current)
                 .show_ui(ui, |ui| {
                     for (on, label) in [(false, "Light"), (true, "Dark")] {
-                        if ui.selectable_label(dark == on, label).clicked() {
+                        if ui.selectable_label(dark == on, crate::i18n::tr(ui.ctx(), label)).clicked() {
                             let _ = app.run("view.dark", json!({"on": on}));
                         }
                     }
                 })
                 .response
                 .widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Appearance"));
+            ui.add_space(16.0);
+            // NexusOffice: the interface language.
+            heading(ui, "Interface language");
+            let current = app.ui.language;
+            craft_ui::ComboBox::from_id_salt("backstage_language").width(260.0).selected_text(current.name()).show_ui(ui, |ui| {
+                for l in crate::i18n::Language::ALL {
+                    if ui.selectable_label(current == l, l.name()).clicked() {
+                        app.ui.language = l;
+                    }
+                }
+            });
             ui.add_space(16.0);
             heading(ui, "User Information");
             dim(ui, "Nexus Slide has no accounts: there is nothing to sign in to, and your presentations stay on your device.");
@@ -222,9 +239,15 @@ pub(super) fn account(app: &mut SlideApp, ui: &mut Ui) {
                 crate::dialogs::paint_logo(ui.painter(), r);
                 ui.label(RichText::new(deckcraft_engine::nexus::APP_NAME).font(theme::bold(24.0)).color(t.text));
             });
-            dim(ui, &crate::dialogs::version_line());
+            let version = crate::dialogs::version_line();
+            let version = match app.ui.language.lookup("Version {v}") {
+                Some(t) => version.replacen("Version", t.trim_end_matches(" {v}"), 1),
+                None => version,
+            };
+            dim_raw(ui, &version);
             dim(ui, "Open source under MIT OR Apache-2.0. Not affiliated with Microsoft.");
-            dim(ui, deckcraft_engine::nexus::ATTRIBUTION.0);
+            let credit = deckcraft_engine::nexus::ATTRIBUTION;
+            dim_raw(ui, if app.ui.language == crate::i18n::Language::Vi { credit.1 } else { credit.0 });
             ui.add_space(14.0);
             if task(
                 ui,
@@ -236,7 +259,7 @@ pub(super) fn account(app: &mut SlideApp, ui: &mut Ui) {
             ) {
                 let _ = app.run("app.about", json!({}));
             }
-            ui.hyperlink_to("Source on GitHub", deckcraft_engine::links::GITHUB);
+            ui.hyperlink_to(crate::i18n::tr(ui.ctx(), "Source on GitHub"), deckcraft_engine::links::GITHUB);
         });
     });
 }

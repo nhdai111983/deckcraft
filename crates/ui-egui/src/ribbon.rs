@@ -44,6 +44,7 @@ use draw::draw;
 pub use galleries::{cref_param, effects_menu, outline_menu, paint_preset, shapes_gallery};
 pub use home::font_families;
 use home::home;
+pub(crate) use home::layout_menu;
 use insert::insert;
 pub use insert::table_grid_picker;
 use masters::{handout_master, notes_master, slide_master};
@@ -82,7 +83,7 @@ fn run(app: &mut SlideApp, id: &str, p: Value) {
 }
 
 /// Which contextual tabs apply to the selection.
-fn contextual(app: &SlideApp) -> Vec<&'static str> {
+pub(crate) fn contextual(app: &SlideApp) -> Vec<&'static str> {
     let mut v = vec![];
     let Some(st) = app.session.active() else { return v };
     if st.selection.target == Target::Handout {
@@ -117,7 +118,7 @@ fn contextual(app: &SlideApp) -> Vec<&'static str> {
     v
 }
 
-const TABS: [&str; 10] = ["Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide Show", "Record", "Review", "View"];
+pub(crate) const TABS: [&str; 10] = ["Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide Show", "Record", "Review", "View"];
 
 /// Tab row and the ribbon card.
 pub fn show(app: &mut SlideApp, ui: &mut Ui) {
@@ -134,14 +135,15 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
         let mut x = rect.min.x + 12.0;
         let y = rect.min.y + 2.0;
         {
-            let w = ui.fonts_mut(|f| f.layout_no_wrap("File".to_string(), theme::font(13.0), t.text).size().x) + 18.0;
+            let file = app.ui.language.tr("File").into_owned();
+            let w = ui.fonts_mut(|f| f.layout_no_wrap(file.clone(), theme::font(13.0), t.text).size().x) + 18.0;
             let r = Rect::from_min_size(pos2(x, y), vec2(w, 24.0));
             let resp = ui.interact(r, ui.scope_id().with("tab_file"), Sense::click());
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "File"));
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &file));
             if resp.hovered() {
                 ui.painter().rect_filled(r.shrink2(vec2(2.0, 2.0)), CornerRadius::same(4), t.hover);
             }
-            ui.painter().text(r.center(), Align2::CENTER_CENTER, "File", theme::font(13.0), t.text);
+            ui.painter().text(r.center(), Align2::CENTER_CENTER, &file, theme::font(13.0), t.text);
             if resp.on_hover_text("File (Alt+F)").clicked() {
                 app.open_backstage(crate::backstage::Page::Home);
             }
@@ -150,7 +152,8 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
         let all: Vec<(&str, bool)> = TABS.iter().map(|s| (*s, false)).chain(ctx_tabs.iter().map(|s| (*s, true))).collect();
         for (name, contextual) in all {
             let font = theme::font(13.0);
-            let w = ui.fonts_mut(|f| f.layout_no_wrap(name.to_string(), font.clone(), t.text).size().x) + 18.0;
+            let shown = app.ui.language.tr(name).into_owned();
+            let w = ui.fonts_mut(|f| f.layout_no_wrap(shown.clone(), font.clone(), t.text).size().x) + 18.0;
             let r = Rect::from_min_size(pos2(x, y), vec2(w, 24.0));
             let resp = ui.interact(r, ui.scope_id().with(("tab", name)), Sense::click());
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
@@ -160,7 +163,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
             }
             let col = if contextual { t.contextual } else { t.text };
             let f = if active { theme::bold(13.0) } else { font };
-            ui.painter().text(r.center(), Align2::CENTER_CENTER, name, f, col);
+            ui.painter().text(r.center(), Align2::CENTER_CENTER, &shown, f, col);
             if active {
                 let uw = (w - 20.0).max(16.0);
                 ui.painter().rect_filled(Rect::from_center_size(pos2(r.center().x, r.max.y - 1.0), vec2(uw, 3.0)), CornerRadius::same(1), t.accent);
@@ -211,29 +214,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
                 ui.set_min_height(RIBBON_H);
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 1.0;
-                    match tab.as_str() {
-                        "Home" => home(app, ui),
-                        "Insert" => insert(app, ui),
-                        "Draw" => draw(app, ui),
-                        "Design" => design(app, ui),
-                        "Transitions" => transitions(app, ui),
-                        "Animations" => animations(app, ui),
-                        "Slide Show" => slide_show(app, ui),
-                        "Record" => record(app, ui),
-                        "Review" => review(app, ui),
-                        "View" => view(app, ui),
-                        "Shape Format" => shape_format(app, ui),
-                        "Picture Format" => picture_format(app, ui),
-                        "Table Design" => table_design(app, ui),
-                        "Layout" => table_layout(app, ui),
-                        "Chart Design" => chart_design(app, ui),
-                        "SmartArt Design" => smartart_design(app, ui),
-                        "Playback" => playback(app, ui),
-                        "Slide Master" => slide_master(app, ui),
-                        "Handout Master" => handout_master(app, ui),
-                        "Notes Master" => notes_master(app, ui),
-                        _ => {}
-                    }
+                    tab_groups(app, ui);
                 });
             });
         let r = scroll.inner_rect;
@@ -261,6 +242,35 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
             ui.ctx().request_repaint();
         }
     });
+}
+
+/// Every group of the current tab, left to right (each through [`widgets::group`]). Upstream's
+/// ribbon card draws them all; the NexusOffice WPS strip ([`crate::nexus_wps`]) gates them.
+pub(crate) fn tab_groups(app: &mut SlideApp, ui: &mut Ui) {
+    let tab = app.ui.tab.clone();
+    match tab.as_str() {
+        "Home" => home(app, ui),
+        "Insert" => insert(app, ui),
+        "Draw" => draw(app, ui),
+        "Design" => design(app, ui),
+        "Transitions" => transitions(app, ui),
+        "Animations" => animations(app, ui),
+        "Slide Show" => slide_show(app, ui),
+        "Record" => record(app, ui),
+        "Review" => review(app, ui),
+        "View" => view(app, ui),
+        "Shape Format" => shape_format(app, ui),
+        "Picture Format" => picture_format(app, ui),
+        "Table Design" => table_design(app, ui),
+        "Layout" => table_layout(app, ui),
+        "Chart Design" => chart_design(app, ui),
+        "SmartArt Design" => smartart_design(app, ui),
+        "Playback" => playback(app, ui),
+        "Slide Master" => slide_master(app, ui),
+        "Handout Master" => handout_master(app, ui),
+        "Notes Master" => notes_master(app, ui),
+        _ => {}
+    }
 }
 
 /// A chevron over a ribbon edge that scrolls it; `true` on the frame it is clicked.
@@ -305,7 +315,7 @@ fn toggle(app: &mut SlideApp, ui: &mut Ui, icon: Icon, label: &str, id: &str, on
     }
 }
 
-fn tip(id: &str, label: &str) -> String {
+pub(crate) fn tip(id: &str, label: &str) -> String {
     let sc = deckcraft_engine::find_command(id).and_then(|c| c.shortcut).or_else(|| crate::UI_COMMANDS.iter().find(|c| c.0 == id).and_then(|c| c.2));
     match sc {
         Some(s) => format!("{label} ({})", pretty_shortcut(s)),
@@ -321,7 +331,7 @@ pub fn pretty_shortcut(s: &str) -> String {
     }
 }
 
-fn scheme(app: &SlideApp) -> deckcraft_color::ColorScheme {
+pub(crate) fn scheme(app: &SlideApp) -> deckcraft_color::ColorScheme {
     app.session.active().and_then(|d| d.doc.masters.first().map(|m| m.scheme())).unwrap_or_else(|| deckcraft_model::Theme::default().colors)
 }
 

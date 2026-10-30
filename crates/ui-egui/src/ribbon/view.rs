@@ -33,15 +33,15 @@ pub(super) fn view(app: &mut SlideApp, ui: &mut Ui) {
     group(ui, |ui| {
         rows(ui, |ui| {
             let mut r = app.ui.ruler;
-            if ui.checkbox(&mut r, "Ruler").changed() {
+            if ui.checkbox(&mut r, crate::i18n::tr(ui.ctx(), "Ruler")).changed() {
                 app.ui.ruler = r;
             }
             let mut g = app.ui.gridlines;
-            if ui.checkbox(&mut g, "Gridlines").changed() {
+            if ui.checkbox(&mut g, crate::i18n::tr(ui.ctx(), "Gridlines")).changed() {
                 app.ui.gridlines = g;
             }
             let mut gd = app.ui.guides;
-            if ui.checkbox(&mut gd, "Guides").changed() {
+            if ui.checkbox(&mut gd, crate::i18n::tr(ui.ctx(), "Guides")).changed() {
                 app.ui.guides = gd;
             }
         });
@@ -66,7 +66,7 @@ pub(super) fn view(app: &mut SlideApp, ui: &mut Ui) {
                         ui.close();
                     }
                 }
-                if ui.button("Fit").clicked() {
+                if ui.button(crate::i18n::tr(ui.ctx(), "Fit")).clicked() {
                     let _ = app.run("view.fit", json!({}));
                     ui.close();
                 }
@@ -129,7 +129,7 @@ pub(super) fn zoom_menu(app: &mut SlideApp, ui: &mut Ui) {
     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
         for (i, label) in items.iter().enumerate() {
             let mut on = picked.contains(&i);
-            if ui.checkbox(&mut on, label).changed() {
+            if ui.checkbox(&mut on, crate::i18n::tr(ui.ctx(), label)).changed() {
                 if on {
                     picked.push(i);
                 } else {
@@ -140,7 +140,7 @@ pub(super) fn zoom_menu(app: &mut SlideApp, ui: &mut Ui) {
     });
     ui.data_mut(|d| d.insert_temp(id, (kind, picked.clone())));
     ui.separator();
-    if ui.add_enabled(!picked.is_empty(), egui::Button::new("Insert")).clicked() {
+    if ui.add_enabled(!picked.is_empty(), egui::Button::new(crate::i18n::tr(ui.ctx(), "Insert"))).clicked() {
         let mut v = picked.clone();
         v.sort_unstable();
         let p = match kind {

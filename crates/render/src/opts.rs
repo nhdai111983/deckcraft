@@ -1,4 +1,4 @@
-use super::{DateTime, Fields, Rgba, ShapeId, Vec2, datetime};
+use super::{DateTime, Fields, PhType, Rgba, ShapeId, Vec2, datetime};
 
 /// Animation state of one shape during a slide show or preview.
 #[derive(Clone, Debug)]
@@ -71,6 +71,9 @@ pub struct RenderOpts<'a> {
     /// only what is on the slide is drawn over transparency: PNG export with a transparent
     /// background. Shapes filled with the background (`useBgFill`) still show it.
     pub transparent_background: bool,
+    /// NexusOffice: the prompt an empty placeholder shows in the editor, in the interface's
+    /// language (`None`: [`PhType::prompt`], English). A layout's own prompt text still wins.
+    pub prompt: Option<fn(PhType) -> &'static str>,
 }
 
 impl Default for RenderOpts<'_> {
@@ -91,6 +94,7 @@ impl Default for RenderOpts<'_> {
             date_text: None,
             now: None,
             transparent_background: false,
+            prompt: None,
         }
     }
 }

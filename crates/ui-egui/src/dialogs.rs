@@ -83,7 +83,14 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let Some(mut d) = app.dialog.take() else { return };
     let mut open = true;
     let mut close = false;
-    let mut window = egui::Window::new(title(&d.id))
+    let lang = app.ui.language;
+    // NexusOffice: titles in the interface's language; "Save changes?" names itself there.
+    let shown = if lang != crate::i18n::Language::En && matches!(d.id.as_str(), "close" | "quit") {
+        lang.tr("Save changes?").into_owned()
+    } else {
+        lang.tr(title(&d.id)).into_owned()
+    };
+    let mut window = egui::Window::new(shown)
         .id(egui::Id::unique(("dialog", d.id.clone())))
         .collapsible(false)
         .resizable(false)
@@ -129,6 +136,9 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
     let mut ok = false;
     let mut cancel = false;
+    let ok_label = crate::i18n::tr(ui.ctx(), ok_label).into_owned();
+    let ok_label = ok_label.as_str();
+    let cancel_label = crate::i18n::tr(ui.ctx(), "Cancel").into_owned();
     ui.add_space(8.0);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let t = Tokens::get(ui.ctx());
@@ -137,7 +147,7 @@ fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
         {
             ok = true;
         }
-        if ui.add(egui::Button::new("Cancel").min_size(vec2(72.0, 24.0))).clicked() {
+        if ui.add(egui::Button::new(cancel_label.as_str()).min_size(vec2(72.0, 24.0))).clicked() {
             cancel = true;
         }
     });

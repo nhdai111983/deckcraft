@@ -405,12 +405,13 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(notes_rect));
     // A draft belongs to this document and to the notes it started from (#413): another document,
     // a reorder or an undo that changes them drops it.
-    let id = egui::Id::unique(("notespage", st.uid, idx));
+    let uid = st.uid;
     let edit_id = egui::Id::unique(("notespage-edit", idx));
     let focused = child.ctx().memory(|m| m.has_focus(edit_id));
     let notes_of = |app: &SlideApp| app.session.active().and_then(|st| st.doc.slides.get(idx)).map(|s| s.notes.clone()).unwrap_or_default();
     let notes = notes_of(app);
-    let stored: Option<(deckcraft_model::text::TextBody, crate::notes::Draft)> = child.data_mut(|d| d.get_temp(id));
+    // NexusOffice: the draft lives on the app, so a host closing the window sees it (has_drafts).
+    let stored = app.page_notes.take().filter(|(u, i, _, _)| *u == uid && *i == idx).map(|(_, _, base, d)| (base, d));
     let mut draft = stored.filter(|(base, _)| *base == notes).map(|(_, d)| d);
     // Save an edited draft once the field has lost focus, before anything reloads it.
     if !focused && let Some(d) = draft.as_mut().filter(|d| d.edited) {
@@ -420,9 +421,10 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
     let notes = notes_of(app);
     let mut draft = draft.filter(|d| focused || d.body == notes).unwrap_or_else(|| crate::notes::Draft::new(&notes));
     let look = crate::notes::Look { size: 14.0, color: Some(Color32::from_gray(30)) };
+    let ui_ctx = ui.ctx().clone();
     let width = notes_rect.width();
     let r = crate::notes::editor(&mut child, &mut draft, &look, |e| {
-        e.id(edit_id).hint_text("Click to add text").desired_width(width).desired_rows(12).frame(egui::Frame::NONE)
+        e.id(edit_id).hint_text(crate::i18n::tr(&ui_ctx, "Click to add text")).desired_width(width).desired_rows(12).frame(egui::Frame::NONE)
     })
     .response
     .response;
@@ -431,7 +433,7 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
         let _ = app.run("slide.notes", json!({"body": draft.body, "index": idx}));
     }
     let base = notes_of(app);
-    child.data_mut(|d| d.insert_temp(id, (base, draft)));
+    app.page_notes = Some((uid, idx, base, draft));
     let nav = ui.input(|i| (i.key_pressed(egui::Key::PageDown), i.key_pressed(egui::Key::PageUp)));
     if nav.0 {
         let _ = app.run("slide.next", json!({}));

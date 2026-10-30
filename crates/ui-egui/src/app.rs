@@ -7,7 +7,8 @@ use super::updates_ui;
 use super::{
     AnimPreview, ControlRequest, FileTarget, HashMap, ImeCancelled, ImeComposition, ImeResetPhase, ImeTerminalPending, InputTarget, Mods,
     PendingFile, Perf, Receiver, Session, SlideApp, Target, UI_COMMANDS, UiRequest, Value, backstage, canvas, capture, dialogs, doc_window,
-    eyedropper, json, media, menus, notes, panes, preview, qat, ribbon, selpane, show, sorter, status, textures, theme, thumbs, toast, uifonts,
+    eyedropper, file_dialogs, i18n, json, media, menus, nexus_toolbar, nexus_wps, notes, panes, preview, qat, ribbon, selpane, show, sorter, status,
+    textures, theme, thumbs, toast, uifonts,
 };
 
 mod clipboard;
@@ -100,6 +101,13 @@ impl SlideApp {
             twisting: false,
             next_file_id: 1,
             pending_files: Vec::new(),
+            toolbar: false,
+            wps: false,
+            embedded: false,
+            file_dialog: None,
+            replace_blank: None,
+            page_notes: None,
+            alt_draft: None,
             ime_tracker: egui::ime_context::ImeContextTracker::new(),
             ime_pending: None,
             ime_frame_viewport: None,
@@ -112,6 +120,175 @@ impl SlideApp {
             ime_interrupt_pending: false,
             ime_reset: HashMap::new(),
         }
+    }
+
+    /// NexusOffice: install the fonts and the look again (painting nothing until they apply). A
+    /// host window with other editors calls it when this app's tab comes forward, since another
+    /// editor may have replaced the window's fonts and visuals meanwhile.
+    pub fn restyle(&mut self) {
+        self.styled = false;
+        self.fonts_ready = false;
+        self.restyle = true;
+    }
+
+    /// NexusOffice: apply the look (colours, spacing) again on the next frame, without touching
+    /// the fonts: a host's tab coming forward after another editor restyled the window. Fonts are
+    /// installed again only when another editor dropped them ([`SlideApp::fonts_installed`]).
+    pub fn refresh_look(&mut self) {
+        self.restyle = true;
+    }
+
+    /// Whether the window's fonts have this app's named family (another editor in a host window
+    /// may have replaced them; drawing with a family egui doesn't have panics).
+    pub fn fonts_installed(&self, ctx: &egui::Context) -> bool {
+        ctx.fonts(|f| f.definitions().families.contains_key(&theme::bold_family()))
+    }
+
+    /// Installs `defs`. Embedded, the window's other families (another editor's, the host's own
+    /// faces) are kept: this app's named families are added and its faces appended to the
+    /// proportional and monospace lists, so the editors in a host window's tabs don't take each
+    /// other's fonts away.
+    pub(crate) fn set_fonts(&self, ctx: &egui::Context, defs: egui::FontDefinitions) {
+        if !self.embedded {
+            return ctx.set_fonts(defs);
+        }
+        ctx.set_fonts(theme::merge_font_definitions(ctx.fonts(|f| f.definitions().clone()), defs));
+    }
+
+    /// A presentation nobody has touched: no file, no changes, nothing to undo. Opening a file in
+    /// a hosted window replaces it.
+    pub fn is_untouched_blank(d: &deckcraft_engine::DocState) -> bool {
+        d.path.is_none() && !d.is_dirty() && d.history.undo.is_empty() && d.history.redo.is_empty()
+    }
+
+    /// NexusOffice: hand `path` to the host's tabs unless this window holds only its untouched new
+    /// presentation (the opened one replaces it) or has the file open already. True when handed.
+    pub(crate) fn hand_to_host(&mut self, path: &str) -> bool {
+        let Some(open) = &self.services.open_document else { return false };
+        // The host first: it knows which of its tabs has the file.
+        if open(path) {
+            self.backstage = None;
+            return true;
+        }
+        // Declined: it opens here, in place of the new presentation if nobody has touched it (and
+        // nothing typed is waiting in a field).
+        if self.only_untouched_blank() {
+            self.replace_blank = self.session.active().map(|d| d.uid);
+        }
+        false
+    }
+
+    /// NexusOffice: this window holds only a new presentation nobody has touched, with nothing
+    /// typed in a field either: a file opened here may replace it.
+    pub fn only_untouched_blank(&self) -> bool {
+        self.session.documents().len() == 1 && self.session.active().is_some_and(SlideApp::is_untouched_blank) && !self.has_drafts()
+    }
+
+    /// A presentation was just opened: the untouched new one it replaces (hosted) closes.
+    pub(crate) fn drop_replaced_blank(&mut self) {
+        let Some(uid) = self.replace_blank.take() else { return };
+        let Some(opened) = self.session.active().map(|d| d.uid) else { return };
+        if opened == uid {
+            return;
+        }
+        if let Some(i) = self.session.documents().iter().position(|d| d.uid == uid && SlideApp::is_untouched_blank(d)) {
+            self.session.close_document(i);
+            if let Some(j) = self.session.documents().iter().position(|d| d.uid == opened) {
+                self.session.set_active(j);
+            }
+        }
+    }
+
+    /// The notes of slide `index` of the document `uid`, if both are still there.
+    fn notes_of(&self, uid: u64, index: usize) -> Option<&deckcraft_model::text::TextBody> {
+        self.session.documents().iter().find(|d| d.uid == uid)?.doc.slides.get(index).map(|s| &s.notes)
+    }
+
+    /// The drafts typing has left outside the presentation, as the commands that put them in:
+    /// (document uid, command, params). A draft equal to what the presentation holds (edited back
+    /// to how it was) is none.
+    fn draft_commands(&self) -> Vec<(u64, &'static str, Value)> {
+        let mut out = Vec::new();
+        // The notes pane under the slide.
+        let (uid, index, d) = (&self.notes_buf.0, &self.notes_buf.1, &self.notes_buf.2);
+        // (By their text: the field types text only, and taking typing back may leave the runs
+        // split differently.)
+        if d.edited && self.notes_of(*uid, *index).is_some_and(|n| n.text() != d.body.text()) {
+            out.push((*uid, "slide.notes", json!({"body": d.body, "index": index})));
+        }
+        // View › Notes Page.
+        if let Some((uid, index, _, d)) = &self.page_notes
+            && d.edited
+            && self.notes_of(*uid, *index).is_some_and(|n| n.text() != d.body.text())
+        {
+            out.push((*uid, "slide.notes", json!({"body": d.body, "index": index})));
+        }
+        // Format Shape › Size › Alt Text.
+        if let Some((uid, shape, _, text)) = &self.alt_draft
+            && let Some(doc) = self.session.documents().iter().find(|d| d.uid == *uid)
+            && let Some(sh) = doc.shape(*shape)
+            && sh.descr != *text
+        {
+            out.push((*uid, "shape.altText", json!({"text": text, "ids": [shape.0]})));
+        }
+        // The SmartArt Text Pane's lines (of the selected graphic).
+        if let Some(st) = self.session.active()
+            && let Some((gid, d)) = deckcraft_engine::cmd::smartart::selected(st)
+            && self.ui.smartart_drafts.0 == gid.0
+        {
+            for (i, (draft, node)) in self.ui.smartart_drafts.1.iter().zip(&d.nodes).enumerate() {
+                if *draft != node.text {
+                    out.push((st.uid, "smartArt.setNodes", json!({"id": gid.0, "index": i, "text": draft})));
+                }
+            }
+        }
+        out
+    }
+
+    /// NexusOffice: typing not in the presentation yet — the notes pane, View › Notes Page, the
+    /// Alt Text field, the SmartArt Text Pane (each saved when its field loses the focus), an input
+    /// method's composition. A host closing this window asks about it as a change.
+    pub fn has_drafts(&self) -> bool {
+        self.session.documents().iter().any(|d| d.composition.is_some()) || !self.draft_commands().is_empty()
+    }
+
+    /// NexusOffice: puts the drafts [`has_drafts`](Self::has_drafts) sees into their
+    /// presentations (undoable changes, so "Save changes?" asks about them). `false` when one
+    /// couldn't be (the status bar says why).
+    pub fn commit_drafts(&mut self) -> bool {
+        let shown = self.session.active_index();
+        let docs: Vec<u64> = self.session.documents().iter().map(|d| d.uid).collect();
+        for (i, _) in docs.iter().enumerate() {
+            self.session.set_active(i);
+            self.session.end_composition();
+        }
+        let mut ok = true;
+        for (uid, cmd, params) in self.draft_commands() {
+            let Some(i) = self.session.documents().iter().position(|d| d.uid == uid) else { continue };
+            self.session.set_active(i);
+            ok &= self.run(cmd, params).is_ok();
+        }
+        if let Some(v) = shown {
+            self.session.set_active(v);
+        }
+        if ok {
+            // Saved: the fields show the presentation's text again from the next frame.
+            self.notes_buf.2.edited = false;
+            if let Some(p) = &mut self.page_notes {
+                p.3.edited = false;
+            }
+            self.alt_draft = None;
+        }
+        ok
+    }
+
+    /// A presentation was saved at `path`: the status says so and it heads the recent list.
+    pub(crate) fn note_saved(&mut self, path: &str) {
+        let msg = self.ui.language.fill("Saved {path}", &[("path", path)]);
+        self.set_status(msg);
+        self.ui.recent.retain(|p| p != path);
+        self.ui.recent.insert(0, path.to_string());
+        self.ui.recent.truncate(RECENT_MAX);
     }
 
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
@@ -202,6 +379,13 @@ impl SlideApp {
             log::debug!("ignoring SlideApp::logic for render-only viewport {:?}", ctx.viewport_id());
             return;
         }
+        // NexusOffice: the language of this pass, and new presentations' names (a control
+        // request below may make one).
+        i18n::set_current(ctx, self.ui.language);
+        let prefix = self.ui.language.untitled_prefix();
+        if self.session.untitled_prefix != prefix {
+            self.session.untitled_prefix = prefix.to_string();
+        }
         self.tick_hidden_show(ctx, web_time::Instant::now());
         // `raw_input_hook` runs before `App::logic`. In a full pass egui has already built
         // `PointerState` and `keys_down` from every injected event, so retracting the events after
@@ -214,6 +398,7 @@ impl SlideApp {
         if !self.synthetic_batch_is_live(ctx) {
             self.drain_control(ctx);
             self.poll_opening();
+            self.poll_file_dialog();
             #[cfg(not(target_arch = "wasm32"))]
             updates_ui::tick(self, ctx);
             // Inbox results are host file bytes and do not need fonts or a painted frame. A
@@ -231,8 +416,12 @@ impl SlideApp {
         if !self.synthetic.is_empty() || !self.synthetic_next.is_empty() || self.synthetic_pending {
             ctx.request_repaint();
         }
-        // Closing the window with unsaved changes asks first.
-        if ctx.input(|i| i.viewport().close_requested()) && !self.quit_confirmed && self.session.documents().iter().any(|d| d.is_dirty()) {
+        // Closing the window with unsaved changes asks first (a host window asks for its tabs).
+        if !self.embedded
+            && ctx.input(|i| i.viewport().close_requested())
+            && !self.quit_confirmed
+            && self.session.documents().iter().any(|d| d.is_dirty())
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.show = None;
             if self.dialog.as_ref().is_none_or(|d| d.id != "quit") {
@@ -283,6 +472,16 @@ impl SlideApp {
             self.requeue_injected_synthetic();
             return;
         }
+        // NexusOffice: a host window that brings this tab forward in the middle of a frame (a click
+        // on its tab strip) draws it before `logic` has seen another editor's fonts: paint nothing
+        // this frame and install ours again, instead of drawing with families egui no longer has
+        // (which panics).
+        if self.embedded && !self.fonts_installed(&ctx) {
+            self.restyle();
+            ctx.request_repaint();
+            return;
+        }
+        i18n::set_current(&ctx, self.ui.language);
         let t0 = now_ms();
         let t = theme::Tokens::get(&ctx);
         self.note_ui_text(&ctx);
@@ -301,9 +500,17 @@ impl SlideApp {
         self.sync_backstage();
         self.keyboard(&ctx);
         self.sync_backstage();
-        ribbon::title_bar(self, ui);
+        if !self.wps {
+            ribbon::title_bar(self, ui);
+        }
         if self.backstage.is_none() && self.session.active().is_some() {
-            ribbon::show(self, ui);
+            if self.wps {
+                nexus_wps::show(self, ui);
+            } else if self.toolbar {
+                nexus_toolbar::show(self, ui);
+            } else {
+                ribbon::show(self, ui);
+            }
             status::status_bar(self, ui);
         }
         let now = ui.input(|i| i.time);
@@ -343,6 +550,7 @@ impl SlideApp {
         toast::note_missing_fonts(self);
         toast::show(self, &ctx);
         dialogs::show(self, &ctx);
+        nexus_toolbar::args_window(self, &ctx);
         #[cfg(not(target_arch = "wasm32"))]
         updates_ui::show(self, &ctx);
         menus::palette(self, &ctx);

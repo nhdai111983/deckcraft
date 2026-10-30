@@ -1,3 +1,8 @@
+use std::sync::mpsc::Receiver;
+
+use serde_json::Value;
+
+use crate::file_dialogs::{FileDialogAnswer, FileDialogRequest};
 pub type ReadFn = Box<dyn Fn(&str) -> Result<Vec<u8>, String>>;
 
 pub type WriteFn = Box<dyn FnMut(&str, &[u8]) -> Result<(), String>>;
@@ -56,4 +61,16 @@ pub struct Services {
     pub clipboard_set_html: Option<Box<dyn FnMut(&str, &str) -> bool>>,
     /// Audio output for media playback (cpal on desktop); without one media plays silently.
     pub audio_out: Option<Box<dyn deckcraft_media::AudioOut>>,
+    /// NexusOffice: Open and Save As dialogs the host shows without blocking (its answer comes
+    /// later on the channel; see [`file_dialogs`]). Wins over `pick_open` / `pick_save`.
+    pub file_dialog: Option<Box<dyn Fn(FileDialogRequest) -> Receiver<FileDialogAnswer>>>,
+    /// NexusOffice: a host with tabs takes File › New, Ctrl+N, the themes, the templates and the
+    /// sample deck (the `file.new` params; `{"sample": true}` for the sample) and opens a new tab;
+    /// this presentation stays as it is.
+    pub new_document: Option<Box<dyn Fn(Value)>>,
+    /// NexusOffice: a host with tabs is asked first about every presentation picked here: `true`
+    /// when it takes it (opens it in a tab of its own, or brings forward the tab that has it).
+    /// `false` declines: it opens here, replacing this window's untouched new presentation (the
+    /// host declines only when that is all this window holds).
+    pub open_document: Option<Box<dyn Fn(&str) -> bool>>,
 }

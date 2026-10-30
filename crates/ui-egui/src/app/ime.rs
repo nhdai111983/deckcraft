@@ -18,6 +18,11 @@ impl SlideApp {
                 .collect()
         });
         self.ui_fonts.note(ctx, &typed);
+        // NexusOffice: the interface's own Vietnamese labels; a face is borrowed for any letter the
+        // interface fonts lack (a build without the embedded Inter).
+        if self.ui.language == crate::i18n::Language::Vi {
+            self.ui_fonts.note(ctx, crate::i18n::VI_LETTERS);
+        }
         for d in self.session.documents() {
             self.ui_fonts.note(ctx, &d.title());
         }
@@ -27,7 +32,10 @@ impl SlideApp {
         if let Some(st) = self.session.active() {
             self.ui_fonts.note_doc(ctx, st);
         }
-        self.ui_fonts.apply(ctx);
+        if self.ui_fonts.take_changed() {
+            self.set_fonts(ctx, crate::theme::font_definitions(&self.ui_fonts.faces));
+            ctx.request_repaint();
+        }
     }
 
     /// Stable IME owner for the canvas text target: document, view, shape and table cell.

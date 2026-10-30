@@ -289,10 +289,12 @@ impl Textures {
             master: master.as_ref().map(|m| Arc::as_ptr(m) as usize).unwrap_or(0),
             size,
             edit,
-            extra: extra ^ grayscale as u64 ^ anim_key(anim),
+            // NexusOffice: the placeholder prompts follow the interface's language.
+            extra: extra ^ grayscale as u64 ^ anim_key(anim) ^ (u64::from(crate::i18n::current(ctx) != crate::i18n::Language::En) << 61),
             want,
             editing_text,
         };
+        let prompt = crate::i18n::prompt_fn(crate::i18n::current(ctx));
         if let Some(e) = &self.canvas
             && e.key == key
         {
@@ -311,6 +313,7 @@ impl Textures {
                 size: Some(region.size()),
                 state,
                 editing_text,
+                prompt,
                 ..Default::default()
             };
             deckcraft_render::render_slide_drawn(p, index, &opts)

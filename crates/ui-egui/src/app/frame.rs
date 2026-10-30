@@ -4,12 +4,20 @@ impl SlideApp {
     /// Style, fonts and zoom setup. Runs in a real UI pass, not from `run_logic`, because
     /// `set_fonts`/`set_visuals` only take effect for the pass that lays out the UI.
     pub(super) fn ui_setup(&mut self, ctx: &egui::Context) -> bool {
+        // NexusOffice: the language the widgets draw in this pass.
+        crate::i18n::set_current(ctx, self.ui.language);
         let scale = self.ui.ui_scale.clamp(0.5, 3.0);
-        if (ctx.zoom_factor() - scale).abs() > 1e-3 {
+        // Embedded, the window's zoom is the host's (another tab's editor shares it).
+        if !self.embedded && (ctx.zoom_factor() - scale).abs() > 1e-3 {
             ctx.set_zoom_factor(scale);
         }
+        // NexusOffice: another editor in the host window (Nexus Docs, Nexus Sheet) installed its
+        // own fonts, without this app's: install them again (and skip the pass, as at startup).
+        if self.embedded && self.styled && !self.fonts_installed(ctx) {
+            self.restyle();
+        }
         if !self.styled {
-            theme::install_fonts_with(ctx, &self.ui_fonts.faces);
+            self.set_fonts(ctx, theme::font_definitions(&self.ui_fonts.faces));
             self.styled = true;
             self.restyle = true;
             // Font definitions take effect at the next pass boundary. Do not paint a language
@@ -17,8 +25,14 @@ impl SlideApp {
             ctx.request_discard("install interface fonts before layout");
             return false;
         }
+        // NexusOffice: the user's accent colour (Preferences, `ui.accent`).
+        let accent = self.ui.accent.as_deref().and_then(theme::parse_hex);
+        if theme::set_accent(ctx, accent) {
+            self.restyle = true;
+        }
         if self.restyle {
-            theme::apply(ctx, &theme::Tokens::for_brightness(self.ui.brightness));
+            let t = theme::Tokens::for_brightness(self.ui.brightness);
+            theme::apply(ctx, &accent.map_or(t, |c| theme::with_accent(t, c)));
             self.restyle = false;
         }
         self.fonts_ready = true;

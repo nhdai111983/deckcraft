@@ -10,6 +10,19 @@ use crate::theme::{self, Tokens};
 
 /// Height of the ribbon's content area.
 pub const RIBBON_H: f32 = 66.0;
+/// NexusOffice: height of the content in the WPS-style strip ([`crate::nexus_wps`]): two rows of
+/// small buttons; a large button is a 20 px icon over one label line there.
+pub const COMPACT_H: f32 = 50.0;
+const COMPACT_ICON_Y: f32 = 15.0;
+const COMPACT_ICON: f32 = 20.0;
+const COMPACT_LABEL_Y: f32 = 31.0;
+const _: () = assert!(COMPACT_ICON_Y + COMPACT_ICON / 2.0 <= COMPACT_LABEL_Y);
+const _: () = assert!(COMPACT_LABEL_Y + 14.0 <= COMPACT_H);
+
+/// Height of the ribbon content being drawn: [`COMPACT_H`] in the WPS strip, else [`RIBBON_H`].
+pub fn content_h(ui: &Ui) -> f32 {
+    if crate::nexus_wps::compact(ui) { COMPACT_H } else { RIBBON_H }
+}
 
 fn bg(ui: &Ui, r: &Response, selected: bool, t: &Tokens) -> Option<Color32> {
     if !r.sense.senses_click() && !r.sense.senses_drag() {
@@ -35,9 +48,10 @@ pub fn big_button(ui: &mut Ui, icon: Icon, label: &str, enabled: bool) -> Respon
 /// whole label area, so no visible line of a one- or two-line label can open the menu.
 const SPLIT_ARROW_W: f32 = 14.0;
 
-/// Return the chevron-only sub-rectangle at the right edge of a split button.
-fn split_arrow_rect(rect: Rect) -> Rect {
-    Rect::from_min_max(pos2(rect.max.x - SPLIT_ARROW_W, rect.min.y + 38.0), rect.max)
+/// Return the chevron-only sub-rectangle at the right edge of a split button whose label row
+/// starts `label_y` below its top (39 on the ribbon; less in the NexusOffice WPS strip).
+fn split_arrow_rect(rect: Rect, label_y: f32) -> Rect {
+    Rect::from_min_max(pos2(rect.max.x - SPLIT_ARROW_W, rect.min.y + label_y - 1.0), rect.max)
 }
 
 /// Width of a large button: padding plus, for a split button, the reserved arrow strip.
@@ -50,18 +64,30 @@ fn big_button_width(text_w: f32, split: bool) -> f32 {
 /// the chevron at the end of the label row opens the menu.
 pub fn big_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, split: bool, selected: bool) -> (Response, Option<Response>) {
     let t = Tokens::get(ui.ctx());
-    let font = theme::font(11.0);
-    let lines: Vec<&str> = wrap_label(label);
+    // NexusOffice: the WPS strip's compact buttons (one label line, smaller icon).
+    let compact = crate::nexus_wps::compact(ui);
+    let font = theme::font(if compact { 12.0 } else { 11.0 });
+    // Named for screen readers and UI tests ("Ink to\nShape" reads "Ink to Shape"), in the
+    // interface's language.
+    let spoken = crate::i18n::tr(ui.ctx(), &label.replace('\n', " ")).into_owned();
+    let translated = crate::i18n::current(ui.ctx()) != crate::i18n::Language::En && spoken != label.replace('\n', " ");
+    let lines: Vec<&str> = if compact {
+        vec![spoken.as_str()]
+    } else if translated {
+        wrap_label(&spoken)
+    } else {
+        wrap_label(label)
+    };
     let text_w = lines.iter().map(|l| ui.fonts_mut(|f| f.layout_no_wrap(l.to_string(), font.clone(), t.text).size().x)).fold(0.0f32, f32::max);
-    let w = big_button_width(text_w, split);
+    let w = big_button_width(text_w, split).max(if compact { 36.0 } else { 40.0 });
+    let h = if compact { COMPACT_H } else { RIBBON_H - 2.0 };
+    let (icon_y, icon_size, label_y, line_h) = if compact { (COMPACT_ICON_Y, COMPACT_ICON, COMPACT_LABEL_Y, 13.0) } else { (19.0, 30.0, 39.0, 12.5) };
     // The whole button runs the main command; the narrow strip at the end of the label row is the
     // dropdown. A split button therefore has two named targets, not a third unnamed row target.
-    let (rect, resp) = ui.allocate_exact_size(vec2(w, RIBBON_H - 2.0), if enabled { Sense::click() } else { Sense::hover() });
-    // Named for screen readers and UI tests ("Ink to\nShape" reads "Ink to Shape").
-    let spoken = label.replace('\n', " ");
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, h), if enabled { Sense::click() } else { Sense::hover() });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &spoken));
     let painter = ui.painter_at(rect.expand(1.0));
-    let arrow_rect = split.then(|| split_arrow_rect(rect));
+    let arrow_rect = split.then(|| split_arrow_rect(rect, label_y));
     let main_resp = resp.clone();
     let arrow_resp = arrow_rect.map(|r| ui.interact(r, resp.id.with("arrow"), if enabled { Sense::click() } else { Sense::hover() }));
     if split && let Some(a) = &arrow_resp {
@@ -75,20 +101,20 @@ pub fn big_button_ex(ui: &mut Ui, icon: Icon, label: &str, enabled: bool, split:
     {
         painter.rect_filled(ar, CornerRadius::same(4), c);
     }
-    let icon_rect = Rect::from_center_size(pos2(rect.center().x, rect.min.y + 19.0), vec2(30.0, 30.0));
+    let icon_rect = Rect::from_center_size(pos2(rect.center().x, rect.min.y + icon_y), vec2(icon_size, icon_size));
     icons::paint(&painter, icon_rect, icon, t.text, !enabled);
     let col = if enabled { t.text } else { t.text_faint };
     let label_rect = if split { Rect::from_min_max(rect.min, pos2(rect.max.x - SPLIT_ARROW_W, rect.max.y)) } else { rect };
-    let mut y = rect.min.y + 39.0;
+    let mut y = rect.min.y + label_y;
     for l in &lines {
         let label_w = ui.fonts_mut(|f| f.layout_no_wrap(l.to_string(), font.clone(), col).size().x);
         let x = label_rect.center().x - label_w / 2.0;
         painter.text(pos2(x, y), Align2::LEFT_TOP, l, font.clone(), col);
-        y += 12.5;
+        y += line_h;
     }
     if split {
         // The chevron sits in the reserved strip beside the label's last line, never on its text.
-        let chevron_y = rect.min.y + 39.0 + 12.5 * lines.len().saturating_sub(1) as f32 + 7.0;
+        let chevron_y = rect.min.y + label_y + line_h * lines.len().saturating_sub(1) as f32 + 7.0;
         chevron(&painter, pos2(rect.max.x - 7.0, chevron_y), 3.0, col);
     }
     (if split { main_resp } else { resp }, arrow_resp)
@@ -149,6 +175,11 @@ pub fn small_button_named(
     split: bool,
 ) -> (Response, Option<Response>) {
     let t = Tokens::get(ui.ctx());
+    // NexusOffice: the label and the accessible name in the interface's language.
+    let label = crate::i18n::tr(ui.ctx(), label);
+    let label = label.as_ref();
+    let name = crate::i18n::tr(ui.ctx(), name);
+    let name = name.as_ref();
     let font = theme::font(12.0);
     let tw = if label.is_empty() { 0.0 } else { ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), t.text).size().x) + 5.0 };
     let arrow_w = if split { 12.0 } else { 0.0 };
@@ -263,6 +294,8 @@ pub fn check_item(ui: &mut Ui, label: &str, enabled: bool, on: bool) -> Response
 /// A square icon toggle (B, I, U, alignment…).
 pub fn icon_toggle(ui: &mut Ui, icon: Icon, tip: &str, enabled: bool, on: bool) -> Response {
     let t = Tokens::get(ui.ctx());
+    let tip = crate::i18n::tr(ui.ctx(), tip);
+    let tip = tip.as_ref();
     let (rect, resp) = ui.allocate_exact_size(vec2(24.0, 22.0), if enabled { Sense::click() } else { Sense::hover() });
     let painter = ui.painter_at(rect);
     if let Some(c) = bg(ui, &resp, on, &t) {
@@ -277,6 +310,8 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, tip: &str, enabled: bool, on: bool) 
 /// Icon with a colour bar under it and a dropdown arrow (Font Color, Highlight, Shape Fill…).
 pub fn color_split(ui: &mut Ui, icon: Icon, tip: &str, color: Color32, enabled: bool) -> (Response, Response) {
     let t = Tokens::get(ui.ctx());
+    let tip = crate::i18n::tr(ui.ctx(), tip).into_owned();
+    let tip = tip.as_str();
     let (rect, resp) = ui.allocate_exact_size(vec2(34.0, 22.0), Sense::hover());
     let main = ui.interact(Rect::from_min_size(rect.min, vec2(23.0, 22.0)), resp.id.with("m"), if enabled { Sense::click() } else { Sense::hover() });
     main.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, tip));
@@ -303,24 +338,32 @@ pub fn color_split(ui: &mut Ui, icon: Icon, tip: &str, color: Color32, enabled: 
     (main.on_hover_text(tip), arrow)
 }
 
-/// A ribbon group: contents, then a thin vertical separator.
-pub fn group<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let r = ui.horizontal_top(|ui| {
+/// A ribbon group: contents, then a thin vertical separator. In the NexusOffice WPS strip the
+/// strip decides whether this pass draws the group ([`crate::nexus_wps::group`]).
+pub fn group(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    if crate::nexus_wps::gated(ui) {
+        crate::nexus_wps::group(ui, add);
+        return;
+    }
+    ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing = vec2(1.0, 1.0);
         add(ui)
     });
     separator(ui);
-    r.inner
 }
 
 pub fn separator(ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(13.0, RIBBON_H - 6.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(13.0, content_h(ui) - 6.0), Sense::hover());
     ui.painter().line_segment([pos2(rect.center().x, rect.min.y + 6.0), pos2(rect.center().x, rect.max.y - 4.0)], Stroke::new(1.0, t.separator));
 }
 
-/// Two or three rows of small controls stacked in one ribbon column.
+/// Two or three rows of small controls stacked in one ribbon column. In the NexusOffice WPS strip
+/// (two rows high) three or more flow into two rows ([`crate::nexus_wps::compact_stack`]).
 pub fn rows<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if crate::nexus_wps::compact(ui) {
+        return crate::nexus_wps::compact_stack(ui, add);
+    }
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
         ui.add_space(0.0);
@@ -496,6 +539,9 @@ pub fn gallery(
 ) -> Option<usize> {
     let t = Tokens::get(ui.ctx());
     let mut clicked = None;
+    // NexusOffice WPS strip: tiles taller than its two rows shrink to fit, keeping their shape.
+    let room = content_h(ui);
+    let tile = if tile.y > room && tile.y > 0.0 { tile * (room / tile.y) } else { tile };
     for i in 0..n {
         let (rect, resp) = ui.allocate_exact_size(tile, Sense::click());
         let painter = ui.painter_at(rect.expand(2.0));
@@ -590,6 +636,9 @@ pub fn section(ui: &mut Ui, title: &str, open: bool) -> bool {
 /// A button with an optional label and a painted dropdown chevron (the UI font has no ▾).
 pub fn drop_button(ui: &mut Ui, label: &str, size: egui::Vec2, enabled: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let size = vec2(size.x, size.y.min(content_h(ui)));
+    let label = crate::i18n::tr(ui.ctx(), label);
+    let label = label.as_ref();
     let r = ui
         .add_enabled(enabled, egui::Button::new(if label.is_empty() { String::new() } else { format!("{label}   ") }).min_size(size))
         .on_hover_text(if label.is_empty() { "Options" } else { label });

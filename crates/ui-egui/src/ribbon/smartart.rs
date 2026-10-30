@@ -59,10 +59,10 @@ pub(super) fn smartart_design(app: &mut SlideApp, ui: &mut Ui) {
         let (main, arrow) = small_button_ex(ui, Icon::Layout, "Convert", gid.is_some(), false, true);
         if let Some(arrow) = arrow {
             widgets::split_menu(&main, &arrow, |ui| {
-                if ui.button("Convert to Text").clicked() {
+                if ui.button(crate::i18n::tr(ui.ctx(), "Convert to Text")).clicked() {
                     run(app, "smartArt.toText", json!({"id": gid}));
                 }
-                if ui.button("Convert to Shapes").clicked() {
+                if ui.button(crate::i18n::tr(ui.ctx(), "Convert to Shapes")).clicked() {
                     run(app, "smartArt.toShapes", json!({"id": gid}));
                 }
             });
@@ -89,7 +89,7 @@ pub(super) fn smartart_design(app: &mut SlideApp, ui: &mut Ui) {
                 for (k, label) in deckcraft_engine::cmd::smartart::STYLES {
                     if k == "polished" {
                         ui.separator();
-                        ui.label("3-D");
+                        ui.label(crate::i18n::tr(ui.ctx(), "3-D"));
                     }
                     let on = style == k || (style.is_empty() && k == "flat");
                     if ui.selectable_label(on, label).clicked() {

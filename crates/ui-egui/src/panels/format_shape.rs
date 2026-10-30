@@ -178,14 +178,14 @@ pub(super) fn format_shape(app: &mut SlideApp, ui: &mut Ui) {
             fields(ui, "Vertical", "fy", x.y, "y", "shape.move", false);
             ui.add_space(6.0);
             ui.label(egui::RichText::new("Alt Text").font(theme::bold(13.0)));
-            let id = ui.scope_id().with(("alt", uid, sh.id.0));
-            let stored: Option<(String, String)> = ui.data_mut(|d| d.get_temp(id));
+            // NexusOffice: the draft lives on the app, so a host closing the window sees it.
+            let stored = app.alt_draft.take().filter(|(u, s, _, _)| *u == uid && *s == sh.id).map(|(_, _, base, text)| (base, text));
             let mut alt = widgets::text_draft(stored, &sh.descr);
             let r = ui.add(egui::TextEdit::multiline(&mut alt).hint_text("Alt text").desired_rows(3).desired_width(f32::INFINITY));
             if r.lost_focus() && alt != sh.descr {
                 run(app, "shape.altText", json!({"text": alt}));
             }
-            ui.data_mut(|d| d.insert_temp(id, (sh.descr.clone(), alt)));
+            app.alt_draft = Some((uid, sh.id, sh.descr.clone(), alt));
         }
         "text" => {
             ui.label(egui::RichText::new("Text Fill").font(theme::bold(13.0)));

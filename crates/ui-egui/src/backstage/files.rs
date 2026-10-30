@@ -1,11 +1,13 @@
 use super::{
     Align2, Backstage, CONTENT_W, Color32, CornerRadius, Icon, Outcome, Page, Rect, RichText, Sense, SlideApp, Stroke, StrokeKind, Tokens, Ui, Value,
-    arrow_link, dim, heading, icons, json, pos2, search, theme, vec2,
+    arrow_link, dim, dim_raw, heading, icons, json, pos2, search, theme, vec2,
 };
 
 /// A new-presentation tile: a theme preview drawn in code (or a blank slide) over its name.
 fn tile(ui: &mut Ui, label: &str, theme: Option<&deckcraft_model::Theme>, big: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let label = crate::i18n::tr(ui.ctx(), label).into_owned();
+    let label = label.as_str();
     let thumb_w = if big { 200.0 } else { 160.0 };
     let (rect, resp) = ui.allocate_exact_size(vec2(thumb_w + 16.0, thumb_w * 9.0 / 16.0 + 44.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
@@ -104,7 +106,8 @@ fn recent_list(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize) {
     let list: Vec<String> =
         app.ui.recent.iter().filter(|p| q.is_empty() || split_path(p).0.to_lowercase().contains(&q)).take(limit).cloned().collect();
     if list.is_empty() {
-        dim(ui, &format!("No recent presentations match “{}”.", query.trim()));
+        let text = crate::i18n::current(ui.ctx()).fill("No recent presentations match “{q}”.", &[("q", query.trim())]);
+        dim_raw(ui, &text);
         return;
     }
     let width = ui.available_width().min(CONTENT_W);
@@ -128,7 +131,8 @@ fn recent_list(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize) {
             p.text(pos2(rect.left() + 44.0, rect.center().y + 9.0), Align2::LEFT_CENTER, &folder, theme::font(11.0), t.text_dim);
             // A missing file says so before it is clicked (#172).
             if missing {
-                p.text(pos2(visible_right - 82.0, rect.center().y), Align2::RIGHT_CENTER, "(missing)", theme::font(11.0), t.text_dim);
+                let missing = crate::i18n::tr(ui.ctx(), "(missing)");
+                p.text(pos2(visible_right - 82.0, rect.center().y), Align2::RIGHT_CENTER, missing, theme::font(11.0), t.text_dim);
             }
         }
         let resp = if missing { resp.on_hover_text(format!("{path} — this file can't be found")) } else { resp.on_hover_text(&path) };
@@ -138,12 +142,13 @@ fn recent_list(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize) {
             Rect::from_min_max(pos2(visible_right - 32.0, rect.top() + 5.0), pos2(visible_right, rect.bottom() - 5.0)),
             Sense::click(),
         );
-        x.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Remove from Recent"));
+        let remove = crate::i18n::tr(ui.ctx(), "Remove from Recent").into_owned();
+        x.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &remove));
         if x.hovered() {
             ui.painter().rect_filled(x.rect, CornerRadius::same(3), t.hover);
         }
         icons::paint(ui.painter(), Rect::from_center_size(x.rect.center(), vec2(14.0, 14.0)), Icon::Close, t.text_dim, false);
-        if x.on_hover_text("Remove from Recent").clicked() {
+        if x.on_hover_text(remove).clicked() {
             app.forget_recent(&path);
         }
         if resp.clicked() {
@@ -155,6 +160,8 @@ fn recent_list(app: &mut SlideApp, ui: &mut Ui, query: &str, limit: usize) {
 /// A large square command button (Print, Create PDF, Check for Issues…).
 pub(super) fn square_button(ui: &mut Ui, icon: Icon, label: &str, enabled: bool) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let label = crate::i18n::tr(ui.ctx(), label).into_owned();
+    let label = label.as_str();
     let (rect, resp) = ui.allocate_exact_size(vec2(88.0, 80.0), if enabled { Sense::click() } else { Sense::hover() });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let p = ui.painter();
@@ -170,6 +177,8 @@ pub(super) fn square_button(ui: &mut Ui, icon: Icon, label: &str, enabled: bool)
 /// A row of a page's own list on the left (Open's places, Export's tasks).
 pub(super) fn place_row(ui: &mut Ui, icon: Icon, label: &str, selected: bool, width: f32) -> egui::Response {
     let t = Tokens::get(ui.ctx());
+    let label = crate::i18n::tr(ui.ctx(), label).into_owned();
+    let label = label.as_str();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 44.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, label));
     let p = ui.painter();
@@ -193,7 +202,7 @@ pub(super) fn task(ui: &mut Ui, icon: Icon, button: &str, title: &str, detail: &
         ui.add_space(12.0);
         ui.vertical(|ui| {
             ui.add_space(4.0);
-            ui.label(RichText::new(title).font(theme::font(15.0)).color(t.text));
+            ui.label(RichText::new(crate::i18n::tr(ui.ctx(), title)).font(theme::font(15.0)).color(t.text));
             dim(ui, detail);
         });
     });
@@ -214,7 +223,7 @@ pub(super) fn home(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage, out: &mu
     });
     ui.add_space(18.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("New").font(theme::bold(16.0)).color(t.text));
+        ui.label(RichText::new(crate::i18n::tr(ui.ctx(), "New")).font(theme::bold(16.0)).color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if arrow_link(ui, "More themes") {
                 out.page = Some(Page::New);
@@ -225,7 +234,7 @@ pub(super) fn home(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage, out: &mu
     new_tiles(app, ui, "", 5, true);
     ui.add_space(22.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Templates").font(theme::bold(16.0)).color(t.text));
+        ui.label(RichText::new(crate::i18n::tr(ui.ctx(), "Templates")).font(theme::bold(16.0)).color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if arrow_link(ui, "More templates") {
                 out.page = Some(Page::New);
@@ -236,7 +245,7 @@ pub(super) fn home(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage, out: &mu
     template_tiles(app, ui, "", 3);
     ui.add_space(22.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Recent").font(theme::bold(16.0)).color(t.text));
+        ui.label(RichText::new(crate::i18n::tr(ui.ctx(), "Recent")).font(theme::bold(16.0)).color(t.text));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             search(ui, &mut bs.query, "Search for a file", 280.0);
         });
@@ -276,7 +285,8 @@ pub(super) fn new_page(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
         false
     };
     if !themes && !templates {
-        dim(ui, &format!("No themes or templates match “{}”.", q.trim()));
+        let text = crate::i18n::current(ui.ctx()).fill("No themes or templates match “{q}”.", &[("q", q.trim())]);
+        dim_raw(ui, &text);
     }
 }
 
@@ -287,12 +297,15 @@ pub(super) fn open_page(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
         ui.vertical(|ui| {
             ui.set_width(230.0);
             place_row(ui, Icon::Recent, "Recent", true, 220.0);
-            if place_row(ui, Icon::OpenFolder, "Browse", false, 220.0).on_hover_text("Open a presentation from a folder (Ctrl+O)").clicked() {
+            if place_row(ui, Icon::OpenFolder, "Browse", false, 220.0)
+                .on_hover_text(crate::i18n::tr(ui.ctx(), "Open a presentation from a folder (Ctrl+O)"))
+                .clicked()
+            {
                 let _ = app.run("app.openDialog", json!({}));
             }
             if app.session.recovery_dir.is_some() {
                 ui.add_space(24.0);
-                if ui.button("Recover Unsaved Presentations").clicked() {
+                if ui.button(crate::i18n::tr(ui.ctx(), "Recover Unsaved Presentations")).clicked() {
                     match app.run("file.recovery.open", json!({})) {
                         Ok(v) if v.get("opened").and_then(Value::as_array).is_some_and(|a| a.is_empty()) => {
                             app.set_status("There are no unsaved presentations to recover");

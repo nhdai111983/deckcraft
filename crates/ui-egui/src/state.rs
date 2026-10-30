@@ -1,4 +1,6 @@
-use super::{Deserialize, LayoutId, MasterId, Serialize, SlideId, Target, qat, theme};
+use serde_json::Value;
+
+use super::{Deserialize, LayoutId, MasterId, Serialize, SlideId, Target, i18n, qat, theme};
 
 /// The operation the user asked for. Kept with the request so a late completion does not
 /// guess a command from the file name.
@@ -91,6 +93,20 @@ pub struct UiState {
     pub comment_focus: Option<(usize, usize)>,
     /// Quick Access Toolbar buttons, left to right.
     pub qat: Vec<qat::QatItem>,
+    /// NexusOffice: the accent colour the user picked (`#RRGGBB`, Preferences or `ui.accent`);
+    /// `None` is the app's own Amber. A saved value that isn't a colour reads as `None`, and
+    /// `None` writes no key (an upstream `ui.json` stays the same).
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "lenient_accent")]
+    pub accent: Option<String>,
+    /// NexusOffice: the interface language ([`i18n`]). Always written, so a chosen English stays
+    /// English where the Nexus apps default to Vietnamese (a file without it is read as unset).
+    #[serde(deserialize_with = "i18n::lenient")]
+    pub language: i18n::Language,
+}
+
+fn lenient_accent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_str().and_then(theme::parse_hex).map(theme::to_hex))
 }
 
 impl Default for UiState {
@@ -123,6 +139,8 @@ impl Default for UiState {
             grayscale: false,
             comment_focus: None,
             qat: qat::defaults(),
+            accent: None,
+            language: i18n::Language::En,
         }
     }
 }

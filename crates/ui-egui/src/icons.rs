@@ -14,8 +14,8 @@ use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, StrokeKi
 
 /// Accent blue.
 pub const BLUE: Color32 = Color32::from_rgb(0x2E, 0x6F, 0xD8);
-/// Accent orange.
-pub const ORANGE: Color32 = Color32::from_rgb(0xF2, 0x6B, 0x1D);
+/// Accent orange: Nexus Slide's Amber (600), not upstream's Office-like orange.
+pub const ORANGE: Color32 = Color32::from_rgb(0xD9, 0x77, 0x06);
 /// Accent green.
 pub const GREEN: Color32 = Color32::from_rgb(0x2E, 0xA3, 0x6F);
 /// Accent purple.
@@ -331,6 +331,10 @@ icons! {
     FitSmall => "fit-small",
     ZoomIn => "zoom-in",
     ZoomOut => "zoom-out",
+    /// NexusOffice WPS layout: the File (Tệp) button's three bars.
+    Hamburger => "hamburger",
+    /// NexusOffice WPS layout: the » that holds the ribbon tabs the top row has no room for.
+    ChevronDoubleRight => "chevron-double-right",
 }
 
 /// Stroke width (in points) for an icon drawn at `size` points: ≈ size/16 at 16 pt, size/20 at

@@ -18,6 +18,16 @@ impl SlideApp {
     /// Run a command by id (UI commands here, everything else in the engine). Errors show in the
     /// status bar and are returned.
     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        // NexusOffice: the host's tabs take new presentations; this one stays as it is.
+        if id == "file.new"
+            && let Some(new) = &self.services.new_document
+        {
+            new(if params.is_object() { params } else { json!({}) });
+            if self.session.active().is_some() {
+                self.backstage = None;
+            }
+            return Ok(json!({"host": "file.new"}));
+        }
         let r = if UI_COMMANDS.iter().any(|c| c.0 == id) {
             self.run_ui(id, &params)
         } else {
@@ -222,7 +232,7 @@ impl SlideApp {
             "app.openDialog" => self.pick_and_open(),
             "app.insertPictureDialog" => self.pick_and_insert("picture", "insert.picture"),
             "app.smartArtPictureDialog" => {
-                if self.services.pick_open.is_none() {
+                if !self.can_pick_files() {
                     return Err("picking a SmartArt picture needs the desktop app".into());
                 }
                 self.pick_and_run("picture", "smartArt.picture", p);
@@ -238,7 +248,7 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open a presentation first".into());
                 }
-                if self.services.pick_open.is_some() {
+                if self.can_pick_files() {
                     self.pick_and_insert("theme", "design.browseTheme");
                 } else {
                     // The browser's asynchronous picker would open the file as a new document.
@@ -256,7 +266,7 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open the presentation to compare first".into());
                 }
-                if self.services.pick_open.is_some() {
+                if self.can_pick_files() {
                     self.pick_and_insert("open", "review.compare");
                 } else {
                     // The browser's asynchronous picker would open the file as a new document.
@@ -270,6 +280,24 @@ impl SlideApp {
             "app.links" => {
                 use deckcraft_engine::links::{APP_PAGE, GITHUB, ISSUES};
                 return Ok(json!({"appPage": APP_PAGE, "github": GITHUB, "issues": ISSUES}));
+            }
+            "ui.accent" => {
+                // NexusOffice: `{"value": "#RRGGBB"}` sets the accent colour, `""` or `null` goes
+                // back to the app's own Amber; no value reads it. Applied on the next frame.
+                if let Some(v) = p.get("value") {
+                    match v.as_str().map(str::trim).filter(|h| !h.is_empty()) {
+                        None if v.is_null() || v.is_string() => self.ui.accent = None,
+                        None => return Err("the accent colour is a string: \"#RRGGBB\", or \"\" for the app's own".into()),
+                        Some(hex) => match theme::parse_hex(hex) {
+                            Some(c) => self.ui.accent = Some(theme::to_hex(c)),
+                            None => {
+                                let shown: String = hex.chars().take(24).collect();
+                                return Err(format!("unknown colour {shown:?}; use \"#RRGGBB\""));
+                            }
+                        },
+                    }
+                }
+                return Ok(json!({"accent": self.ui.accent}));
             }
             _ => return Err(format!("unknown UI command `{id}`")),
         }
