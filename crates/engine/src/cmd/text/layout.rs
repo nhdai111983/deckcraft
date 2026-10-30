@@ -1,7 +1,7 @@
 use super::caret::cell_on_slide;
 use super::{
-    Affine, Arc, AutoFit, Ctx, DocState, Paragraph, Point, Pos, Presentation, Rect, Result, Selection, Session, Shape, ShapeId, Target, TextBody,
-    TextSel, Value, ed, resolve, xfrm_of,
+    Affine, Arc, AutoFit, Ctx, DocState, Paragraph, Point, Pos, Presentation, Result, Selection, Session, ShapeId, Target, TextSel, Value, ed,
+    resolve, xfrm_of,
 };
 
 /// Refit a shape after its text changed: remember the shrink-on-overflow scale the layout
@@ -114,23 +114,84 @@ pub fn text_frame(st: &DocState, t: &TextSel) -> Option<(deckcraft_text::TextLay
     if t.notes {
         return None;
     }
-    let sh = st.shape(t.shape)?;
-    let ctx = ctx_for(&st.doc, &st.selection)?;
-    let lay = |s: &Shape, body: &TextBody, rect: Rect| {
-        deckcraft_text::layout(&ctx, s, body, &deckcraft_text::Opts { rect, fields: &deckcraft_text::NoFields, prompt_color: None, no_shrink: false })
-    };
-    if let Some((r, c)) = t.cell {
+    match t.cell {
         // A cell's text is laid out in the cell's rect with the cell's margins, anchor and the
         // table style's text look, exactly as the table draws it.
-        let placed = cell_on_slide(st, t.shape, r, c)?;
-        return Some((placed.layout, placed.to_slide));
+        Some((r, c)) => cell_on_slide(st, t.shape, r, c).map(|placed| (placed.layout, placed.to_slide)),
+        None => shape_frame(st, t.shape, false),
     }
-    let body = sh.text.as_ref()?;
+}
+
+/// NexusOffice: the last shape text laid out for the canvas, which asks for the same frame several
+/// times a frame while text is edited (the caret, the selection, the input method's rectangle,
+/// hit testing). Shaping is the costly part and depends only on the presentation, the shape tree
+/// edited and the shape: the presentation's `Arc` changes with every edit (and is held here, so
+/// it is never changed in place while cached), so the same `Arc`, target, slide and shape give
+/// the same layout.
+struct FrameMemo {
+    doc: Arc<Presentation>,
+    target: Target,
+    slide: usize,
+    shape: ShapeId,
+    /// Laid out with one empty paragraph standing in for none (the caret of an empty
+    /// placeholder, [`caret_line`]).
+    padded: bool,
+    frame: (deckcraft_text::TextLayout, Affine),
+}
+
+thread_local! {
+    static FRAME_MEMO: std::cell::RefCell<Option<FrameMemo>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A shape's text as drawn (not a table cell's): its layout and the transform to the slide,
+/// from [`FRAME_MEMO`] when nothing changed. `padded`: an empty text body is laid out as one
+/// empty paragraph instead of giving `None`.
+fn shape_frame(st: &DocState, id: ShapeId, padded: bool) -> Option<(deckcraft_text::TextLayout, Affine)> {
+    let sh = st.shape(id)?;
+    // Padding changes nothing for text that has a paragraph: one memo serves both askers.
+    let padded = padded && sh.text.as_ref().is_none_or(|b| b.paragraphs.is_empty());
+    let hit = FRAME_MEMO.with(|m| {
+        m.borrow().as_ref().and_then(|m| {
+            (Arc::ptr_eq(&m.doc, &st.doc) && m.target == st.selection.target && m.slide == st.selection.slide && m.shape == id && m.padded == padded)
+                .then(|| m.frame.clone())
+        })
+    });
+    if hit.is_some() {
+        return hit;
+    }
+    let ctx = ctx_for(&st.doc, &st.selection)?;
+    let padded_body;
+    let body = if padded {
+        let mut b = sh.text.clone().unwrap_or_default();
+        b.paragraphs.push(Paragraph::default());
+        padded_body = b;
+        &padded_body
+    } else {
+        sh.text.as_ref()?
+    };
     let x = xfrm_of(&st.doc, &st.selection, sh);
     let tr = deckcraft_render::shape_geometry(sh, x.w, x.h).text_rect;
-    let l = lay(sh, body, tr);
+    let l = deckcraft_text::layout(
+        &ctx,
+        sh,
+        body,
+        &deckcraft_text::Opts { rect: tr, fields: &deckcraft_text::NoFields, prompt_color: None, no_shrink: false },
+    );
     let m = deckcraft_render::text_transform(x.affine(), tr, l.rotation);
-    Some((l, m))
+    let frame = (l, m);
+    FRAME_MEMO.with(|c| {
+        if let Ok(mut c) = c.try_borrow_mut() {
+            *c = Some(FrameMemo {
+                doc: st.doc.clone(),
+                target: st.selection.target,
+                slide: st.selection.slide,
+                shape: id,
+                padded,
+                frame: frame.clone(),
+            });
+        }
+    });
+    Some(frame)
 }
 
 /// The text position under slide point `p` in the text being edited (its shape or cell).
@@ -158,24 +219,10 @@ pub fn caret_line(st: &DocState, t: &TextSel) -> Option<(deckcraft_geom::Point, 
         let (cx, top, bot) = placed.layout.caret_drawn(deckcraft_text::Pos { para: t.caret.0, ch: t.caret.1 }, aff)?;
         return Some((placed.to_slide * deckcraft_geom::Point::new(cx, top), placed.to_slide * deckcraft_geom::Point::new(cx, bot)));
     }
-    let sh = st.shape(t.shape)?;
-    let ctx = ctx_for(&st.doc, &st.selection)?;
-    let x = xfrm_of(&st.doc, &st.selection, sh);
-    let geo = deckcraft_render::shape_geometry(sh, x.w, x.h);
-    let mut body = sh.text.clone().unwrap_or_default();
-    if body.paragraphs.is_empty() {
-        body.paragraphs.push(deckcraft_model::text::Paragraph::default());
-    }
-    let l = deckcraft_text::layout(
-        &ctx,
-        sh,
-        &body,
-        &deckcraft_text::Opts { rect: geo.text_rect, fields: &deckcraft_text::NoFields, prompt_color: None, no_shrink: false },
-    );
+    let (l, m) = shape_frame(st, t.shape, true)?;
     // After End on a wrapped line the caret is drawn at that line's end.
     let aff = if t.at_line_end() { deckcraft_text::Affinity::Upstream } else { deckcraft_text::Affinity::Downstream };
     let (cx, top, bot) = l.caret_drawn(deckcraft_text::Pos { para: t.caret.0, ch: t.caret.1 }, aff)?;
-    let m = deckcraft_render::text_transform(x.affine(), geo.text_rect, l.rotation);
     Some((m * deckcraft_geom::Point::new(cx, top), m * deckcraft_geom::Point::new(cx, bot)))
 }
 
@@ -198,4 +245,52 @@ pub fn caret_color(st: &DocState, t: &TextSel) -> Option<deckcraft_color::Rgba> 
 pub(super) fn pos_param(p: &Value, key: &str) -> Option<Pos> {
     let a = p.get(key)?.as_array()?;
     Some((a.first()?.as_u64()? as usize, a.get(1)?.as_u64()? as usize))
+}
+
+/// NexusOffice: the canvas asks for the edited text's frame several times a frame; it is laid out
+/// once per change of the presentation, and every change (typing, moving the box, undo) is seen.
+#[cfg(test)]
+mod frame_memo_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::Session;
+
+    fn caret(s: &Session) -> (Point, Point) {
+        let st = s.doc().unwrap();
+        caret_line(st, st.selection.text.as_ref().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_frame_follows_every_change_and_is_reused_without_one() {
+        let mut s = Session::with_new();
+        s.execute("insert.textBox", &json!({"rect": [10, 10, 300, 60], "text": "Xin"})).unwrap();
+        // Into the box's text, the caret at its end.
+        let _ = s.execute("text.exit", &json!({}));
+        let id = s.doc().unwrap().selection.shapes[0];
+        s.execute("text.edit", &json!({"id": id.0})).unwrap();
+        s.execute("text.move", &json!({"to": "end"})).unwrap();
+        let before = caret(&s);
+        // Asked again without a change: the very same layout (held, not laid out again).
+        let st = s.doc().unwrap();
+        let ts = st.selection.text.clone().unwrap();
+        let a = text_frame(st, &ts).unwrap();
+        let b = text_frame(st, &ts).unwrap();
+        assert_eq!(format!("{:?}", a.0), format!("{:?}", b.0));
+        assert_eq!(caret(&s), before);
+        FRAME_MEMO.with(|m| assert!(m.borrow().as_ref().is_some_and(|m| Arc::ptr_eq(&m.doc, &s.doc().unwrap().doc))));
+        // Typing moves the caret right: the memo of the old presentation is not used.
+        s.execute("text.insert", &json!({"text": " chào"})).unwrap();
+        let typed = caret(&s);
+        assert!(typed.0.x > before.0.x + 1.0, "{typed:?} after {before:?}");
+        // Moving the box moves the caret with it.
+        s.execute("text.exit", &json!({})).unwrap();
+        let id = s.doc().unwrap().selection.shapes[0];
+        s.execute("shape.move", &json!({"dx": 40, "dy": 25})).unwrap();
+        s.execute("text.edit", &json!({"id": id.0})).unwrap();
+        let st = s.doc().unwrap();
+        let ts = st.selection.text.clone().unwrap();
+        let moved = text_frame(st, &ts).unwrap();
+        assert!((moved.1 * Point::new(0.0, 0.0)).x > (a.1 * Point::new(0.0, 0.0)).x + 30.0, "the frame moved with the box");
+    }
 }

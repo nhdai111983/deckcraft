@@ -46,6 +46,8 @@ pub struct Textures {
     drawn: Option<(usize, Rect)>,
     /// Canvas renders so far (tests, performance checks).
     pub canvas_renders: u64,
+    /// NexusOffice: those of them that drew only the part of the canvas an edit changed.
+    pub region_renders: u64,
     thumbs: HashMap<usize, Entry>,
     /// Thumbnails actually rendered, over the life of this cache. The number *held*
     /// ([`Textures::thumb_count`]) cannot see a pane that renders the same rows over and over --
@@ -201,6 +203,31 @@ pub fn shrink_to(img: ColorImage, max: u32) -> ColorImage {
     ColorImage::new([nw, nh], px)
 }
 
+/// NexusOffice: the part of canvas region `canvas` (pixels from the slide's corner) that slide
+/// area `changed` (points) covers at `scale` pixels a point, a pixel more all round; `None` when
+/// it is most of the canvas (drawing it whole costs about the same) or not a number.
+pub(crate) fn patch_region(canvas: Region, changed: Rect, scale: f64) -> Option<Region> {
+    if !(changed.is_finite() && scale.is_finite() && scale > 0.0) {
+        return None;
+    }
+    let (cx0, cy0) = (canvas.x as i64, canvas.y as i64);
+    let (cx1, cy1) = (cx0 + canvas.w as i64, cy0 + canvas.h as i64);
+    let px = |v: f64, up: bool| {
+        let v = v * scale;
+        (if up { v.ceil() + 1.0 } else { v.floor() - 1.0 }).clamp(i32::MIN as f64, i32::MAX as f64) as i64
+    };
+    let (x0, y0) = (px(changed.x0, false).max(cx0), px(changed.y0, false).max(cy0));
+    let (x1, y1) = (px(changed.x1, true).min(cx1), px(changed.y1, true).min(cy1));
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let (w, h) = ((x1 - x0) as u64, (y1 - y0) as u64);
+    if w.saturating_mul(h).saturating_mul(2) > (canvas.w as u64).saturating_mul(canvas.h as u64) {
+        return None;
+    }
+    Some(Region { x: x0 as i32, y: y0 as i32, w: w as u32, h: h as u32 })
+}
+
 /// Upload a texture, shrunk to the renderer's limit if need be.
 pub fn upload(ctx: &egui::Context, name: impl Into<String>, img: ColorImage) -> TextureHandle {
     ctx.load_texture(name, shrink_to(img, max_side(ctx)), TextureOptions::LINEAR)
@@ -318,6 +345,47 @@ impl Textures {
             };
             deckcraft_render::render_slide_drawn(p, index, &opts)
         };
+        // NexusOffice: an edit that changed only some shapes of the slide shown (typing, a nudge)
+        // draws again only where they drew and draw, over the canvas texture as it is; an edit
+        // nothing on the slide shows (the notes) draws nothing.
+        if let Some(e) = self.canvas.as_mut()
+            && e.key == (Key { slide: e.key.slide, ..key.clone() })
+            && e.tex.size() == [e.region.w as usize, e.region.h as usize]
+            && anim.is_none()
+        {
+            let patch = match deckcraft_render::changed_area(p, &e._slide, &slide, editing_text) {
+                deckcraft_render::Changed::Nothing => Some(None),
+                deckcraft_render::Changed::Area(r) => patch_region(e.region, r, scale).map(Some),
+                deckcraft_render::Changed::Unknown => None,
+            };
+            let drawn = match patch {
+                Some(Some(sub)) => {
+                    let (img, drawn) = render(sub);
+                    (img.width == sub.w && img.height == sub.h).then(|| {
+                        let at = [sub.x.saturating_sub(e.region.x).max(0) as usize, sub.y.saturating_sub(e.region.y).max(0) as usize];
+                        e.tex.set_partial(at, to_color_image(&img, grayscale), editor_texture_options());
+                        Some(drawn)
+                    })
+                }
+                Some(None) => Some(None),
+                None => None,
+            };
+            if let Some(drawn) = drawn {
+                if let Some(drawn) = drawn {
+                    self.canvas_renders += 1;
+                    self.region_renders += 1;
+                    self.drawn = Some(match self.drawn {
+                        Some((i, d)) if i == index => (index, d.union(drawn)),
+                        _ => (index, drawn),
+                    });
+                    self.last_render_ms = crate::now_ms() - t0;
+                }
+                e.key = key;
+                e._slide = slide;
+                e._master = master;
+                return Some((e.tex.clone(), e.region));
+            }
+        }
         let (mut img, drawn) = render(want);
         self.canvas_renders += 1;
         let mut region = want;
@@ -493,5 +561,100 @@ mod fit_tests {
         assert_eq!(small.pixels[1666], egui::Color32::BLUE);
         let ok = ColorImage::filled([10, 10], egui::Color32::WHITE);
         assert_eq!(shrink_to(ok.clone(), 2048).size, ok.size);
+    }
+}
+
+/// NexusOffice: an edit draws again only the part of the canvas it changed.
+#[cfg(test)]
+mod patch_tests {
+    use super::*;
+    use deckcraft_render::{Changed, RenderOpts, changed_area, render_slide_drawn};
+    use serde_json::json;
+
+    fn render(p: &Presentation, index: usize, region: Region, scale: f64, editing: Option<ShapeId>) -> Image {
+        let opts = RenderOpts { scale, edit: true, offset: region.offset(), size: Some(region.size()), editing_text: editing, ..Default::default() };
+        render_slide_drawn(p, index, &opts).0
+    }
+
+    /// The old canvas with the changed part drawn again over it is the new canvas, pixel for
+    /// pixel (within rounding), for typed Vietnamese text and a new paragraph, at two scales.
+    #[test]
+    fn a_canvas_with_its_changed_part_drawn_again_is_the_canvas_drawn_again() {
+        let mut s = deckcraft_engine::Session::with_new();
+        s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "Báo cáo", "body": "Doanh thu"})).unwrap();
+        s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi chú"})).unwrap();
+        let mut patched = 0;
+        for text in ["ữ", " tiếng Việt có dấu", "\nDòng mới"] {
+            let before = s.doc().unwrap().doc.clone();
+            s.execute("text.insert", &json!({ "text": text })).unwrap();
+            let st = s.doc().unwrap();
+            let after = st.doc.clone();
+            let editing = st.selection.text.as_ref().map(|t| t.shape);
+            let index = st.selection.slide;
+            let (old_slide, new_slide) = (before.slides[index].clone(), after.slides[index].clone());
+            let Changed::Area(area) = changed_area(&after, &old_slide, &new_slide, editing) else { panic!("{text:?}: a text edit changes an area") };
+            for scale in [1.0, 1.5] {
+                let w = (after.slide_size.width * scale).round() as u32;
+                let h = (after.slide_size.height * scale).round() as u32;
+                let canvas = Region::slide(w, h);
+                let mut old = render(&before, index, canvas, scale, editing);
+                let new = render(&after, index, canvas, scale, editing);
+                let Some(sub) = patch_region(canvas, area, scale) else { continue };
+                let part = render(&after, index, sub, scale, editing);
+                assert_eq!((part.width, part.height), (sub.w, sub.h));
+                let row = w as usize * 4;
+                for y in 0..sub.h as usize {
+                    let from = y * sub.w as usize * 4;
+                    let to = (sub.y as usize + y) * row + sub.x as usize * 4;
+                    old.pixels[to..to + sub.w as usize * 4].copy_from_slice(&part.pixels[from..from + sub.w as usize * 4]);
+                }
+                let off = old.pixels.iter().zip(&new.pixels).filter(|(x, y)| x.abs_diff(**y) > 2).count();
+                assert_eq!(off, 0, "{text:?} at {scale}: {off} channels differ from the canvas drawn whole");
+                patched += 1;
+            }
+        }
+        assert!(patched >= 4, "edits were drawn as parts: {patched}");
+    }
+
+    /// Typing into a text box draws part of the canvas per key, never the whole slide again.
+    #[test]
+    fn typing_draws_only_part_of_the_canvas() {
+        let ctx = egui::Context::default();
+        let mut t = Textures::default();
+        let mut s = deckcraft_engine::Session::with_new();
+        s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "Báo cáo", "body": "Doanh thu"})).unwrap();
+        s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi"})).unwrap();
+        let draw = |t: &mut Textures, s: &deckcraft_engine::Session| {
+            let st = s.doc().unwrap();
+            let editing = st.selection.text.as_ref().map(|x| x.shape);
+            t.slide(&ctx, &st.doc, st.selection.slide, (960, 540), Region::slide(960, 540), true, 0, false, &[], editing, None).is_some()
+        };
+        assert!(draw(&mut t, &s));
+        let whole = t.canvas_renders;
+        for c in " chú ý".chars() {
+            s.execute("text.insert", &json!({ "text": c.to_string() })).unwrap();
+            assert!(draw(&mut t, &s));
+        }
+        assert_eq!(t.region_renders, 6, "each key drew part of the canvas");
+        assert_eq!(t.canvas_renders - whole, 6, "and nothing whole");
+    }
+
+    #[test]
+    fn what_changed_is_found() {
+        let mut s = deckcraft_engine::Session::with_new();
+        s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "T", "body": "B"})).unwrap();
+        let p0 = s.doc().unwrap().doc.clone();
+        let i = s.doc().unwrap().selection.slide;
+        // The notes: nothing on the slide changes.
+        let mut notes = (*p0.slides[i]).clone();
+        notes.notes = deckcraft_model::text::TextBody::from_text("ghi chú");
+        assert_eq!(changed_area(&p0, &p0.slides[i], &notes, None), Changed::Nothing);
+        // Another layout: the whole slide.
+        let mut other = (*p0.slides[i]).clone();
+        other.layout = deckcraft_model::LayoutId(9999);
+        assert_eq!(changed_area(&p0, &p0.slides[i], &other, None), Changed::Unknown);
+        assert_eq!(patch_region(Region::slide(1000, 500), Rect::new(10.0, 10.0, 20.0, 20.0), 2.0), Some(Region { x: 19, y: 19, w: 22, h: 22 }));
+        assert_eq!(patch_region(Region::slide(100, 100), Rect::new(0.0, 0.0, 90.0, 90.0), 1.0), None, "most of the canvas");
+        assert_eq!(patch_region(Region::slide(100, 100), Rect::new(f64::NAN, 0.0, 1.0, 1.0), 1.0), None);
     }
 }
