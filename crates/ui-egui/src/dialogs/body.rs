@@ -370,7 +370,7 @@ fn dlg_close(app: &mut SlideApp, ui: &mut Ui, _d: &mut Dialog) -> bool {
 
 fn dlg_comment(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let mut v = d.get("text", "");
-    ui.add(egui::TextEdit::multiline(&mut v).hint_text("Comment").desired_rows(4).desired_width(320.0));
+    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "Comment")).desired_rows(4).desired_width(320.0));
     d.fields.insert("text".into(), v.clone());
     let (ok, cancel) = buttons(ui, "Post");
     if ok && !v.trim().is_empty() {
@@ -620,7 +620,7 @@ fn dlg_alt_text(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         .unwrap_or_default();
     ui.label(tl(ui, "How would you describe this object and its context to someone who is blind or has low vision?"));
     let mut v = d.get("text", &cur);
-    ui.add(egui::TextEdit::multiline(&mut v).hint_text("Alt text").desired_rows(4).desired_width(340.0));
+    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "Alt text")).desired_rows(4).desired_width(340.0));
     d.fields.insert("text".into(), v.clone());
     let deco = check(ui, d, "Mark as decorative", "deco", deco_now);
     let (ok, cancel) = buttons(ui, "OK");
@@ -633,7 +633,7 @@ fn dlg_alt_text(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 fn dlg_outline(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.label(tl(ui, "Paste or type an outline. Unindented lines become slide titles; tab-indented lines become bullets."));
     let mut v = d.get("text", "");
-    ui.add(egui::TextEdit::multiline(&mut v).hint_text("Outline").desired_rows(10).desired_width(380.0).code_editor());
+    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "Outline")).desired_rows(10).desired_width(380.0).code_editor());
     d.fields.insert("text".into(), v.clone());
     let (ok, cancel) = buttons(ui, "Insert");
     if ok {
@@ -676,7 +676,11 @@ fn dlg_reuse_slides(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
         for (i, title) in &slides {
             let mut on = !off(d, *i);
-            let label = if title.trim().is_empty() { format!("{}  {}", i + 1, tl(ui, "(no title)")) } else { format!("{}  {}", i + 1, title.trim()) };
+            let label = if title.trim().is_empty() {
+                lang.fill("{n}  (no title)", &[("n", &(i + 1).to_string())])
+            } else {
+                format!("{}  {}", i + 1, title.trim())
+            };
             if ui.checkbox(&mut on, label).changed() {
                 if on {
                     d.fields.remove(&format!("off{i}"));
@@ -1169,12 +1173,12 @@ fn dlg_language(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let has_sel = deckcraft_engine::cmd::has_text_or_shapes(&app.session).is_ok();
     let mut all = !has_sel || d.get("scope", "") == "all";
     ui.horizontal(|ui| {
-        ui.label("Apply to:");
-        if ui.add_enabled(has_sel, egui::RadioButton::new(!all, "Selected text")).clicked() {
+        ui.label(tl(ui, "Apply to:"));
+        if ui.add_enabled(has_sel, egui::RadioButton::new(!all, tl(ui, "Selected text"))).clicked() {
             d.fields.insert("scope".into(), "sel".into());
             all = false;
         }
-        if ui.radio(all, "Whole presentation").clicked() {
+        if ui.radio(all, tl(ui, "Whole presentation")).clicked() {
             d.fields.insert("scope".into(), "all".into());
             all = true;
         }
@@ -1267,7 +1271,7 @@ fn dlg_chart_data(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     egui::Grid::new("chartdata").striped(true).show(ui, |ui| {
         for row in grid.iter_mut() {
             for cell in row.iter_mut() {
-                ui.add(egui::TextEdit::singleline(cell).hint_text("Chart cell").desired_width(70.0));
+                ui.add(egui::TextEdit::singleline(cell).hint_text(tl(ui, "Chart cell")).desired_width(70.0));
             }
             ui.end_row();
         }
@@ -1365,7 +1369,7 @@ fn dlg_smartart(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     // NexusOffice: the sample items in the interface's language.
     let sample = ["Plan", "Build", "Launch"].map(|l| tl(ui, l).into_owned()).join("\n");
     let mut v = d.get("text", &sample);
-    ui.add(egui::TextEdit::multiline(&mut v).hint_text("SmartArt items").desired_rows(5).desired_width(320.0));
+    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "SmartArt items")).desired_rows(5).desired_width(320.0));
     d.fields.insert("text".into(), v.clone());
     let (ok, cancel) = buttons(ui, "Insert");
     if ok {
@@ -1402,8 +1406,8 @@ fn dlg_autocorrect(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.checkbox(&mut pr.ac_days, tl(ui, "Capitalize names of days"));
     ui.checkbox(&mut pr.ac_caps_lock, tl(ui, "Correct accidental use of cAPS LOCK key"));
     ui.checkbox(&mut pr.ac_fractions, tl(ui, "Replace fractions (1/2) with fraction characters (½)"));
-    ui.checkbox(&mut pr.ac_ordinals, "Ordinals (1st) with superscript");
-    ui.checkbox(&mut pr.ac_lists, "Automatic bulleted and numbered lists");
+    ui.checkbox(&mut pr.ac_ordinals, tl(ui, "Ordinals (1st) with superscript"));
+    ui.checkbox(&mut pr.ac_lists, tl(ui, "Automatic bulleted and numbered lists"));
     ui.checkbox(&mut pr.autocorrect, tl(ui, "Replace text as you type"));
     ui.add_space(4.0);
     let mut from = d.get("from", "");

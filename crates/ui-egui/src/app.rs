@@ -493,7 +493,14 @@ impl SlideApp {
         i18n::set_current(&ctx, self.ui.language);
         let t0 = now_ms();
         let t = theme::Tokens::get(&ctx);
-        self.note_ui_text(&ctx);
+        if self.note_ui_text(&ctx) {
+            // NexusOffice: a face was borrowed for letters the interface fonts lack (Vietnamese
+            // labels): the new fonts apply at the next pass, as at startup (`ui_setup`); drawing
+            // now would lay out letters no font has yet (egui 0.37 can panic on those).
+            ctx.request_discard("install borrowed interface faces before layout");
+            self.requeue_injected_synthetic();
+            return;
+        }
         self.media.sync_video_textures(&ctx);
         canvas::trackpad_twist(self, &ctx);
         eyedropper::tick(self, &ctx);

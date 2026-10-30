@@ -478,7 +478,7 @@ pub fn pattern_editor(ui: &mut Ui, pt: &PatternFill, sc: &ColorScheme) -> Option
     let t = Tokens::get(ui.ctx());
     let mut out: Option<PatternFill> = None;
     let (fg, bg) = (c32(&pt.fg, sc), c32(&pt.bg, sc));
-    ui.label("Pattern");
+    ui.label(tl(ui, "Pattern"));
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
         for name in pattern_gallery() {

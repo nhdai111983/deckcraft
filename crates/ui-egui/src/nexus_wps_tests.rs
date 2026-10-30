@@ -1506,9 +1506,18 @@ fn menu_harness(setup: impl FnOnce(&mut SlideApp), menu: fn(&mut SlideApp, &mut 
             let ctx = ui.ctx().clone();
             app.logic(&ctx);
             app.ui(ui);
-            egui::Area::new(Id::unique("qc-context-menu")).fixed_pos(egui::pos2(500.0, 300.0)).show(&ctx, |ui| {
-                egui::Frame::menu(ui.style()).show(ui, |ui| menu(app, ui));
-            });
+            // Only once the app's fonts draw Vietnamese (egui 0.37 tests panic on a missing glyph;
+            // the app borrows the faces over its first passes).
+            let ready = app.fonts_installed(&ctx)
+                && ["proportional", "bold"].iter().all(|f| {
+                    let font = if *f == "bold" { crate::theme::bold(13.0) } else { egui::FontId::proportional(13.0) };
+                    ctx.fonts_mut(|x| x.has_glyphs(&font, crate::i18n::VI_LETTERS))
+                });
+            if ready {
+                egui::Area::new(Id::unique("qc-context-menu")).fixed_pos(egui::pos2(500.0, 300.0)).show(&ctx, |ui| {
+                    egui::Frame::menu(ui.style()).show(ui, |ui| menu(app, ui));
+                });
+            }
         },
         a,
     );

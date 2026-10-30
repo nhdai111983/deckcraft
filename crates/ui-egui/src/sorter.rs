@@ -503,7 +503,11 @@ fn outline_slide(app: &mut SlideApp, ui: &mut Ui, t: &Tokens, i: usize, s: &deck
         let cur_title = s.title();
         let mut v: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_else(|| cur_title.clone()));
         let resp = ui.add(
-            egui::TextEdit::singleline(&mut v).hint_text("Slide title").font(theme::bold(14.0)).frame(egui::Frame::NONE).desired_width(f32::INFINITY),
+            egui::TextEdit::singleline(&mut v)
+                .hint_text(crate::i18n::tr(ui.ctx(), "Slide title"))
+                .font(theme::bold(14.0))
+                .frame(egui::Frame::NONE)
+                .desired_width(f32::INFINITY),
         );
         if resp.gained_focus() {
             let _ = app.run("slide.go", json!({"index": i}));

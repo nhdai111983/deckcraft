@@ -582,7 +582,9 @@ mod patch_tests {
     fn a_canvas_with_its_changed_part_drawn_again_is_the_canvas_drawn_again() {
         let mut s = deckcraft_engine::Session::with_new();
         s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "Báo cáo", "body": "Doanh thu"})).unwrap();
-        s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi chú"})).unwrap();
+        let id = s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi chú"})).unwrap()["id"].as_u64().unwrap();
+        // Upstream (2026-10): a text box made with its text is selected, not in text editing.
+        s.execute("text.edit", &json!({"id": id, "end": true})).unwrap();
         let mut patched = 0;
         for text in ["ữ", " tiếng Việt có dấu", "\nDòng mới"] {
             let before = s.doc().unwrap().doc.clone();
@@ -623,7 +625,9 @@ mod patch_tests {
         let mut t = Textures::default();
         let mut s = deckcraft_engine::Session::with_new();
         s.execute("slide.new", &json!({"layout": "titleAndContent", "title": "Báo cáo", "body": "Doanh thu"})).unwrap();
-        s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi"})).unwrap();
+        let id = s.execute("insert.textBox", &json!({"rect": [60, 300, 300, 60], "text": "Ghi"})).unwrap()["id"].as_u64().unwrap();
+        // Upstream (2026-10): a text box made with its text is selected, not in text editing.
+        s.execute("text.edit", &json!({"id": id, "end": true})).unwrap();
         let draw = |t: &mut Textures, s: &deckcraft_engine::Session| {
             let st = s.doc().unwrap();
             let editing = st.selection.text.as_ref().map(|x| x.shape);

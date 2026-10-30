@@ -6,7 +6,9 @@ use super::{
 impl SlideApp {
     /// Borrow faces for interface text in scripts the interface fonts lack (#101): the open
     /// presentations' names and text, recent files, and what is typed or composed this frame.
-    pub(super) fn note_ui_text(&mut self, ctx: &egui::Context) {
+    /// True when faces were borrowed this pass: the fonts change at the next pass, so drawing in
+    /// this one would miss those letters.
+    pub(super) fn note_ui_text(&mut self, ctx: &egui::Context) -> bool {
         let typed: String = ctx.input(|i| {
             i.events
                 .iter()
@@ -35,7 +37,9 @@ impl SlideApp {
         if self.ui_fonts.take_changed() {
             self.set_fonts(ctx, crate::theme::font_definitions(&self.ui_fonts.faces));
             ctx.request_repaint();
+            return true;
         }
+        false
     }
 
     /// Stable IME owner for the canvas text target: document, view, shape and table cell.

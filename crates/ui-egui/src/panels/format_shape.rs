@@ -182,7 +182,7 @@ pub(super) fn format_shape(app: &mut SlideApp, ui: &mut Ui) {
             // NexusOffice: the draft lives on the app, so a host closing the window sees it.
             let stored = app.alt_draft.take().filter(|(u, s, _, _)| *u == uid && *s == sh.id).map(|(_, _, base, text)| (base, text));
             let mut alt = widgets::text_draft(stored, &sh.descr);
-            let r = ui.add(egui::TextEdit::multiline(&mut alt).hint_text("Alt text").desired_rows(3).desired_width(f32::INFINITY));
+            let r = ui.add(egui::TextEdit::multiline(&mut alt).hint_text(tl(ui, "Alt text")).desired_rows(3).desired_width(f32::INFINITY));
             if r.lost_focus() && alt != sh.descr {
                 run(app, "shape.altText", json!({"text": alt}));
             }
@@ -239,7 +239,7 @@ pub(super) fn format_shape(app: &mut SlideApp, ui: &mut Ui) {
                         run(app, "format.columns", json!({"count": n, "spacing": 18}));
                     }
                 }
-                if ui.small_button("Columns…").clicked() {
+                if ui.small_button(tl(ui, "Columns…")).clicked() {
                     run(app, "format.columns", json!({}));
                 }
             });
