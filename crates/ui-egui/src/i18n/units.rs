@@ -476,6 +476,11 @@ mod tests {
         // English is upstream's parse.
         assert_eq!(parse_grouped(EN, "1234.5"), Some(1234.5));
         assert_eq!(parse_grouped(EN, "1,234.5"), None);
+    }
+
+    /// Split from the test above (upstream's cognitive-complexity limit).
+    #[test]
+    fn data_numbers_are_shown_grouped_and_read_back_exactly() {
         // Shown grouped, read back exactly.
         assert_eq!(format_grouped(VI, 1_500_000.0), "1.500.000");
         assert_eq!(format_grouped(VI, 1234.5), "1.234,5");

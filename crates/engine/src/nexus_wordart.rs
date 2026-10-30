@@ -80,7 +80,7 @@ pub struct WordArtStyle {
     pub reflection: bool,
 }
 
-use palette::*;
+use palette::{AMBER, CYAN, EMERALD, INDIGO, OBSIDIAN, ROSE, ROSE_INK, SKY, VIOLET, WHITE};
 
 const SOFT: ShadowSpec = ShadowSpec { color: OBSIDIAN, alpha: 0.35, blur: 6.0, dist: 3.0, dir: 90.0 };
 const LIFT: ShadowSpec = ShadowSpec { color: OBSIDIAN, alpha: 0.4, blur: 4.0, dist: 3.0, dir: 45.0 };
