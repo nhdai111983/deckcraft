@@ -512,7 +512,7 @@ fn names(lang: &str) -> (String, String) {
 }
 
 /// A language tag as dictionaries are named: 1–16 ASCII letters, digits, `-` or `_`.
-fn valid_lang(lang: &str) -> bool {
+pub(crate) fn valid_lang(lang: &str) -> bool {
     (1..=16).contains(&lang.len()) && lang.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 

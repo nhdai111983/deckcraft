@@ -814,6 +814,9 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Do you want to save the changes you made to {n} presentations?", "Bạn có muốn lưu các thay đổi trong {n} bản trình chiếu không?"),
     ("Your changes will be lost if you don't save them.", "Các thay đổi sẽ mất nếu bạn không lưu."),
     ("Don't Save", "Không lưu"),
+    // NexusOffice: the prompt every Nexus app shows as a tab of the NexusOffice window.
+    ("Save changes to “{name}” before closing?", "Lưu thay đổi của “{name}” trước khi đóng?"),
+    ("Save changes to {n} presentations before closing?", "Lưu thay đổi của {n} bản trình chiếu trước khi đóng?"),
     ("Cancel", "Hủy"),
     ("OK", "OK"),
     // ---- Dialog titles

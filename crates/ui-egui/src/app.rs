@@ -104,6 +104,7 @@ impl SlideApp {
             toolbar: false,
             wps: false,
             embedded: false,
+            drawn_in: egui::Rect::NOTHING,
             file_dialog: None,
             replace_blank: None,
             page_notes: None,
@@ -388,6 +389,10 @@ impl SlideApp {
         if self.session.untitled_prefix != prefix {
             self.session.untitled_prefix = prefix.to_string();
         }
+        let lang = self.ui.language.document_language();
+        if self.session.new_language.as_deref() != lang {
+            self.session.new_language = lang.map(str::to_string);
+        }
         self.tick_hidden_show(ctx, web_time::Instant::now());
         // `raw_input_hook` runs before `App::logic`. In a full pass egui has already built
         // `PointerState` and `keys_down` from every injected event, so retracting the events after
@@ -449,6 +454,7 @@ impl SlideApp {
     /// route may publish or inspect IME output on its own.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.drawn_in = ui.max_rect();
         if !Self::root_viewport_admitted(&ctx) {
             log::debug!("ignoring SlideApp::ui for render-only viewport {:?}", ctx.viewport_id());
             return;

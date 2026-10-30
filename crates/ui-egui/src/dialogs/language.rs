@@ -24,5 +24,7 @@ pub fn selected_language(app: &SlideApp) -> (String, bool) {
         _ => st.selection.shapes.first().and_then(|id| st.shape(*id)).and_then(|sh| run(sh, None)),
     };
     let props = props.unwrap_or_default();
-    (props.lang.unwrap_or_else(|| "en-US".into()), props.no_proof == Some(true))
+    // NexusOffice: text that doesn't say is in the deck's default language, if it has one.
+    let lang = props.lang.or_else(|| st.doc.default_lang().map(str::to_string)).unwrap_or_else(|| "en-US".into());
+    (lang, props.no_proof == Some(true))
 }

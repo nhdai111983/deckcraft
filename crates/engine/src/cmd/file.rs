@@ -119,6 +119,11 @@ fn new(s: &mut Session, p: &Value) -> Result<Value> {
         let theme = theme_name.and_then(theme_named).unwrap_or_default();
         (defaults::blank_presentation(size, theme, !bool_or(p, "blank", false)), None)
     };
+    let mut doc = doc;
+    // NexusOffice: a deck started in Vietnamese is in Vietnamese (`Session::new_language`).
+    if let Some(lang) = s.new_language.as_deref().filter(|l| crate::spell::valid_lang(l)) {
+        doc.set_default_lang(lang);
+    }
     let slides = doc.slides.len();
     let title = s.next_untitled();
     let i = s.add_document(DocState::new(doc, None, title));

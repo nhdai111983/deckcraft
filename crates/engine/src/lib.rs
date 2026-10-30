@@ -484,6 +484,11 @@ pub struct Session {
     /// language ("Trình chiếu " → "Trình chiếu 1"); empty is upstream's "Presentation". Set by the
     /// interface, not saved.
     pub untitled_prefix: String,
+    /// NexusOffice: the language new presentations' text is in (`vi-VN` while the interface is
+    /// Vietnamese), kept as the deck's default text language so a PPTX save writes
+    /// `lang="vi-VN"`; None is upstream's (no language, read as US English). Opened files keep
+    /// their own. Set by the interface, not saved.
+    pub new_language: Option<String>,
     /// Format Painter: copied shape/text formatting and whether it stays on (double-click).
     pub painter: Option<(cmd::format::Painted, bool)>,
     /// Animation Painter: copied shape animations and whether it stays on (double-click).
@@ -533,6 +538,7 @@ impl Session {
             tool: tools::ToolState::default(),
             untitled: 0,
             untitled_prefix: String::new(),
+            new_language: None,
             default_look: None,
             painter: None,
             anim_painter: None,

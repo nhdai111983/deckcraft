@@ -165,7 +165,8 @@ fn default_lang(st: &DocState) -> String {
             return l;
         }
     }
-    "en-US".into()
+    // NexusOffice: else the deck's own default language (a deck started in Vietnamese).
+    st.doc.default_lang().unwrap_or("en-US").into()
 }
 
 /// A word under a squiggle: `(tag, start, end)`.
@@ -235,6 +236,8 @@ pub const LANGS: &[(&str, &str)] = &[
     ("日本語", "ja-JP"),
     ("中文(中国)", "zh-CN"),
     ("한국어", "ko-KR"),
+    // NexusOffice: Vietnamese, the language of decks started in the Vietnamese interface.
+    ("Tiếng Việt", "vi-VN"),
     ("العربية", "ar-SA"),
     ("עברית", "he-IL"),
 ];

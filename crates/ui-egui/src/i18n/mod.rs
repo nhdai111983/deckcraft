@@ -121,6 +121,15 @@ impl Language {
         out
     }
 
+    /// NexusOffice: the language a new presentation's text is in: none (upstream, read as US
+    /// English) for English, `vi-VN` for Vietnamese.
+    pub fn document_language(self) -> Option<&'static str> {
+        match self {
+            Language::En => None,
+            Language::Vi => Some("vi-VN"),
+        }
+    }
+
     /// What a new presentation is called before its number: "Presentation" (upstream), "Trình chiếu".
     pub fn untitled_prefix(self) -> &'static str {
         match self {

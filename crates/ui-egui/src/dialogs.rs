@@ -82,6 +82,17 @@ fn title(id: &str) -> &'static str {
 /// state as its close path requires.
 pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
     let Some(mut d) = app.dialog.take() else { return };
+    // NexusOffice: as a tab of the NexusOffice window, the prompt every Nexus app shows.
+    if app.embedded && matches!(d.id.as_str(), "close" | "quit") {
+        match embedded_save_prompt(app, ctx, &d) {
+            Some(true) => {
+                app.dialog = Some(d);
+                return;
+            }
+            Some(false) => return,
+            None => {}
+        }
+    }
     let mut open = true;
     let mut close = false;
     let lang = app.ui.language;
@@ -133,6 +144,68 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         back.params = ret;
         app.dialog = Some(back);
     }
+}
+
+/// NexusOffice: "Lưu thay đổi?" over the tab (`nexus_save_prompt`) for File › Close ("close")
+/// and quitting ("quit"). Lưu, Không lưu and Hủy do what the stand-alone prompt's Save, Don't Save
+/// and Cancel do. Returns whether the prompt stays open, or None when there is nothing to ask
+/// about (the stand-alone code then finishes the close or the quit).
+fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> Option<bool> {
+    use crate::nexus_save_prompt as sp;
+    let quit = d.id == "quit";
+    let names: Vec<String> = if quit {
+        app.session.documents().iter().filter(|d| d.is_dirty()).map(|d| d.title()).collect()
+    } else {
+        app.session.active().map(|d| d.title()).into_iter().collect()
+    };
+    let lang = app.ui.language;
+    let vi = lang == crate::i18n::Language::Vi;
+    // Through the catalogue (the same words as `sp::question`), so the interface audit knows them.
+    let question = match names.as_slice() {
+        [] => return None,
+        [one] => lang.fill("Save changes to “{name}” before closing?", &[("name", &sp::shorten_middle(one, 80))]),
+        many => lang.fill("Save changes to {n} presentations before closing?", &[("n", &many.len().to_string())]),
+    };
+    let t = Tokens::get(ctx);
+    let prompt = sp::Prompt { words: sp::words(vi), question: &question, note: None, error: None };
+    let look = sp::Look {
+        dark: t.dark,
+        accent: t.accent,
+        on_accent: t.accent_text,
+        error: ctx.global_style().visuals.error_fg_color,
+        title_font: theme::bold(sp::TITLE_SIZE),
+        title_fake_bold: !theme::has_semibold(),
+    };
+    let Some(answer) = sp::show(ctx, egui::Id::unique("nexus_save_prompt"), app.drawn_in, &prompt, &look) else { return Some(true) };
+    match (answer, quit) {
+        (sp::Answer::Cancel, _) => {}
+        (sp::Answer::DontSave, false) => {
+            let _ = app.run("file.close", json!({}));
+        }
+        (sp::Answer::DontSave, true) => {
+            let _ = app.session.execute("file.recovery.discard", &json!({}));
+            app.quit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        (sp::Answer::Save, false) => {
+            app.save();
+            // In the browser a save is a download: the presentation stays "unsaved".
+            let web = app.services.pick_save.is_none() && app.services.download.is_some();
+            if web || app.session.active().is_some_and(|d| !d.is_dirty()) {
+                let _ = app.run("file.close", json!({}));
+            } else {
+                // A presentation with no file waits for the host's Save As.
+                app.close_after_pending_save();
+            }
+        }
+        (sp::Answer::Save, true) => {
+            if app.save_all() {
+                app.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+    Some(false)
 }
 
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {

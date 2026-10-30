@@ -1030,6 +1030,25 @@ impl Default for Presentation {
 }
 
 impl Presentation {
+    /// NexusOffice: the language the deck's text is in when a run doesn't say (`lang` of the
+    /// default text style, `p:defaultTextStyle` in PPTX), if the deck sets one.
+    pub fn default_lang(&self) -> Option<&str> {
+        self.default_text_style.levels.iter().flatten().find_map(|l| l.run.lang.as_deref()).filter(|l| !l.trim().is_empty())
+    }
+
+    /// NexusOffice: make `lang` the language of the deck's text where nothing else says one
+    /// (every level of the default text style that has none). Runs that name a language keep it.
+    pub fn set_default_lang(&mut self, lang: &str) {
+        if self.default_text_style.is_empty() {
+            self.default_text_style = defaults::default_text_style();
+        }
+        for level in self.default_text_style.levels.iter_mut().flatten() {
+            if level.run.lang.is_none() {
+                level.run.lang = Some(lang.to_string());
+            }
+        }
+    }
+
     /// A fresh id, unique across slides, shapes, layouts, masters and media in this deck. `None`
     /// once every id is in use (a hostile file can arrive that way): the deck cannot grow
     /// further, and callers must refuse the change rather than duplicate ids (#407).

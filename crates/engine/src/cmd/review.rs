@@ -328,7 +328,8 @@ fn check_lang(doc: &deckcraft_model::Presentation, p: &Value) -> String {
             }
         });
     }
-    found.unwrap_or_else(|| "en-US".into())
+    // NexusOffice: else the deck's own default language (a deck started in Vietnamese).
+    found.or_else(|| doc.default_lang().map(str::to_string)).unwrap_or_else(|| "en-US".into())
 }
 
 fn spelling(s: &mut Session, p: &Value) -> Result<Value> {
