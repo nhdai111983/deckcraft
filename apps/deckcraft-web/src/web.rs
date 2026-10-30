@@ -1,5 +1,7 @@
 //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
 
+mod host;
+
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Inbox, InboxEvent, InboxFile, Services, SlideApp};
 use wasm_bindgen::JsCast as _;
@@ -24,6 +26,9 @@ pub fn start() {
             log::error!("missing <canvas id=\"{CANVAS_ID}\">");
             return;
         };
+        // Framed in a same-origin page: that page sends and stores files instead of the browser.
+        let bridge = host::Bridge::new();
+        let app_bridge = bridge.clone();
         let mut options = eframe::WebOptions::default();
         if query().contains("webgl")
             && let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup
@@ -41,6 +46,9 @@ pub fn start() {
                     deckcraft_ui_egui::install_ime_pass_hooks(&cc.egui_ctx);
                     let inbox: Inbox = Inbox::default();
                     let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
+                    if let Some(bridge) = &app_bridge {
+                        bridge.connect(&mut app.services, cc.egui_ctx.clone());
+                    }
                     // NexusOffice layout in the style of WPS Office, in Vietnamese.
                     app.wps = true;
                     app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
@@ -55,10 +63,16 @@ pub fn start() {
                     if q.contains("show") {
                         app.start_show(0, false);
                     }
-                    Ok(Box::new(WebShell { app, inbox }))
+                    Ok(Box::new(WebShell { app, inbox, bridge: app_bridge }))
                 }),
             )
             .await;
+        if let Some(bridge) = &bridge {
+            match &result {
+                Ok(()) => bridge.post_ready(),
+                Err(e) => bridge.post_failed(&format!("{e:?}")),
+            }
+        }
         if let Some(el) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => el.remove(),
@@ -77,11 +91,16 @@ fn query() -> String {
 struct WebShell {
     app: SlideApp,
     inbox: Inbox,
+    /// Set when a same-origin page frames the app ([`crate::host`]).
+    bridge: Option<host::Bridge>,
 }
 
 impl eframe::App for WebShell {
     /// Delegate one eframe logic pass to the wrapped application.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(bridge) = self.bridge.clone() {
+            bridge.sync(&mut self.app, &self.inbox, ctx);
+        }
         self.app.logic(ctx);
     }
 
