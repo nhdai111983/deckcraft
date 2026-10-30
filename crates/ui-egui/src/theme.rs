@@ -66,7 +66,7 @@ impl Tokens {
             chrome: Color32::from_rgb(0xF1, 0xF5, 0xF9),
             card: Color32::from_rgb(0xF8, 0xFA, 0xFC),
             card_border: Color32::from_rgb(0xE2, 0xE8, 0xF0),
-            text_field: Color32::from_rgb(0xE9, 0xED, 0xF2),
+            text_field: Color32::from_rgb(0xE5, 0xEA, 0xF0),
             canvas: Color32::from_rgb(0xE9, 0xED, 0xF2),
             text: Color32::from_rgb(0x1E, 0x29, 0x3B),
             text_dim: Color32::from_rgb(0x47, 0x55, 0x69),

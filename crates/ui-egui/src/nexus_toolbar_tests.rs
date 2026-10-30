@@ -166,7 +166,7 @@ fn menus_and_tools_work_in_the_window() {
     assert_eq!(h.query_all_by_label("Transitions").count(), 1, "one Transitions: the menu, no ribbon tab");
     // Home › Font › Bold, through the menus. Menu items carry their shortcut.
     open_menu(&mut h, "Home");
-    h.get_by_label("Font ⏵").hover();
+    h.get_all_by_label("Font").next().unwrap().hover();
     h.run_steps(6);
     h.get_by_label_contains(&crate::ribbon::pretty_shortcut("Cmd+I"));
     h.get_by_label_contains(&crate::ribbon::pretty_shortcut("Cmd+B")).click();
@@ -174,9 +174,9 @@ fn menus_and_tools_work_in_the_window() {
     assert_eq!(state(&mut h, "bold"), json!(false), "the menu's Bold ran format.bold again");
     // Home › Font › Font Size › 40: a value the ribbon picks from a list is a submenu of it.
     open_menu(&mut h, "Home");
-    h.get_by_label("Font ⏵").hover();
+    h.get_all_by_label("Font").next().unwrap().hover();
     h.run_steps(6);
-    h.get_by_label("Font Size ⏵").hover();
+    h.get_all_by_label("Font Size").next().unwrap().hover();
     h.run_steps(6);
     h.get_by_label("40").scroll_to_me();
     h.run_steps(6);
@@ -185,9 +185,9 @@ fn menus_and_tools_work_in_the_window() {
     assert_eq!(state(&mut h, "size"), json!(40.0));
     // Home › Paragraph › Align › Right: a command with one value is a submenu of its choices.
     open_menu(&mut h, "Home");
-    h.get_by_label("Paragraph ⏵").hover();
+    h.get_all_by_label("Paragraph").next().unwrap().hover();
     h.run_steps(6);
-    h.get_by_label("Align ⏵").hover();
+    h.get_all_by_label("Align").next().unwrap().hover();
     h.run_steps(6);
     h.get_by_label("Right").click();
     h.run_steps(6);
@@ -244,8 +244,9 @@ fn a_narrow_window_moves_tools_into_more() {
 #[test]
 fn the_ribbon_stays_without_the_flag() {
     let h = harness_with(1280.0, 800.0, SlideApp::new(Session::with_new(), Services::default()));
-    assert!(h.query_by_label("More tools").is_none());
-    assert!(h.query_by_label("Paste options").is_none(), "no tool row");
+    // (Upstream's own ribbon names its split arrows "Paste options" now, so only the tool row's
+    // overflow button tells the two apart.)
+    assert!(h.query_by_label("More tools").is_none(), "no tool row");
 }
 
 /// `ui.accent` sets, reads and resets the accent; junk is refused; the palette follows.

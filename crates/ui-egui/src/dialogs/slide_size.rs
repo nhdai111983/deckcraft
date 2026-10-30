@@ -1,5 +1,5 @@
+use super::lang_of;
 use super::{Dialog, exact_of, field_of};
-use super::{lang_of, std_number};
 use crate::i18n::{Language, units};
 
 /// A Slide Size field set to `pt`: two decimals of the unit shown, the exact points kept beside.
@@ -20,7 +20,13 @@ pub(super) fn slide_dim_points(d: &Dialog, key: &str, ppu: f64, default: f64) ->
     {
         return pt;
     }
-    let text = if lang == Language::En { text } else { std_number(lang, &text) };
+    // NexusOffice: a unit typed after the number wins ("25,4 cm", "10 in"), as elsewhere in the
+    // Vietnamese dialogs.
+    if lang != Language::En {
+        let unit_typed = text.trim_end().ends_with(|c: char| c.is_alphabetic() || c == '"');
+        let pt = if unit_typed { units::parse_length(lang, &text) } else { units::parse_number(lang, &text).map(|v| v * ppu) };
+        return pt.filter(|v| v.is_finite()).unwrap_or(default);
+    }
     text.trim().trim_end_matches(['"', '%', ' ']).parse::<f64>().ok().filter(|v| v.is_finite()).map_or(default, |v| v * ppu)
 }
 

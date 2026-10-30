@@ -1634,4 +1634,24 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Start After Previous", "Bắt đầu sau hiệu ứng trước"),
     ("Show All", "Hiện tất cả"),
     ("Hide All", "Ẩn tất cả"),
+    // Upstream 2026-10 (integration 2026-10-30): Preferences' units, Header & Footer's date format,
+    // the Animation pane's Play From.
+    ("Measurement units:", "Đơn vị đo:"),
+    ("Inches", "Inch"),
+    ("Centimeters", "Centimét"),
+    ("Format:", "Định dạng:"),
+    ("▶ Play From", "▶ Phát từ mục này"),
+    // Upstream's Reuse Slides picker.
+    ("Reuse Slides", "Dùng lại trang chiếu"),
+    ("Insert slides from {name} after the current slide:", "Chèn các trang chiếu của {name} sau trang chiếu hiện tại:"),
+    ("Select All", "Chọn tất cả"),
+    ("Select None", "Bỏ chọn tất cả"),
+    ("(no title)", "(không có tiêu đề)"),
+    ("Keep source formatting", "Giữ định dạng nguồn"),
+    ("Tick at least one slide to insert", "Hãy chọn ít nhất một trang chiếu để chèn"),
+    // Upstream's Columns dialog (Home › Paragraph › Columns › More Columns…).
+    ("Number:", "Số cột:"),
+    ("Spacing (in):", "Khoảng cách (in):"),
+    ("Number must be a whole number from 1 to 16", "Số cột phải là số nguyên từ 1 đến 16"),
+    ("Spacing must be from 0 to 22 inches", "Khoảng cách phải từ 0 đến 22 inch"),
 ];

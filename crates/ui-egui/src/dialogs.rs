@@ -222,10 +222,8 @@ fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let name = label.trim_start();
     let indent = label.len().saturating_sub(name.len()) > 0;
     let text = tl(ui, name).into_owned();
-    crate::nexus_dialog::field_row(ui, &text, indent, |ui, width| {
-        let r = ui.add(egui::TextEdit::singleline(&mut v).desired_width(width).margin(vec2(6.0, 4.0)).min_size(vec2(0.0, 26.0)));
-        // Named by its label, as upstream's `labelled_by` does.
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &text));
+    crate::nexus_dialog::field_row(ui, &text, indent, |ui, width, label| {
+        let _ = ui.add(egui::TextEdit::singleline(&mut v).desired_width(width).margin(vec2(6.0, 4.0)).min_size(vec2(0.0, 26.0))).labelled_by(label);
     });
     d.fields.insert(key.into(), v);
 }

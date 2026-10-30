@@ -38,7 +38,7 @@ pub const ROW_H: f32 = 26.0;
 
 /// The neutral frame of an input: 3:1 against the field and the dialog (WCAG non-text contrast).
 pub fn input_border(t: &Tokens) -> Color32 {
-    if t.dark { Color32::from_rgb(0x64, 0x74, 0x8B) } else { Color32::from_rgb(0x7C, 0x8B, 0xA0) }
+    if t.dark { Color32::from_rgb(0x64, 0x74, 0x8B) } else { Color32::from_rgb(0x78, 0x87, 0x9C) }
 }
 
 /// The frame of a hovered input.
@@ -123,8 +123,9 @@ pub const FIELD_W: f32 = 180.0;
 
 /// A form row: `label` (already in the interface language) left-aligned in a [`LABEL_W`] column,
 /// then the control `add` draws in the width it is given. A label too long for the column goes on
-/// its own line above the control. `indent` moves both right (a sub-option).
-pub fn field_row(ui: &mut Ui, label: &str, indent: bool, add: impl FnOnce(&mut Ui, f32)) {
+/// its own line above the control. `indent` moves both right (a sub-option). `add` also gets the
+/// label's id, so the control can be `labelled_by` it (upstream's accessible names).
+pub fn field_row(ui: &mut Ui, label: &str, indent: bool, add: impl FnOnce(&mut Ui, f32, egui::Id)) {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let color = ui.visuals().text_color();
     let text_w = ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font, color).size().x);
@@ -135,16 +136,18 @@ pub fn field_row(ui: &mut Ui, label: &str, indent: bool, add: impl FnOnce(&mut U
             ui.add_space(pad);
             let r = ui.label(label);
             ui.add_space((LABEL_W - pad - r.rect.width() - spacing).max(0.0));
-            add(ui, FIELD_W);
+            add(ui, FIELD_W, r.id);
         });
     } else {
+        let id = ui
+            .horizontal(|ui| {
+                ui.add_space(pad);
+                ui.label(label).id
+            })
+            .inner;
         ui.horizontal(|ui| {
             ui.add_space(pad);
-            ui.label(label);
-        });
-        ui.horizontal(|ui| {
-            ui.add_space(pad);
-            add(ui, (LABEL_W + FIELD_W - pad).max(FIELD_W));
+            add(ui, (LABEL_W + FIELD_W - pad).max(FIELD_W), id);
         });
         ui.add_space(2.0);
     }

@@ -96,7 +96,12 @@ fn dlg_table(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 
 fn dlg_slide_size(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let cur = app.session.active().map(|s| s.doc.slide_size).unwrap_or(deckcraft_model::defaults::WIDE);
-    let len = app.session.prefs.units;
+    // NexusOffice: the Vietnamese interface measures in centimetres (Preferences offers inches
+    // and centimetres; inches, upstream's default, reads as "not chosen" there).
+    let len = match (lang_of(d), app.session.prefs.units) {
+        (Language::Vi, deckcraft_geom::Unit::Inches) => deckcraft_geom::Unit::Centimeters,
+        (_, unit) => unit,
+    };
     let ppu = len.points_per_unit();
     // Each field keeps its exact size in points (`wPt`) beside the two decimals shown, so
     // a preset, Portrait or an untouched field is not nudged off by the rounding (13.33",
@@ -157,14 +162,16 @@ fn dlg_header_footer(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let label = rows.iter().find(|(k, _)| *k == fmt).map(|(_, s)| s.clone()).unwrap_or_else(|| fmt.clone());
     ui.add_enabled_ui(date && automatic, |ui| {
         ui.horizontal(|ui| {
-            ui.label("  Format:");
-            craft_ui::ComboBox::from_id_salt("hf-date-format").selected_text(label).width(200.0).show_ui(ui, |ui| {
+            // NexusOffice: the label in the interface's language, naming the list.
+            let field = ui.label(format!("  {}", tl(ui, "Format:")));
+            let combo = craft_ui::ComboBox::from_id_salt("hf-date-format").selected_text(label).width(200.0).show_ui(ui, |ui| {
                 for (kind, sample) in &rows {
                     if ui.selectable_label(fmt == *kind, sample).clicked() {
                         d.fields.insert("dateFormat".into(), (*kind).to_string());
                     }
                 }
             });
+            let _ = combo.response.labelled_by(field.id);
         });
     });
     let num_on = check(ui, d, "Slide number", "num", hf.slide_number);
@@ -650,16 +657,17 @@ fn dlg_reuse_slides(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         })
         .unwrap_or_default();
     let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(path.clone());
-    ui.label(format!("Insert slides from {name} after the current slide:"));
+    let lang = crate::i18n::current(ui.ctx());
+    ui.label(lang.fill("Insert slides from {name} after the current slide:", &[("name", &name)]));
     // Unticked slides are remembered by index; everything starts ticked.
     let off = |d: &Dialog, i: usize| d.fields.get(&format!("off{i}")).is_some_and(|v| v == "1");
     ui.horizontal(|ui| {
-        if ui.small_button("Select All").clicked() {
+        if ui.small_button(tl(ui, "Select All")).clicked() {
             for (i, _) in &slides {
                 d.fields.remove(&format!("off{i}"));
             }
         }
-        if ui.small_button("Select None").clicked() {
+        if ui.small_button(tl(ui, "Select None")).clicked() {
             for (i, _) in &slides {
                 d.fields.insert(format!("off{i}"), "1".into());
             }
@@ -668,7 +676,7 @@ fn dlg_reuse_slides(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
         for (i, title) in &slides {
             let mut on = !off(d, *i);
-            let label = if title.trim().is_empty() { format!("{}  (no title)", i + 1) } else { format!("{}  {}", i + 1, title.trim()) };
+            let label = if title.trim().is_empty() { format!("{}  {}", i + 1, tl(ui, "(no title)")) } else { format!("{}  {}", i + 1, title.trim()) };
             if ui.checkbox(&mut on, label).changed() {
                 if on {
                     d.fields.remove(&format!("off{i}"));
@@ -679,7 +687,7 @@ fn dlg_reuse_slides(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
     });
     let mut keep = d.params.get("keep").and_then(Value::as_bool).unwrap_or(false);
-    if ui.checkbox(&mut keep, "Keep source formatting").changed()
+    if ui.checkbox(&mut keep, tl(ui, "Keep source formatting")).changed()
         && let Some(o) = d.params.as_object_mut()
     {
         o.insert("keep".into(), json!(keep));
@@ -688,7 +696,8 @@ fn dlg_reuse_slides(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let (ok, cancel) = buttons(ui, "Insert");
     if ok {
         if picked.is_empty() {
-            app.set_status("Tick at least one slide to insert".to_string());
+            let msg = app.ui.language.tr("Tick at least one slide to insert").into_owned();
+            app.set_status(msg);
             return false;
         }
         // A failed insert keeps the dialog (and the ticked slides) open; the error is in the status bar.
@@ -1448,9 +1457,8 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     // on release, and at once from the keyboard.
     let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
     let mut scale = pending.unwrap_or(app.ui.ui_scale);
-    let r = ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut scale, 0.75..=1.75).text(tl(ui, "Interface size"))));
-    // NexusOffice: the slider shows its name (in the interface's language); the accessible name
-    // stays upstream's.
+    let r = ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut scale, 0.75..=1.75)));
+    // No visible label here (the row is laid out to fit); the accessible name only.
     let enabled = r.enabled();
     r.widget_info(|| egui::WidgetInfo::slider(enabled, f64::from(scale), "Interface size"));
     if r.is_pointer_button_down_on() {
@@ -1465,10 +1473,10 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     // PowerPoint takes the unit from the system's measurement setting; DeckCraft asks here.
     ui.horizontal(|ui| {
-        ui.label("Measurement units:");
+        ui.label(tl(ui, "Measurement units:"));
         let units = &mut app.session.prefs.units;
-        ui.radio_value(units, deckcraft_geom::Unit::Inches, "Inches");
-        ui.radio_value(units, deckcraft_geom::Unit::Centimeters, "Centimeters");
+        ui.radio_value(units, deckcraft_geom::Unit::Inches, tl(ui, "Inches"));
+        ui.radio_value(units, deckcraft_geom::Unit::Centimeters, tl(ui, "Centimeters"));
     });
     ui.label(egui::RichText::new(tl(ui, "Editing")).font(theme::bold(13.0)));
     ui.checkbox(&mut app.session.prefs.smart_guides, tl(ui, "Show smart guides"));

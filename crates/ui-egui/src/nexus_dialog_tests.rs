@@ -219,7 +219,8 @@ fn the_equation_dialog_is_as_tall_as_its_content() {
 #[test]
 fn date_and_time_starts_in_the_interface_language() {
     let mut h = harness(Language::Vi, "dateTime");
-    let _ = h.get_by_label("Tiếng Việt");
+    // Upstream names the list "Language" and gives the language as its value.
+    let _ = h.get_by_value("Tiếng Việt");
     let now = deckcraft_text::datetime::DateTime::now_local().unwrap();
     let long = deckcraft_text::datetime::field_text("datetime2", Some("vi-VN"), now).unwrap();
     let shown = drawn(&h);
@@ -245,7 +246,7 @@ fn date_and_time_starts_in_the_interface_language() {
     assert_eq!(run.text, long);
 
     let h = harness(Language::En, "dateTime");
-    let _ = h.get_by_label("English (United States)");
+    assert!(h.query_all_by_value("English (United States)").next().is_some());
     assert_eq!(crate::dialogs::date_default_lang(Language::En), "en-US");
     assert_eq!(crate::dialogs::date_default_lang(Language::Vi), "vi-VN");
 }

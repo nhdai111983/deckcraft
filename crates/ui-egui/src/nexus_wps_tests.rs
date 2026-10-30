@@ -128,7 +128,8 @@ fn quick_access_save_undo_and_redo_work() {
     h.run_steps(6);
     assert!(path.exists(), "Save wrote the file");
     assert!(!h.state().session.active().unwrap().is_dirty());
-    assert!(h.query_by_label("Saved").is_some(), "the save state follows");
+    // (Upstream's status bar names its message now, and the save's message is "Saved" too.)
+    assert!(h.query_all_by_label("Saved").next().is_some(), "the save state follows");
     click_id(&mut h, save_state_id());
     assert!(h.query_by_label("Save As…").is_some(), "Save As is in the save state's menu");
     let _ = std::fs::remove_file(&path);
@@ -264,7 +265,8 @@ fn search_comments_share_and_tabs_are_reachable() {
     h.get_by_label("Chuyển tiếp").click();
     h.run_steps(4);
     assert_eq!(h.state().ui.tab, "Transitions");
-    h.get_by_label("Nhận xét").click();
+    // The top row's Comments (upstream's status bar has a Comments button of its own now).
+    h.get_all_by_label("Nhận xét").min_by(|a, b| a.rect().min.y.total_cmp(&b.rect().min.y)).unwrap().click();
     h.run_steps(4);
     assert_eq!(h.state().ui.pane.as_deref(), Some("comments"));
     click_id(&mut h, share_id());
@@ -962,6 +964,10 @@ fn every_label_in_every_dialog_and_the_format_panes_is_vietnamese() {
         ("themeColors", vec![]),
         ("themeFonts", vec![]),
         ("dateTime", vec![]),
+        // Upstream's Reuse Slides picker (2026-10).
+        ("reuseSlides", vec![]),
+        // Upstream's Columns dialog (2026-10).
+        ("columns", vec![]),
     ];
     let mut opened: Vec<&str> = dialogs.iter().map(|(id, _)| *id).collect();
     opened.sort_unstable();
@@ -995,6 +1001,9 @@ fn every_label_in_every_dialog_and_the_format_panes_is_vietnamese() {
             let mut d = Dialog::new(id);
             if id.starts_with("rename") {
                 d.params = json!({"name": "Tên cũ"});
+            }
+            if id == "reuseSlides" {
+                d.params = json!({"path": "Bài cũ.pptx", "keep": false, "slides": [{"index": 0, "title": "Mở đầu"}, {"index": 1, "title": ""}]});
             }
             for (k, v) in &fields {
                 d.fields.insert((*k).into(), (*v).into());
@@ -1213,15 +1222,18 @@ const VI_DIALOGS: &[&str] = &[
     "themeColors",
     "themeFonts",
     "dateTime",
+    "reuseSlides",
+    "columns",
 ];
 
 /// Dialogs still drawn (partly) in English: the follow-up list. A dialog leaves it when the
 /// coverage test opens it ([`VI_DIALOGS`]).
 const NOT_YET_VI: &[&str] = &[];
 
-/// Every dialog id `dialogs.rs`'s `body` handles (its match arms, `"a" | "b" =>` included).
+/// Every dialog id `dialogs/body.rs`'s `body` handles (its match arms, `"a" | "b" =>` included;
+/// upstream moved `body` out of `dialogs.rs` in 2026-10).
 fn dialog_ids() -> Vec<String> {
-    let src = include_str!("dialogs.rs");
+    let src = include_str!("dialogs/body.rs");
     let start = src.find("fn body(app: &mut SlideApp").expect("dialogs::body");
     let rest = &src[start..];
     let end = rest[1..].find("\nfn ").map_or(rest.len(), |i| i + 1);
