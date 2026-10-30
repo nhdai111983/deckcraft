@@ -41,7 +41,11 @@ pub fn needs_filters(pres: &Presentation, slide: &Slide) -> bool {
 /// text styles it inherits)? Such text is blurred, which needs filters.
 fn text_has_effects(rctx: &Ctx, s: &Shape) -> bool {
     use deckcraft_model::text::{ListStyle, RunProps};
-    let fx = |r: &RunProps| r.shadow.as_ref().is_some_and(|s| !s.inner) || r.glow.as_ref().is_some_and(|g| g.radius > 0.0);
+    let fx = |r: &RunProps| {
+        r.shadow.as_ref().is_some_and(|s| !s.inner)
+            || r.glow.as_ref().is_some_and(|g| g.radius > 0.0)
+            || r.reflection.as_ref().is_some_and(|f| f.blur > 0.0)
+    };
     let styled = |l: &ListStyle| l.levels.iter().flatten().any(|lv| fx(&lv.run));
     let Some(t) = &s.text else { return false };
     t.paragraphs.iter().any(|p| p.runs.iter().any(|r| fx(&r.props)) || fx(&p.end_props))

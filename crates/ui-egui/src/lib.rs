@@ -24,6 +24,9 @@ pub mod nexus_save_prompt;
 #[cfg(test)]
 mod nexus_save_prompt_tests;
 pub mod nexus_toolbar;
+pub mod nexus_wordart;
+#[cfg(test)]
+mod nexus_wordart_tests;
 pub mod nexus_wps;
 pub mod opening;
 pub mod ribbon;

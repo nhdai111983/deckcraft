@@ -1,7 +1,7 @@
 use super::geometry::{blur, color, pre_translate, scale_of};
 use super::opts::ParaState;
 use super::{
-    Affine, Arc, BezPath, Ctx, FontDb, HashMap, Opts, PhType, Rect, RenderContext, Rgba, Shape, TextBody, Vec2, colr, paint, peniko, resolve,
+    Affine, Arc, BezPath, Ctx, FontDb, HashMap, Opts, PhType, Point, Rect, RenderContext, Rgba, Shape, TextBody, Vec2, colr, paint, peniko, resolve,
 };
 
 /// The prompt shown in an empty placeholder, formatted like its content would be.
@@ -155,9 +155,70 @@ pub fn draw_layout_with(ctx: &mut RenderContext, l: &deckcraft_text::TextLayout,
             draw_glyph_with(ctx, run, *gid, at, ps.opacity, fill);
         }
     }
+    text_reflection(ctx, l, tr, m, &para);
     for d in l.decos.iter().filter(|d| !d.behind) {
         deco(ctx, d);
     }
+}
+
+/// Draw the reflections of the runs that have one (`a:reflection` on text): their glyphs mirrored
+/// under the bottom of the text, `dist` below it, fading from the start to the end opacity over
+/// `end_pos` of the text's height, blurred.
+fn text_reflection(ctx: &mut RenderContext, l: &deckcraft_text::TextLayout, tr: Rect, m: Affine, para: &dyn Fn(usize) -> ParaState) {
+    let Some(rf) = l.runs.iter().find_map(|r| r.effects.and_then(|e| e.reflection)) else { return };
+    let (top, bottom) = l.lines.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(t, b), li| (t.min(li.top), b.max(li.bottom)));
+    if !(top.is_finite() && bottom.is_finite() && bottom > top) {
+        return;
+    }
+    let axis = bottom + rf.dist / 2.0;
+    let mirror = Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, 2.0 * axis]);
+    let fade = ((bottom - top) * rf.end_pos).max(1.0);
+    let px = scale_of(m);
+    ctx.set_transform(Affine::IDENTITY);
+    ctx.push_layer(None, None, None, None, Some(blur(rf.blur * 0.5 * px)));
+    let mut x0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY;
+    for run in l.runs.iter().filter(|r| r.effects.is_some_and(|e| e.reflection.is_some())) {
+        let ps = para(run.para);
+        if !ps.visible || ps.opacity <= 0.001 {
+            continue;
+        }
+        let mm = m * Affine::translate(ps.offset) * mirror;
+        let mut grads: Vec<(usize, peniko::Gradient)> = Vec::new();
+        for (gid, x, y) in &run.glyphs {
+            x0 = x0.min(*x);
+            x1 = x1.max(*x + run.size);
+            let at = mm * glyph_place(run, *gid, *x, *y);
+            let Some(g) = run.gradient.as_ref().filter(|g| !g.stops.is_empty()) else {
+                draw_glyph(ctx, run, *gid, at, ps.opacity);
+                continue;
+            };
+            let li = line_at(l, run.para, *y);
+            if !grads.iter().any(|(i, _)| *i == li) {
+                let scheme = deckcraft_color::ColorScheme { name: String::new(), colors: [Rgba::BLACK; 12] };
+                let stops = g.stops.iter().map(|s| (s.pos, s.color.resolve(&scheme, None))).collect();
+                let bounds = l.lines.get(li).and_then(line_bounds).unwrap_or(tr);
+                grads.push((li, paint::gradient(&g.shape, stops, bounds, run.alpha * ps.opacity)));
+            }
+            let fill = grads.iter().find(|(i, _)| *i == li).map(|(_, g)| (g, Affine::translate((-*x, -*y))));
+            draw_glyph_with(ctx, run, *gid, at, ps.opacity, fill);
+        }
+    }
+    // Fade: keep the mirror image only under the text, from the start opacity to the end one.
+    if x0.is_finite() && x1.is_finite() {
+        let from = bottom + rf.dist;
+        let a = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+        ctx.set_transform(m);
+        ctx.push_layer(None, Some(peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::DestIn)), None, None, None);
+        let grad = peniko::Gradient::new_linear(Point::new(0.0, from), Point::new(0.0, from + fade)).with_stops(
+            [(0.0, peniko::Color::from_rgba8(0, 0, 0, a(rf.start_alpha))), (1.0, peniko::Color::from_rgba8(0, 0, 0, a(rf.end_alpha)))].as_slice(),
+        );
+        ctx.set_paint(grad);
+        let pad = rf.blur + 8.0;
+        ctx.fill_rect(&Rect::new(x0 - pad, from - pad, x1 + pad, from + fade));
+        ctx.pop_layer();
+    }
+    ctx.pop_layer();
 }
 
 /// Where glyph `gid` of `run` with its pen at (`x`, `y`) is drawn, in text space: there, turned a

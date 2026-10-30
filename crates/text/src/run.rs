@@ -47,12 +47,25 @@ impl GlyphRun {
     }
 }
 
-/// A text run's shadow and glow, colours resolved.
+/// A text run's shadow, glow and reflection, colours resolved.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RunEffects {
     pub shadow: Option<TextShadow>,
     /// Glow colour (with its alpha) and radius in points.
     pub glow: Option<(Rgba, f64)>,
+    /// Mirror image under the text, fading out (`a:reflection`).
+    pub reflection: Option<TextReflection>,
+}
+
+/// A reflection: opacity where it starts and ends (0–1), how far down the text's height it fades
+/// out (0–1), and its gap and blur in points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TextReflection {
+    pub start_alpha: f64,
+    pub end_alpha: f64,
+    pub end_pos: f64,
+    pub dist: f64,
+    pub blur: f64,
 }
 
 /// An outer shadow: colour (with its alpha), blur radius and offset in points.
