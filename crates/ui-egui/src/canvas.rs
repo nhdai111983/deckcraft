@@ -24,6 +24,8 @@ mod overlays;
 mod rulers;
 mod scroll;
 
+#[cfg(test)]
+pub(crate) use context_menu::canvas_menu;
 use context_menu::context_menu;
 use guides::{draw_grid, draw_guides, grid_line_step};
 pub use ime::ime_area;

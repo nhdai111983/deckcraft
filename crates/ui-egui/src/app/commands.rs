@@ -169,6 +169,10 @@ impl SlideApp {
             "show.start" => {
                 if let Some(name) = p.get("custom").and_then(Value::as_str).filter(|s| !s.is_empty()) {
                     self.start_custom_show(name, false);
+                } else if p.get("presenter").and_then(Value::as_bool) == Some(true) {
+                    // NexusOffice: Presenter View asked for, on any display.
+                    let from = self.show_from(p)?.unwrap_or_else(|| self.show_start_index());
+                    self.start_presenter_view(from);
                 } else {
                     let from = self.show_from(p)?.unwrap_or_else(|| self.show_start_index());
                     self.start_show(from, false);

@@ -121,7 +121,7 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("view.dark", "Dark Mode", None, "{on?: bool}"),
     ("view.grayscale", "Grayscale", None, "{on?: bool}"),
     ("view.newWindow", "New Window", None, "{on?: bool, slide?: index, delta?: int}"),
-    ("show.start", "Slide Show", Some("F5"), "{from?: index, custom?: name}"),
+    ("show.start", "Slide Show", Some("F5"), "{from?: index, custom?: name, presenter?: bool}"),
     ("show.presenter", "Presenter View", None, "{on?: bool}"),
     ("show.end", "End Show", None, "{}"),
     ("animation.preview", "Preview Animations", None, "{on?: bool, from?: effect index}"),
@@ -344,6 +344,10 @@ pub struct SlideApp {
     /// fonts to the window's instead of replacing them, leaves the window alone (no title, no
     /// drag, no close prompt of its own) and its top row doesn't move or maximise the window.
     pub embedded: bool,
+    /// NexusOffice: how many displays the computer has, when the host knows (`None`: unknown, taken
+    /// as one). Play from Start opens Presenter View only with a second display
+    /// ([`SlideApp::start_show`]).
+    pub displays: Option<usize>,
     /// NexusOffice: the rectangle the app was last drawn in (its tab, when [`embedded`](Self::embedded)),
     /// which "Lưu thay đổi?" dims and centres on.
     pub(crate) drawn_in: egui::Rect,

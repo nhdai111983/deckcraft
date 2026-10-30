@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use deckcraft_geom::{Affine, Point, Rect};
+use deckcraft_geom::{Affine, Point};
 use deckcraft_model::edit::{self as ed, Pos};
 use deckcraft_model::resolve::{self, Ctx};
 use deckcraft_model::text::{Align, AutoFit, Hyperlink, Paragraph, Run, RunKind, RunProps, TextBody};
-use deckcraft_model::{Presentation, Shape, ShapeId, ShapeKind};
+use deckcraft_model::{Presentation, ShapeId, ShapeKind};
 use serde_json::{Value, json};
 
 use super::{

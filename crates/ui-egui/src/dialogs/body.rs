@@ -876,11 +876,17 @@ fn dlg_symbol(app: &mut SlideApp, ui: &mut Ui, _d: &mut Dialog) -> bool {
         ("Arrows", "←↑→↓↔↕⇐⇑⇒⇓↖↗↘↙⟵⟶"),
         ("Shapes", "■□▪▫▲△▶▷▼▽◀◁◆◇○●◎★☆✓✔✗✘♠♣♥♦"),
     ];
+    // NexusOffice: only the symbols the interface fonts draw (no empty boxes).
+    let font = egui::FontId::proportional(16.0);
     for (g, chars) in groups {
+        let drawn: Vec<char> = chars.chars().filter(|c| ui.fonts_mut(|f| f.has_glyph(&font, *c))).collect();
+        if drawn.is_empty() {
+            continue;
+        }
         ui.add_space(crate::nexus_dialog::GAP_S / 2.0);
         crate::nexus_dialog::section(ui, g);
         ui.horizontal_wrapped(|ui| {
-            for c in chars.chars() {
+            for c in drawn {
                 if ui.add(egui::Button::new(egui::RichText::new(c.to_string()).size(16.0)).min_size(vec2(26.0, 26.0))).clicked() {
                     if app.session.active().is_some_and(|s| s.selection.text.is_none()) {
                         let _ = app.run("text.edit", json!({}));

@@ -104,6 +104,7 @@ impl SlideApp {
             toolbar: false,
             wps: false,
             embedded: false,
+            displays: None,
             drawn_in: egui::Rect::NOTHING,
             file_dialog: None,
             replace_blank: None,

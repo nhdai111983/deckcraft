@@ -30,11 +30,24 @@ impl SlideApp {
     /// Leave animation preview, stop editor-owned media, and create a show at the requested slide
     /// with the current reading/presenter configuration; an out-of-range slide starts an ended show.
     pub fn start_show(&mut self, from: usize, reading: bool) {
+        // NexusOffice (QC-SLD-02): "Use Presenter View" applies when there is a second display, as
+        // in PowerPoint; on one display (or when the host can't tell) the show is just full screen.
+        let presenter = self.ui.presenter_view && !reading && self.displays.is_some_and(|n| n >= 2);
+        self.start_show_as(from, reading, presenter);
+    }
+
+    /// NexusOffice: Presenter View on request (Alt+F5, `show.start` with `presenter: true`): the
+    /// presenter's window beside the show, whatever the displays.
+    pub fn start_presenter_view(&mut self, from: usize) {
+        self.start_show_as(from, false, true);
+    }
+
+    fn start_show_as(&mut self, from: usize, reading: bool, presenter: bool) {
         self.anim_preview = None;
         self.media.stop_owned(media::Owner::Editor);
         if let Some(d) = self.session.active() {
             self.show_instance = self.show_instance.wrapping_add(1).max(1);
-            let mut show = show::Show::new(&d.doc, from, reading, self.ui.presenter_view && !reading);
+            let mut show = show::Show::new(&d.doc, from, reading, presenter);
             show.instance = self.show_instance;
             self.show = Some(show);
         }

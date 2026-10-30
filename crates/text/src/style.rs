@@ -142,7 +142,15 @@ pub(crate) fn make_style(ctx: &Ctx, r: &RunProps, scale: f64, prompt: Option<Rgb
         _ => (resolve::text_color(ctx, r), 1.0, None),
     };
     if let Some(p) = prompt {
-        color = p;
+        // NexusOffice (QC-SLD-09): on a theme whose text is light (a dark background), the prompt
+        // is that text colour softened towards the grey, not a dark grey nobody can read.
+        let lum = 0.2126 * f64::from(color.r) + 0.7152 * f64::from(color.g) + 0.0722 * f64::from(color.b);
+        color = if lum > 140.0 {
+            let mix = |a: u8, b: u8| (f64::from(a) * 0.8 + f64::from(b) * 0.2).round().clamp(0.0, 255.0) as u8;
+            Rgba::rgba(mix(color.r, p.r), mix(color.g, p.g), mix(color.b, p.b), p.a)
+        } else {
+            p
+        };
     }
     let major = r.font.as_deref().is_some_and(|f| f.starts_with("+mj"));
     let theme = &ctx.master.theme;

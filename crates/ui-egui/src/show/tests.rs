@@ -342,6 +342,8 @@ fn slideshow_navigation_advances_once_with_presenter_view() {
     session.execute("slide.new", &json!({})).unwrap();
     let mut app = SlideApp::new(session, crate::Services::default());
     app.ui.presenter_view = true;
+    // NexusOffice: Presenter View opens with a second display.
+    app.displays = Some(2);
     let mut harness = egui_kittest::Harness::builder().with_size(vec2(1000.0, 700.0)).build_ui_state(
         |ui, app: &mut SlideApp| {
             app.logic(ui.ctx());

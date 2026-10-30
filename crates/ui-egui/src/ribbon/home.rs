@@ -82,7 +82,8 @@ pub(crate) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
                     Stroke::new(if resp.hovered() { 2.0 } else { 1.0 }, if resp.hovered() { t.accent } else { t.border }),
                     egui::StrokeKind::Outside,
                 );
-                ui.add_sized(vec2(96.0, 14.0), egui::Label::new(egui::RichText::new(name).size(10.5)).truncate());
+                // NexusOffice: a built-in layout's name in the interface's language (the file keeps its own).
+                ui.add_sized(vec2(96.0, 14.0), egui::Label::new(egui::RichText::new(crate::i18n::tl(ui, name)).size(10.5)).truncate());
                 resp
             });
             if resp.inner.clicked() {
@@ -375,7 +376,7 @@ fn paragraph_group(app: &mut SlideApp, ui: &mut Ui, st: &Value) {
                         ("Rotate all text 270°", "rotate270"),
                         ("Stacked", "stacked"),
                     ] {
-                        if ui.button(l).clicked() {
+                        if ui.button(crate::i18n::tl(ui, l)).clicked() {
                             run(app, "format.direction", json!({"dir": d}));
                         }
                     }
@@ -383,7 +384,7 @@ fn paragraph_group(app: &mut SlideApp, ui: &mut Ui, st: &Value) {
                 let r = icon_toggle(ui, Icon::AlignText, "Align Text", en, false);
                 egui::Popup::menu(&r).show(|ui| {
                     for (l, a) in [("Top", "top"), ("Middle", "middle"), ("Bottom", "bottom")] {
-                        if ui.button(l).clicked() {
+                        if ui.button(crate::i18n::tl(ui, l)).clicked() {
                             run(app, "format.anchor", json!({"anchor": a}));
                         }
                     }

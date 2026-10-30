@@ -57,7 +57,8 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
     }
     group(ui, |ui| {
         let r = big_button(ui, Icon::Colors, "Colors", true);
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Colors"));
+        let name = crate::i18n::tr(ui.ctx(), "Colors").into_owned();
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
         egui::Popup::menu(&r).width(240.0).show(|ui| {
             for cs in deckcraft_model::theme::builtin_color_schemes() {
                 ui.horizontal(|ui| {
@@ -84,7 +85,8 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
             }
         });
         let r = big_button(ui, Icon::Fonts, "Fonts", true);
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Fonts"));
+        let name = crate::i18n::tr(ui.ctx(), "Fonts").into_owned();
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
         egui::Popup::menu(&r).width(220.0).show(|ui| {
             for fs in deckcraft_model::theme::builtin_font_schemes() {
                 if ui.button(format!("{}\n   {} / {}", fs.name, fs.major.latin, fs.minor.latin)).clicked() {
@@ -98,10 +100,11 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
             }
         });
         let r = big_button(ui, Icon::ShapeEffects, "Effects", true);
-        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Effects"));
+        let name = crate::i18n::tr(ui.ctx(), "Effects").into_owned();
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
         egui::Popup::menu(&r).width(180.0).show(|ui| {
             for fs in deckcraft_model::theme::builtin_format_schemes() {
-                if ui.button(&fs.name).clicked() {
+                if ui.button(crate::i18n::tl(ui, &fs.name)).clicked() {
                     run(app, "design.effects", json!({"name": fs.name}));
                     ui.close();
                 }
@@ -126,7 +129,7 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
                     };
                     let (rect, resp) = ui.allocate_exact_size(vec2(48.0, 28.0), Sense::click());
                     ui.painter().rect(rect, CornerRadius::same(2), shade, Stroke::new(1.0, Tokens::get(ui.ctx()).border), egui::StrokeKind::Inside);
-                    if resp.on_hover_text(format!("Style {i}")).clicked() {
+                    if resp.on_hover_text(crate::i18n::current(ui.ctx()).fill("Style {n}", &[("n", &i.to_string())])).clicked() {
                         run(app, "design.background", json!({"style": i, "all": true}));
                         ui.close();
                     }

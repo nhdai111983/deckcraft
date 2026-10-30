@@ -16,6 +16,11 @@ pub fn ui_shortcut(app: &mut SlideApp, key: egui::Key, m: Mods) -> bool {
         return true;
     }
     let id = match (key, m.cmd, m.shift, m.alt) {
+        // NexusOffice (QC-SLD-02): Alt+F5 asks for Presenter View, whatever the displays.
+        (F5, false, false, true) => {
+            app.start_presenter_view(app.show_start_index());
+            return true;
+        }
         (F5, _, false, _) => {
             app.start_show(app.show_start_index(), false);
             return true;

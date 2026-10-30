@@ -47,6 +47,8 @@ fn a_very_tall_slide_in_the_editor_views_and_presenter_view() {
         h.run_steps(3);
     }
     h.state_mut().run("show.presenter", json!({"on": true})).unwrap();
+    // NexusOffice: Presenter View opens with a second display.
+    h.state_mut().displays = Some(2);
     h.state_mut().run("show.start", json!({"from": 0})).unwrap();
     h.run_steps(4);
     assert!(h.state().show.is_some());
@@ -61,6 +63,8 @@ fn presenter_view_keeps_a_portrait_next_slide_in_its_column() {
     let mut h = harness(tall_deck(), egui::vec2(1280.0, 800.0));
     h.run_steps(3);
     h.state_mut().run("show.presenter", json!({"on": true})).unwrap();
+    // NexusOffice: Presenter View opens with a second display.
+    h.state_mut().displays = Some(2);
     h.state_mut().run("show.start", json!({"from": 0})).unwrap();
     h.run_steps(4);
     let img = h.render().unwrap();
