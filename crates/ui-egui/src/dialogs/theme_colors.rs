@@ -1,10 +1,14 @@
+use super::lang_of;
 use super::{Color32, CornerRadius, Dialog, SchemeSlot, Sense, SlideApp, Stroke, Tokens, Ui, Value, buttons, json, theme, vec2};
+use crate::i18n::tl;
+use crate::i18n::tl_in;
 
 fn seed_theme_colors(d: &mut Dialog) {
     if d.fields.contains_key("seeded") {
         return;
     }
-    let name = d.params.get("name").and_then(Value::as_str).unwrap_or("Custom");
+    let custom = lang_of(d).tr("Custom").into_owned();
+    let name = d.params.get("name").and_then(Value::as_str).unwrap_or(&custom);
     d.fields.insert("schemeName".into(), name.to_string());
     let obj = d.params.get("colors").and_then(Value::as_object);
     for slot in SchemeSlot::THEME {
@@ -19,14 +23,15 @@ fn theme_color_row(ui: &mut Ui, d: &mut Dialog, slot: SchemeSlot) {
     let key = slot.xml_name();
     let mut v = d.get(key, "000000");
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(188.0, 18.0), egui::Label::new(slot.label()));
+        let name = tl(ui, slot.label()).into_owned();
+        ui.add_sized(vec2(188.0, 18.0), egui::Label::new(name.as_str()));
         let fill = deckcraft_color::Rgba::from_hex(&v).map(theme::to_color32).unwrap_or_else(|| Color32::from_gray(200));
         let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
         ui.painter().rect(rect, CornerRadius::same(2), fill, Stroke::new(1.0, Tokens::get(ui.ctx()).border), egui::StrokeKind::Inside);
         let resp = ui.add(egui::TextEdit::singleline(&mut v).desired_width(84.0).id_salt(("theme-hex", key)));
         let shown = v.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, format!("{} hex", slot.label()));
+            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, format!("{name} hex"));
             info.current_text_value = Some(shown.clone());
             info
         });
@@ -35,15 +40,16 @@ fn theme_color_row(ui: &mut Ui, d: &mut Dialog, slot: SchemeSlot) {
 }
 
 fn theme_color_payload(d: &mut Dialog) -> Result<Value, String> {
+    let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err("Enter a scheme name.".into());
+        return Err(lang.lookup("themeColors.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let mut colors = serde_json::Map::new();
     for slot in SchemeSlot::THEME {
         let raw = d.get(slot.xml_name(), "");
         let Some(rgb) = deckcraft_color::Rgba::from_hex(raw.trim()) else {
-            return Err(format!("{} needs a colour like #RRGGBB.", slot.label()));
+            return Err(lang.fill("{name} needs a colour like #RRGGBB.", &[("name", &lang.tr(slot.label()))]));
         };
         colors.insert(slot.xml_name().into(), Value::String(format!("#{}", rgb.hex())));
     }
@@ -70,17 +76,18 @@ pub(super) fn theme_colors_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialo
     ui.add_space(6.0);
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
-        ui.label("Name:");
+        ui.label(tl(ui, "Name:"));
+        let access = tl_in(ui, "themeColors", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, "Scheme name");
+            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, access.clone());
             info.current_text_value = Some(shown.clone());
             info
         });
     });
     d.fields.insert("schemeName".into(), name);
-    ui.label(egui::RichText::new("Applies to this presentation's theme colours.").size(11.0).color(Tokens::get(ui.ctx()).text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Applies to this presentation's theme colours.")).size(11.0).color(Tokens::get(ui.ctx()).text_dim));
     let (ok, cancel) = buttons(ui, "Save");
     if ok {
         match theme_color_payload(d) {

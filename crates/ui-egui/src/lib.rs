@@ -19,6 +19,7 @@ pub mod icons;
 pub mod media;
 pub mod menus;
 pub mod nexus;
+pub mod nexus_dialog;
 pub mod nexus_save_prompt;
 #[cfg(test)]
 mod nexus_save_prompt_tests;

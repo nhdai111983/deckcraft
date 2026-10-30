@@ -4,8 +4,9 @@
 //! The field types and their formats follow ECMA-376 Part 1, §21.1.2.2.4 (`fld`): `datetime1`
 //! to `datetime13`, written as in PowerPoint's English (United States) Date and Time list.
 //! `datetime` and `datetimeFigureOut` show the language's short date. Numeric dates follow the
-//! run's language; formats with month or day names, or AM/PM, are only computed for English, so
-//! other languages keep the text the file was saved with.
+//! run's language; formats with month or day names, or AM/PM, are computed for English and
+//! Vietnamese (`vi`: day/month/year, "Thứ Hai, 26 tháng 10 năm 2026", 24-hour time), so other
+//! languages keep the text the file was saved with.
 
 /// A local date and time: what the clock read, or a fixed moment (tests, deterministic output).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +59,8 @@ impl DateTime {
 
 const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/// Vietnamese weekday names, Sunday first (as [`DAYS`]).
+const VI_DAYS: [&str; 7] = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 
 /// Is field `kind` a date/time field?
 pub fn is_date_field(kind: &str) -> bool {
@@ -91,6 +94,9 @@ pub fn field_text(kind: &str, lang: Option<&str>, now: DateTime) -> Option<Strin
         return None;
     }
     let lang = lang.map(str::trim).filter(|l| !l.is_empty()).unwrap_or("en-US").to_ascii_lowercase();
+    if lang == "vi" || lang.starts_with("vi-") || lang.starts_with("vi_") {
+        return vietnamese(kind, now);
+    }
     let english = lang == "en" || lang.starts_with("en-");
     let month = MONTHS.get(now.month.checked_sub(1)? as usize)?;
     let mon = month.get(..3)?;
@@ -121,6 +127,29 @@ pub fn field_text(kind: &str, lang: Option<&str>, now: DateTime) -> Option<Strin
         "datetime13" => named(format!("{h12}:{mi:02}:{s:02} {ampm}")),
         _ => None,
     }
+}
+
+/// Vietnamese: `dd/MM/yyyy`, names written out ("Thứ Hai, 26 tháng 10 năm 2026"), `HH:mm` 24-hour
+/// time. The types with an English abbreviation (`datetime7`, "Oct-26") or a 12-hour clock
+/// (`datetime9`, `datetime12`, `datetime13`) have no Vietnamese form.
+fn vietnamese(kind: &str, now: DateTime) -> Option<String> {
+    let (d, m, y) = (now.day, now.month, now.year);
+    let yy = y.rem_euclid(100);
+    let short = format!("{d:02}/{m:02}/{y}");
+    let hm = format!("{:02}:{:02}", now.hour, now.minute);
+    let day = VI_DAYS.get(now.weekday())?;
+    Some(match kind {
+        "datetime" | "datetimeFigureOut" | "datetime1" => short,
+        "datetime2" => format!("{day}, {d} tháng {m} năm {y}"),
+        "datetime3" => format!("ngày {d} tháng {m} năm {y}"),
+        "datetime4" => format!("{d} tháng {m}, {y}"),
+        "datetime5" => format!("{d:02}/{m:02}/{yy:02}"),
+        "datetime6" => format!("tháng {m}/{y}"),
+        "datetime8" => format!("{short} {hm}"),
+        "datetime10" => hm,
+        "datetime11" => format!("{hm}:{:02}", now.second),
+        _ => return None,
+    })
 }
 
 /// The short (numeric) date of language `lang` (lower case), US order unless the language is
@@ -184,6 +213,40 @@ mod tests {
         assert_eq!(field_text("datetime2", Some("de-DE"), FRI), None);
         assert_eq!(field_text("datetime12", Some("fr-FR"), FRI), None);
         assert_eq!(field_text("datetime4", Some("en-GB"), FRI).as_deref(), Some("October 9, 2026"));
+    }
+
+    /// Vietnamese: day/month/year, names in Vietnamese ("Thứ Hai", "tháng 10"), 24-hour time with
+    /// no AM/PM; the formats with an English abbreviation or a 12-hour clock aren't offered.
+    #[test]
+    fn vietnamese_formats_of_every_type() {
+        let mon = DateTime::new(2026, 10, 26, 11, 37, 55);
+        let f = |k: &str| field_text(k, Some("vi-VN"), mon);
+        assert_eq!(f("datetime1").as_deref(), Some("26/10/2026"));
+        assert_eq!(f("datetime2").as_deref(), Some("Thứ Hai, 26 tháng 10 năm 2026"));
+        assert_eq!(f("datetime3").as_deref(), Some("ngày 26 tháng 10 năm 2026"));
+        assert_eq!(f("datetime4").as_deref(), Some("26 tháng 10, 2026"));
+        assert_eq!(f("datetime5").as_deref(), Some("26/10/26"));
+        assert_eq!(f("datetime6").as_deref(), Some("tháng 10/2026"));
+        assert_eq!(f("datetime7"), None);
+        assert_eq!(f("datetime8").as_deref(), Some("26/10/2026 11:37"));
+        assert_eq!(f("datetime9"), None);
+        assert_eq!(f("datetime10").as_deref(), Some("11:37"));
+        assert_eq!(f("datetime11").as_deref(), Some("11:37:55"));
+        assert_eq!(f("datetime12"), None);
+        assert_eq!(f("datetime13"), None);
+        assert_eq!(f("datetimeFigureOut").as_deref(), Some("26/10/2026"));
+        // "vi" alone, any case; single digits, the evening and every weekday name.
+        let early = DateTime::new(2026, 3, 1, 20, 5, 7);
+        assert_eq!(field_text("datetime2", Some("VI"), early).as_deref(), Some("Chủ Nhật, 1 tháng 3 năm 2026"));
+        assert_eq!(field_text("datetime8", Some("vi"), early).as_deref(), Some("01/03/2026 20:05"));
+        assert_eq!(field_text("datetime10", Some("vi-VN"), DateTime::new(2026, 3, 1, 8, 5, 0)).as_deref(), Some("08:05"));
+        let names: Vec<String> = (26..=32)
+            .map(|d| {
+                field_text("datetime2", Some("vi-VN"), DateTime::new(2026, 10 + d / 32, if d > 31 { 1 } else { d }, 0, 0, 0)).unwrap_or_default()
+            })
+            .collect();
+        let days: Vec<&str> = names.iter().filter_map(|n| n.split(',').next()).collect();
+        assert_eq!(days, ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]);
     }
 
     #[test]

@@ -20,17 +20,27 @@ pub(super) fn pretty_equation(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
+            // The exponent: an optional sign, then digits (x^-12) or one letter (x^n); what
+            // follows ("+b^2") is not raised.
             '^' => {
-                while let Some(&n) = chars.peek() {
-                    if n.is_ascii_alphanumeric() || n == '+' || n == '-' {
+                if let Some(&n) = chars.peek()
+                    && (n == '+' || n == '-')
+                {
+                    out.push(sup(n));
+                    chars.next();
+                }
+                match chars.peek() {
+                    Some(&n) if n.is_ascii_digit() => {
+                        while let Some(&n) = chars.peek().filter(|n| n.is_ascii_digit()) {
+                            out.push(sup(n));
+                            chars.next();
+                        }
+                    }
+                    Some(&n) if n.is_ascii_alphabetic() => {
                         out.push(sup(n));
                         chars.next();
-                        if !n.is_ascii_digit() {
-                            break;
-                        }
-                    } else {
-                        break;
                     }
+                    _ => {}
                 }
             }
             '*' => out.push('·'),

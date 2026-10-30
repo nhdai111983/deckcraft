@@ -1,4 +1,8 @@
-use super::{Dialog, SlideApp, Ui, Value, buttons, field, json, num, vec2};
+use super::find::typed_inches;
+use super::lang_of;
+use super::{Dialog, SlideApp, Ui, Value, buttons, field, json, vec2};
+use crate::i18n::Language;
+use crate::i18n::units;
 use crate::i18n::{tl, tl_in};
 
 const TAB_KINDS: [(&str, &str); 4] = [("l", "Left"), ("ctr", "Center"), ("r", "Right"), ("dec", "Decimal")];
@@ -15,8 +19,21 @@ pub(super) fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
             .map(|a| a.iter().filter_map(|t| Some(format!("{}:{}", t["pos"].as_f64()? / 72.0, t["align"].as_str().unwrap_or("l")))).collect())
             .unwrap_or_default();
         d.fields.insert("stops".into(), stops.join("|"));
-        d.fields.insert("default".into(), format!("{}", r["defaultTab"].as_f64().unwrap_or(72.0) / 72.0));
+        let default_pt = r["defaultTab"].as_f64().unwrap_or(72.0);
+        let shown = match lang_of(d) {
+            Language::En => format!("{}", default_pt / 72.0),
+            lang => units::format_length(lang, default_pt),
+        };
+        d.fields.insert("defaultSeed".into(), shown.clone());
+        d.fields.insert("defaultPt".into(), default_pt.to_string());
+        d.fields.insert("default".into(), shown);
     }
+    // NexusOffice: positions show in the interface's unit (the stops list keeps inches).
+    let lang = lang_of(d);
+    let at_text = |inches: f64| match lang {
+        Language::En => format!("{inches:.2}\""),
+        _ => format!("{} cm", units::format_length(lang, inches * 72.0)),
+    };
     let mut stops: Vec<(f64, String)> = d
         .get("stops", "")
         .split('|')
@@ -35,10 +52,10 @@ pub(super) fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
             ui.end_row();
         }
         for (i, (pos, align)) in stops.iter().enumerate() {
-            ui.label(format!("{pos:.2}\""));
+            ui.label(at_text(*pos));
             let (k, l) = TAB_KINDS.iter().find(|k| k.0 == align).copied().unwrap_or(("l", "Left"));
             ui.label(tl_in(ui, "tab", k, l));
-            let at = format!("{pos:.2}\"");
+            let at = at_text(*pos);
             let tip = crate::i18n::current(ui.ctx()).fill("Clear the tab at {pos}", &[("pos", &at)]);
             if ui.small_button(tl(ui, "Clear")).on_hover_text(tip).clicked() {
                 remove = Some(i);
@@ -67,7 +84,7 @@ pub(super) fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
     });
     ui.horizontal(|ui| {
         if ui.button(tl(ui, "Set")).clicked()
-            && let Some(p) = Some(num(d, "newpos", f64::NAN)).filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
+            && let Some(p) = typed_inches(d, "newpos").filter(|v| v.is_finite() && *v >= 0.0 && *v <= 56.0)
         {
             stops.retain(|(q, _)| (q - p).abs() > 0.005);
             stops.push((p, d.get("newalign", "l")));
@@ -82,7 +99,13 @@ pub(super) fn tabs_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
     let (ok, cancel) = buttons(ui, "OK");
     if ok {
         let set: Vec<Value> = stops.iter().map(|(p, a)| json!({"pos": p * 72.0, "align": a})).collect();
-        let dt = num(d, "default", 1.0).clamp(0.02, 56.0) * 72.0;
+        // NexusOffice: in Vietnamese the default stop left as shown keeps its exact value.
+        let untouched = lang_of(d) != Language::En && d.fields.get("defaultSeed") == d.fields.get("default");
+        let exact = d.fields.get("defaultPt").and_then(|p| p.parse::<f64>().ok()).filter(|v| v.is_finite());
+        let dt = match exact.filter(|_| untouched) {
+            Some(pt) => pt.clamp(0.02 * 72.0, 56.0 * 72.0),
+            None => typed_inches(d, "default").unwrap_or(1.0).clamp(0.02, 56.0) * 72.0,
+        };
         if let Err(e) = app.run("format.tabs", json!({"set": set, "defaultTab": dt})) {
             app.set_status(e);
         } else if let Some(ret) = d.params.get_mut("returnParams").and_then(Value::as_object_mut) {

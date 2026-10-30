@@ -1,5 +1,7 @@
+use super::lang_of;
 use super::{Color32, Dialog, SlideApp, Ui, buttons, check, field, json, num, theme};
 use crate::i18n::tl;
+use crate::i18n::units;
 
 fn format_spacing(v: f64) -> String {
     if !v.is_finite() {
@@ -14,7 +16,7 @@ pub(super) fn grid_options(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> b
     ui.label(egui::RichText::new(tl(ui, "Snap")).font(theme::bold(13.0)));
     let snap = check(ui, d, "Snap objects to grid", "snap", app.session.prefs.snap_to_grid);
     let smart = check(ui, d, "Snap objects to other objects", "smart", app.session.prefs.smart_guides);
-    let spacing_default = format_spacing(app.session.prefs.grid_spacing);
+    let spacing_default = units::localize(lang_of(d), &format_spacing(app.session.prefs.grid_spacing)).into_owned();
     field(ui, d, "Spacing (pt):", "spacing", &spacing_default);
     ui.add_space(6.0);
     ui.label(egui::RichText::new(tl(ui, "Display")).font(theme::bold(13.0)));

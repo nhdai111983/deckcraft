@@ -314,7 +314,7 @@ pub fn gradient_editor(ui: &mut Ui, id: &str, g: &Gradient, sc: &ColorScheme) ->
             let label = ui.add_sized(vec2(70.0, 20.0), egui::Label::new(tl(ui, "Transparency")));
             let key = ui.scope_id().with((id, "tr", sel));
             let mut tr: f32 = ui.data_mut(|d| d.get_temp(key).unwrap_or(((1.0 - alpha_of(&s.color)) * 100.0) as f32));
-            let r = ui.add(egui::Slider::new(&mut tr, 0.0..=100.0).suffix("%")).labelled_by(label.id);
+            let r = ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut tr, 0.0..=100.0).suffix("%"))).labelled_by(label.id);
             if r.changed() {
                 ui.data_mut(|d| d.insert_temp(key, tr));
             }

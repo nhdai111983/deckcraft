@@ -1,10 +1,14 @@
+use super::lang_of;
 use super::{Dialog, SlideApp, Tokens, Ui, Value, buttons, json, vec2};
+use crate::i18n::tl;
+use crate::i18n::tl_in;
 
 fn seed_theme_fonts(d: &mut Dialog) {
     if d.fields.contains_key("seeded") {
         return;
     }
-    let name = d.params.get("name").and_then(Value::as_str).unwrap_or("Custom");
+    let custom = lang_of(d).tr("Custom").into_owned();
+    let name = d.params.get("name").and_then(Value::as_str).unwrap_or(&custom);
     let major = d.params.get("major").and_then(Value::as_str).unwrap_or("Inter");
     let minor = d.params.get("minor").and_then(Value::as_str).unwrap_or(major);
     d.fields.insert("schemeName".into(), name.to_string());
@@ -38,7 +42,7 @@ fn font_combo(ui: &mut Ui, label: &str, choices: &[String], selected: &mut Strin
         }
     });
     let shown = selected.clone();
-    let access = label.to_string();
+    let access = tl(ui, label).into_owned();
     resp.response.widget_info(move || {
         let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, access.clone());
         info.current_text_value = Some(shown.clone());
@@ -47,17 +51,18 @@ fn font_combo(ui: &mut Ui, label: &str, choices: &[String], selected: &mut Strin
 }
 
 fn theme_font_payload(d: &mut Dialog) -> Result<Value, String> {
+    let lang = lang_of(d);
     let name = d.get("schemeName", "").trim().to_string();
     if name.is_empty() {
-        return Err("Enter a scheme name.".into());
+        return Err(lang.lookup("themeFonts.noName").map_or_else(|| lang.tr("Enter a scheme name.").into_owned(), str::to_string));
     }
     let major = d.get("major", "").trim().to_string();
     if major.is_empty() {
-        return Err("Choose a heading font.".into());
+        return Err(lang.tr("Choose a heading font.").into_owned());
     }
     let minor = d.get("minor", "").trim().to_string();
     if minor.is_empty() {
-        return Err("Choose a body font.".into());
+        return Err(lang.tr("Choose a body font.").into_owned());
     }
     Ok(json!({"name": name, "major": major, "minor": minor}))
 }
@@ -72,11 +77,11 @@ pub(super) fn theme_fonts_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog
     let mut major = major;
     let mut minor = minor;
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Heading:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Heading:")));
         font_combo(ui, "Heading font", &headings, &mut major);
     });
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Body:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Body:")));
         font_combo(ui, "Body font", &bodies, &mut minor);
     });
     d.fields.insert("major".into(), major.clone());
@@ -84,22 +89,24 @@ pub(super) fn theme_fonts_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog
     ui.add_space(4.0);
     // Theme faces are not egui families; naming an unbound family panics. The lines show the
     // chosen names at heading and body sizes.
-    ui.label(egui::RichText::new(format!("Heading sample  {major}")).size(20.0));
-    ui.label(egui::RichText::new(format!("Body sample  {minor}")).size(14.0));
+    let lang = crate::i18n::current(ui.ctx());
+    ui.label(egui::RichText::new(lang.fill("Heading sample  {font}", &[("font", &major)])).size(20.0));
+    ui.label(egui::RichText::new(lang.fill("Body sample  {font}", &[("font", &minor)])).size(14.0));
     ui.add_space(4.0);
     let mut name = d.get("schemeName", "");
     ui.horizontal(|ui| {
-        ui.add_sized(vec2(110.0, 18.0), egui::Label::new("Name:"));
+        ui.add_sized(vec2(110.0, 18.0), egui::Label::new(tl(ui, "Name:")));
+        let access = tl_in(ui, "themeFonts", "schemeName", "Scheme name");
         let resp = ui.add(egui::TextEdit::singleline(&mut name).desired_width(240.0).id_salt("schemeName"));
         let shown = name.clone();
         resp.widget_info(move || {
-            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, "Scheme name");
+            let mut info = egui::WidgetInfo::labeled(egui::Role::TextInput, true, access.clone());
             info.current_text_value = Some(shown.clone());
             info
         });
     });
     d.fields.insert("schemeName".into(), name);
-    ui.label(egui::RichText::new("Heading and body fonts for this presentation.").size(11.0).color(Tokens::get(ui.ctx()).text_dim));
+    ui.label(egui::RichText::new(tl(ui, "Heading and body fonts for this presentation.")).size(11.0).color(Tokens::get(ui.ctx()).text_dim));
     let (ok, cancel) = buttons(ui, "Save");
     if ok {
         match theme_font_payload(d) {

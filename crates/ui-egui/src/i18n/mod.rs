@@ -14,6 +14,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+pub mod units;
 mod vi;
 
 /// The interface language.

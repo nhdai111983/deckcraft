@@ -1,4 +1,7 @@
+use super::lang_of;
+use super::std_number;
 use super::{Dialog, SlideApp, Ui, buttons};
+use crate::i18n::tl;
 
 /// Preset percents in the Zoom dialog, largest first.
 const ZOOM_PRESETS: &[u32] = &[400, 200, 150, 100, 75, 66, 50, 33];
@@ -23,8 +26,8 @@ pub(super) fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
     }
     let mut mode = d.get("mode", "percent");
     let mut percent = d.get("percent", "100");
-    ui.label("Zoom to");
-    if ui.radio(mode == "fit", "Fit").clicked() {
+    crate::nexus_dialog::section(ui, "Zoom to");
+    if ui.radio(mode == "fit", tl(ui, "Fit")).clicked() {
         mode = "fit".into();
     }
     for pct in ZOOM_PRESETS {
@@ -35,7 +38,7 @@ pub(super) fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
         }
     }
     ui.horizontal(|ui| {
-        let l = ui.label("Percent:");
+        let l = ui.label(tl(ui, "Percent:"));
         let edit = ui.add(egui::TextEdit::singleline(&mut percent).desired_width(72.0)).labelled_by(l.id);
         if edit.changed() {
             mode = "percent".into();
@@ -50,7 +53,7 @@ pub(super) fn zoom_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
             app.ui.zoom = None;
             return true;
         }
-        match parse_zoom_percent(&percent) {
+        match parse_zoom_percent(&std_number(lang_of(d), &percent)) {
             Some(scale) => app.ui.zoom = Some(scale),
             None => {
                 app.set_status("Enter a zoom percent");

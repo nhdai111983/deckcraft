@@ -8,8 +8,10 @@
 //! Writes `<prefix>wps-home-1440.png`, `wps-insert.png`, `wps-design.png`, `wps-transitions.png`,
 //! `wps-animations.png`, `wps-view.png`, `wps-file.png` (File), `wps-print.png`, `wps-1024.png`,
 //! `wps-overflow.png` (the "…" panel), `wps-more-tabs.png` (»), `wps-dark.png`, `wps-coral.png`
-//! (user accent #F43F5E), `wps-en.png` (English), and the menu-bar layout's `light.png` and
-//! `menu.png`. The prefix defaults to `dc-`.
+//! (user accent #F43F5E), `wps-en.png` (English), the Vietnamese dialogs and Format panes
+//! (`wps-dlg-*.png`, `wps-pane-*.png`, `wps-pane-size-en.png` in English), and the menu-bar
+//! layout's `light.png` and `menu.png`. The prefix defaults to `dc-`. A third argument `dialogs`
+//! writes only the Insert dialogs (`wps-dlg-equation.png`, `wps-dlg-date-time.png`, …).
 
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Services, SlideApp};
@@ -83,6 +85,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| ".".into()));
     let prefix = args.next().unwrap_or_else(|| "dc-".into());
+    let only_dialogs = args.next().as_deref() == Some("dialogs");
     let name = |n: &str| format!("{prefix}{n}.png");
     use deckcraft_ui_egui::i18n::Language;
     use deckcraft_ui_egui::nexus_wps;
@@ -92,6 +95,42 @@ fn main() {
         a.wps = true;
         a.ui.language = Language::Vi;
     };
+    // The Insert dialogs in the shared dialog look (`nexus_dialog`), in Vietnamese. With a third
+    // argument `dialogs`, only these.
+    for (id, file) in [
+        ("equation", "wps-dlg-equation"),
+        ("dateTime", "wps-dlg-date-time"),
+        ("symbol", "wps-dlg-symbol"),
+        ("hyperlink", "wps-dlg-hyperlink"),
+        ("action", "wps-dlg-action"),
+        ("headerFooter", "wps-dlg-header-footer"),
+        ("trim", "wps-dlg-trim"),
+        ("photoAlbum", "wps-dlg-photo-album"),
+        ("zoom", "wps-dlg-zoom"),
+        ("table", "wps-dlg-table"),
+    ] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            let mut d = deckcraft_ui_egui::dialogs::Dialog::new(id);
+            if id == "equation" {
+                d.fields.insert("eq".into(), "x=(-b+-sqrt(b^2-4ac))/2a".into());
+            }
+            a.dialog = Some(d);
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    // The same look in the dark theme.
+    let mut h = window(1440.0, 900.0, |a| {
+        wps(a);
+        a.ui.brightness = deckcraft_ui_egui::theme::Brightness::Dark;
+        a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new("dateTime"));
+    });
+    shot(&mut h, &dir, &name("wps-dlg-date-time-dark"));
+    if only_dialogs {
+        return;
+    }
     let mut h = window(1440.0, 900.0, wps);
     shot(&mut h, &dir, &name("wps-home-1440"));
     for (tab, file) in [
@@ -141,6 +180,29 @@ fn main() {
             wps(a);
             let _ = a.run("slide.go", serde_json::json!({"index": 1}));
             a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new(id));
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    // NX-VI.5: the dialogs translated last (Insert Table, Header and Footer, Insert Hyperlink,
+    // Photo Album, Create New Theme Colors) and Size and Position in centimetres (vi-VN numbers).
+    // (Insert Table, Header and Footer, Insert Hyperlink and Photo Album are drawn above.)
+    for (id, file) in [("themeColors", "wps-dlg-theme-colors"), ("sizePosition", "wps-dlg-size-position")] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            a.dialog = Some(deckcraft_ui_egui::dialogs::Dialog::new(id));
+        });
+        shot(&mut h, &dir, &name(file));
+    }
+    for (lang, file) in [(Language::Vi, "wps-pane-size"), (Language::En, "wps-pane-size-en")] {
+        let mut h = window(1440.0, 900.0, |a| {
+            wps(a);
+            a.ui.language = lang;
+            let _ = a.run("slide.go", serde_json::json!({"index": 3}));
+            let _ = a.run("edit.selectAll", serde_json::json!({}));
+            a.ui.pane = Some("format".into());
+            a.ui.format_tab = "size".into();
         });
         shot(&mut h, &dir, &name(file));
     }

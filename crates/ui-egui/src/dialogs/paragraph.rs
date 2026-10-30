@@ -1,27 +1,41 @@
-use super::{Dialog, SlideApp, Ui, Value, buttons, choice, finite_pt, inches_text, json, json_text, labeled_text, pt_text, seed_once, vec2};
+use super::font::len_kept;
+use super::font::pt_field;
+use super::font::pt_kept;
+use super::lang_of;
+use super::{Dialog, SlideApp, Ui, Value, buttons, choice, inches_text, json, json_text, labeled_text, pt_text, seed_once, vec2};
+use crate::i18n::units;
+use crate::i18n::units::LengthUnit;
 use crate::i18n::{tl, tl_in};
 
 fn seed_paragraph_fields(d: &mut Dialog) {
+    let lang = lang_of(d);
+    let pt_text = |v: Option<&Value>, default: f64| units::localize(lang, &pt_text(v, default)).into_owned();
     seed_once(d, "align", json_text(d.params.get("align"), "left"));
-    seed_once(d, "before", inches_text(d.params.get("indentLeft")));
-    seed_once(d, "after", inches_text(d.params.get("indentRight")));
+    seed_once(d, "before", inches_text(lang, d.params.get("indentLeft")));
+    seed_once(d, "after", inches_text(lang, d.params.get("indentRight")));
     seed_once(d, "special", json_text(d.params.get("special"), "none"));
-    seed_once(d, "by", inches_text(d.params.get("specialBy")));
+    seed_once(d, "by", inches_text(lang, d.params.get("specialBy")));
+    // NexusOffice: what each length/number field showed, so OK with it untouched keeps the exact value.
+    for key in ["before", "after", "by"] {
+        let shown = d.fields.get(key).cloned().unwrap_or_default();
+        seed_once(d, &format!("{key}Seed"), shown);
+    }
     seed_once(d, "spaceBefore", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceBeforeSeed", pt_text(d.params.get("spaceBefore"), 0.0));
     seed_once(d, "spaceAfter", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "spaceAfterSeed", pt_text(d.params.get("spaceAfter"), 0.0));
     seed_once(d, "lineKind", json_text(d.params.get("lineKind"), "multiple"));
     seed_once(d, "lineValue", pt_text(d.params.get("lineValue"), 1.0));
+    seed_once(d, "lineValueSeed", pt_text(d.params.get("lineValue"), 1.0));
 }
 
 fn paragraph_return_params(d: &mut Dialog) -> Value {
-    let before = finite_pt(&d.get("before", "0")).unwrap_or(0.0) * 72.0;
-    let after = finite_pt(&d.get("after", "0")).unwrap_or(0.0) * 72.0;
-    let by = finite_pt(&d.get("by", "0")).unwrap_or(0.0) * 72.0;
-    let space_before = finite_pt(&d.get("spaceBefore", "0")).unwrap_or(0.0);
-    let space_after = finite_pt(&d.get("spaceAfter", "0")).unwrap_or(0.0);
-    let line_value = finite_pt(&d.get("lineValue", "1")).unwrap_or(1.0);
+    let before = len_kept(d, "before", "0").unwrap_or(0.0);
+    let after = len_kept(d, "after", "0").unwrap_or(0.0);
+    let by = len_kept(d, "by", "0").unwrap_or(0.0);
+    let space_before = pt_kept(d, "spaceBefore", "0").unwrap_or(0.0);
+    let space_after = pt_kept(d, "spaceAfter", "0").unwrap_or(0.0);
+    let line_value = pt_kept(d, "lineValue", "1").unwrap_or(1.0);
     let before_same = d.get("spaceBefore", "") == d.get("spaceBeforeSeed", "");
     let after_same = d.get("spaceAfter", "") == d.get("spaceAfterSeed", "");
     json!({
@@ -39,6 +53,11 @@ fn paragraph_return_params(d: &mut Dialog) -> Value {
         "tabs": d.params.get("tabs").cloned().unwrap_or_else(|| json!([])),
         "defaultTab": d.params.get("defaultTab").cloned().unwrap_or_else(|| json!(72.0)),
     })
+}
+
+/// NexusOffice: the symbol of the unit lengths are shown in ("in", "cm").
+fn unit_symbol(ui: &Ui) -> &'static str {
+    LengthUnit::of(crate::i18n::current(ui.ctx())).symbol()
 }
 
 fn line_preset_label(kind: &str, value: &str) -> &'static str {
@@ -79,17 +98,17 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     ui.label(egui::RichText::new(tl(ui, "Indentation")).strong());
     ui.horizontal(|ui| {
         let _ = labeled_text(ui, d, "Before text", "before", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
         ui.add_space(12.0);
         let _ = labeled_text(ui, d, "After text", "after", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
     });
     ui.horizontal(|ui| {
         ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Special")));
         choice(ui, d, "paragraph_special", "Special", "special", &[("none", "None"), ("first", "First line"), ("hanging", "Hanging")]);
         ui.add_space(8.0);
         let _ = labeled_text(ui, d, "By", "by", 64.0);
-        ui.label("in");
+        ui.label(unit_symbol(ui));
     });
     ui.label(egui::RichText::new(tl(ui, "Spacing")).strong());
     ui.horizontal(|ui| {
@@ -103,7 +122,8 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     ui.horizontal(|ui| {
         let field = ui.add_sized(vec2(110.0, 20.0), egui::Label::new(tl(ui, "Line spacing")));
         let kind = d.get("lineKind", "multiple");
-        let value = d.get("lineValue", "1");
+        // NexusOffice: "1,5" in Vietnamese is the 1.5 lines preset too.
+        let value = d.get("lineValue", "1").replace(',', ".");
         let presets = [
             ("Single", "multiple", Some("1")),
             ("1.5 lines", "multiple", Some("1.5")),
@@ -130,10 +150,11 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
     if let Some((kind, value)) = picked {
         d.fields.insert("lineKind".into(), kind.into());
         if let Some(v) = value {
-            d.fields.insert("lineValue".into(), v.into());
-        } else if kind == "exactly" && finite_pt(&d.get("lineValue", "1")).is_some_and(|n| n <= 9.99) {
+            let shown = units::localize(lang_of(d), v).into_owned();
+            d.fields.insert("lineValue".into(), shown);
+        } else if kind == "exactly" && pt_field(d, "lineValue", "1").is_some_and(|n| n <= 9.99) {
             d.fields.insert("lineValue".into(), "18".into());
-        } else if kind == "multiple" && finite_pt(&d.get("lineValue", "1")).is_some_and(|n| n > 9.99) {
+        } else if kind == "multiple" && pt_field(d, "lineValue", "1").is_some_and(|n| n > 9.99) {
             d.fields.insert("lineValue".into(), "1".into());
         }
     }
@@ -156,36 +177,36 @@ pub(super) fn paragraph_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) 
         return true;
     }
     if ok {
-        let Some(before_in) = finite_pt(&d.get("before", "")) else {
+        let Some(before_in) = len_kept(d, "before", "") else {
             app.set_status("Indent before text must be a number of inches");
             return false;
         };
-        let Some(after_in) = finite_pt(&d.get("after", "")) else {
+        let Some(after_in) = len_kept(d, "after", "") else {
             app.set_status("Indent after text must be a number of inches");
             return false;
         };
-        let Some(by_in) = finite_pt(&d.get("by", "")) else {
+        let Some(by_in) = len_kept(d, "by", "") else {
             app.set_status("Special indent must be a number of inches");
             return false;
         };
-        let Some(space_before) = finite_pt(&d.get("spaceBefore", "")) else {
+        let Some(space_before) = pt_kept(d, "spaceBefore", "") else {
             app.set_status("Spacing before must be a number");
             return false;
         };
-        let Some(space_after) = finite_pt(&d.get("spaceAfter", "")) else {
+        let Some(space_after) = pt_kept(d, "spaceAfter", "") else {
             app.set_status("Spacing after must be a number");
             return false;
         };
-        let Some(line_value) = finite_pt(&d.get("lineValue", "")) else {
+        let Some(line_value) = pt_kept(d, "lineValue", "") else {
             app.set_status("Line spacing must be a number");
             return false;
         };
         let mut params = json!({
             "align": d.get("align", "left"),
-            "indentLeft": before_in * 72.0,
-            "indentRight": after_in * 72.0,
+            "indentLeft": before_in,
+            "indentRight": after_in,
             "special": d.get("special", "none"),
-            "specialBy": by_in * 72.0,
+            "specialBy": by_in,
             "spaceBefore": space_before,
             "spaceAfter": space_after,
             "spaceBeforeKind": if d.get("spaceBefore", "") == d.get("spaceBeforeSeed", "") { d.params.get("spaceBeforeKind").and_then(Value::as_str).unwrap_or("pts") } else { "pts" },

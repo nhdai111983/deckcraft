@@ -81,6 +81,8 @@ fn canon_lang(raw: &str) -> Option<&'static str> {
         "fr" | "fr-fr" => Some("fr-FR"),
         "ja" | "ja-jp" => Some("ja-JP"),
         "sv" | "sv-se" => Some("sv-SE"),
+        // NexusOffice: Vietnamese dates (dd/MM/yyyy, names, 24-hour time).
+        "vi" | "vi-vn" => Some("vi-VN"),
         _ => None,
     }
 }
@@ -98,9 +100,9 @@ fn date_opts(p: &Value) -> Result<DateOpts> {
     let lang = if p.get("language").is_some() {
         let raw = str_param(p, "language").filter(|l| !l.trim().is_empty());
         let Some(raw) = raw else {
-            return Err(bad("insert.dateTime", "`language` must be en-US, en-GB, fr-FR, ja-JP or sv-SE"));
+            return Err(bad("insert.dateTime", "`language` must be en-US, en-GB, fr-FR, ja-JP, sv-SE or vi-VN"));
         };
-        Some(canon_lang(raw).ok_or_else(|| bad("insert.dateTime", "`language` must be en-US, en-GB, fr-FR, ja-JP or sv-SE"))?.to_string())
+        Some(canon_lang(raw).ok_or_else(|| bad("insert.dateTime", "`language` must be en-US, en-GB, fr-FR, ja-JP, sv-SE or vi-VN"))?.to_string())
     } else {
         None
     };

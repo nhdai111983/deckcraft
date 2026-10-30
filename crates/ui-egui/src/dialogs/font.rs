@@ -1,19 +1,80 @@
+use super::lang_of;
+use super::std_number;
 use super::{Dialog, SlideApp, Ui, buttons, check, choice, color_label, finite_pt, json, json_text, labeled_text, seed_once, vec2};
+use crate::i18n::Language;
 use crate::i18n::tl;
+use crate::i18n::units;
 
 fn seed_font_fields(d: &mut Dialog) {
+    let lang = lang_of(d);
     seed_once(d, "family", json_text(d.params.get("family"), ""));
-    seed_once(d, "size", json_text(d.params.get("size"), "18"));
+    seed_once(d, "size", units::localize(lang, &json_text(d.params.get("size"), "18")).into_owned());
     seed_once(d, "bold", json_text(d.params.get("bold"), "0"));
     seed_once(d, "italic", json_text(d.params.get("italic"), "0"));
     seed_once(d, "underline", json_text(d.params.get("underline"), "none"));
     seed_once(d, "strike", json_text(d.params.get("strike"), "none"));
     seed_once(d, "baseline", json_text(d.params.get("baseline"), "none"));
     seed_once(d, "caps", json_text(d.params.get("caps"), "none"));
-    seed_once(d, "spacing", json_text(d.params.get("spacing"), "0"));
+    seed_once(d, "spacing", units::localize(lang, &json_text(d.params.get("spacing"), "0")).into_owned());
     let shown = d.params.get("color").map(color_label).unwrap_or_default();
     seed_once(d, "color", shown.clone());
     seed_once(d, "colorSeed", shown);
+}
+
+/// NexusOffice: the number typed in field `key` (points, a percent, a multiple), read in the
+/// dialog's language.
+pub(super) fn pt_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    let lang = lang_of(d);
+    finite_pt(&std_number(lang, &d.get(key, default)))
+}
+
+/// NexusOffice: the Paragraph dialog param field `key` was seeded from (`indentLeft` for "before").
+fn param_of(key: &str) -> &str {
+    match key {
+        "before" => "indentLeft",
+        "after" => "indentRight",
+        "by" => "specialBy",
+        other => other,
+    }
+}
+
+/// NexusOffice: in Vietnamese, field `key` still showing what it was seeded with keeps the exact
+/// value it was seeded from (the text rounds: 27 pt shows "0,95" cm); `None` when it wasn't seeded
+/// from a number. English reads the text as upstream does.
+fn kept_value(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    if lang_of(d) == Language::En {
+        return None;
+    }
+    let seed = d.fields.get(&format!("{key}Seed")).cloned()?;
+    if d.get(key, default) != seed {
+        return None;
+    }
+    match d.params.get(param_of(key)) {
+        // Seeded from the paragraph: exactly that; a malformed one is the field's default, as the
+        // seed showed it (line spacing 1, the rest 0).
+        Some(v) => Some(v.as_f64().filter(|v| v.is_finite()).unwrap_or(if key == "lineValue" { 1.0 } else { 0.0 })),
+        // Seeded from the default: an indent's 0 is exact; anything else reads from the text.
+        None => (seed == "0").then_some(0.0),
+    }
+}
+
+/// NexusOffice: a Paragraph length in points, exact while untouched ([`kept_value`]).
+pub(super) fn len_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| len_field(d, key, default))
+}
+
+/// NexusOffice: a Paragraph number (points, a multiple), exact while untouched ([`kept_value`]).
+pub(super) fn pt_kept(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    kept_value(d, key, default).or_else(|| pt_field(d, key, default))
+}
+
+/// NexusOffice: the length typed in field `key`, in points: inches in English (upstream),
+/// centimetres (or the unit typed) in Vietnamese.
+fn len_field(d: &mut Dialog, key: &str, default: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => finite_pt(&d.get(key, default)).map(|inches| inches * 72.0),
+        lang => units::parse_length(lang, &d.get(key, default)),
+    }
 }
 
 /// Home › Font › Font…, the shape menu and Cmd+T. One OK applies every field together.
@@ -76,7 +137,9 @@ pub(super) fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
         let mut spacing = d.get("spacing", "0");
         let edited = ui.add(egui::TextEdit::singleline(&mut spacing).desired_width(64.0).hint_text("pt"));
         let mut picked = None;
-        let presets = [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")].map(|(v, l)| (v, tl(ui, l)));
+        let lang = crate::i18n::current(ui.ctx());
+        let presets = [("-3", "Very tight"), ("-1.5", "Tight"), ("0", "Normal"), ("3", "Loose"), ("6", "Very loose")]
+            .map(|(v, l)| (units::localize(lang, v).into_owned(), tl(ui, l)));
         let combo = craft_ui::ComboBox::from_id_salt("font_dialog_spacing")
             .selected_text(presets.iter().find(|(v, _)| *v == spacing).map_or(spacing.as_str(), |(_, l)| l.as_ref()))
             .width(120.0)
@@ -99,7 +162,7 @@ pub(super) fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
     let italic = d.get("italic", "0") == "1";
     let underline = d.get("underline", "none");
     let strike = d.get("strike", "none");
-    let shown = finite_pt(&d.get("size", "18")).unwrap_or(18.0).clamp(12.0, 28.0) as f32;
+    let shown = pt_field(d, "size", "18").unwrap_or(18.0).clamp(12.0, 28.0) as f32;
     let mut sample = egui::RichText::new("AaBbCcDd").size(shown);
     if bold {
         sample = sample.strong();
@@ -123,11 +186,11 @@ pub(super) fn font_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
             app.set_status("Choose a font");
             return false;
         }
-        let Some(size) = finite_pt(&d.get("size", "")) else {
+        let Some(size) = pt_field(d, "size", "") else {
             app.set_status("Font size must be a number");
             return false;
         };
-        let Some(spacing) = finite_pt(&d.get("spacing", "0")) else {
+        let Some(spacing) = pt_field(d, "spacing", "0") else {
             app.set_status("Character spacing must be a number");
             return false;
         };

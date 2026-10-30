@@ -1,4 +1,18 @@
+use super::lang_of;
+use super::num;
 use super::{Dialog, SlideApp, Ui, Value, check, field, json, vec2};
+use crate::i18n::Language;
+use crate::i18n::tl;
+use crate::i18n::units;
+
+/// NexusOffice: a length typed in the Tabs dialog's field `key`, in inches (the dialog's own unit):
+/// inches in English (upstream), centimetres (or the unit typed) in Vietnamese.
+pub(super) fn typed_inches(d: &mut Dialog, key: &str) -> Option<f64> {
+    match lang_of(d) {
+        Language::En => Some(num(d, key, f64::NAN)).filter(|v| v.is_finite()),
+        lang => units::parse_length(lang, &d.get(key, "")).map(|pt| pt / 72.0),
+    }
+}
 
 /// Home › Find / Replace: step through matches (slide text, table cells, notes) or replace them.
 pub(super) fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
@@ -27,11 +41,11 @@ pub(super) fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let has = !text.is_empty();
-        if ui.add_enabled(has, egui::Button::new("Find Next")).clicked() || (has && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
+        if ui.add_enabled(has, egui::Button::new(tl(ui, "Find Next"))).clicked() || (has && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
             find_next = true;
         }
         if replace_mode {
-            if ui.add_enabled(has, egui::Button::new("Replace")).clicked() {
+            if ui.add_enabled(has, egui::Button::new(tl(ui, "Replace"))).clicked() {
                 let cur: Option<Value> = serde_json::from_str(&d.get("cur", "")).ok();
                 if let Some(at) = cur {
                     let mut p = q.clone();
@@ -44,27 +58,30 @@ pub(super) fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
                 }
                 find_next = true;
             }
-            if ui.add_enabled(has, egui::Button::new("Replace All")).clicked() {
+            if ui.add_enabled(has, egui::Button::new(tl(ui, "Replace All"))).clicked() {
                 let mut p = q.clone();
                 p["with"] = json!(d.get("with", ""));
                 let msg = match app.session.execute("text.replace", &p) {
-                    Ok(v) => format!("Replaced {} occurrence(s).", v.get("replaced").and_then(Value::as_u64).unwrap_or(0)),
-                    Err(_) => format!("Nexus Slide can't find “{text}”."),
+                    Ok(v) => {
+                        lang_of(d).fill("Replaced {n} occurrence(s).", &[("n", &v.get("replaced").and_then(Value::as_u64).unwrap_or(0).to_string())])
+                    }
+                    Err(_) => lang_of(d).fill("Nexus Slide can't find “{text}”.", &[("text", &text)]),
                 };
                 d.fields.insert("status".into(), msg);
                 d.fields.remove("cur");
             }
-        } else if ui.button("Replace…").clicked() {
+        } else if ui.button(tl(ui, "Replace…")).clicked() {
             d.fields.insert("replace".into(), "1".into());
         }
-        if ui.button("Close").clicked() {
+        if ui.button(tl(ui, "Close")).clicked() {
             close = true;
         }
     });
     if find_next {
         let list = app.session.execute("text.find", &q).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
         if list.is_empty() {
-            d.fields.insert("status".into(), format!("Nexus Slide can't find “{text}”."));
+            let msg = lang_of(d).fill("Nexus Slide can't find “{text}”.", &[("text", &text)]);
+            d.fields.insert("status".into(), msg);
             d.fields.remove("cur");
         } else {
             let n = d.get("next", "0").parse::<usize>().unwrap_or(0) % list.len();
@@ -75,11 +92,21 @@ pub(super) fn find_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bo
             }
             d.fields.insert("cur".into(), m.to_string());
             d.fields.insert("next".into(), (n + 1).to_string());
-            let where_ = if m.get("shape").is_some_and(Value::is_null) { " (notes)" } else { "" };
-            d.fields.insert(
-                "status".into(),
-                format!("Match {} of {} on slide {}{where_}.", n + 1, list.len(), m.get("slide").and_then(Value::as_u64).unwrap_or(0) + 1),
+            let lang = lang_of(d);
+            let template = if m.get("shape").is_some_and(Value::is_null) {
+                "Match {n} of {total} on slide {slide} (notes)."
+            } else {
+                "Match {n} of {total} on slide {slide}."
+            };
+            let msg = lang.fill(
+                template,
+                &[
+                    ("n", &n.saturating_add(1).to_string()),
+                    ("total", &list.len().to_string()),
+                    ("slide", &m.get("slide").and_then(Value::as_u64).unwrap_or(0).saturating_add(1).to_string()),
+                ],
             );
+            d.fields.insert("status".into(), msg);
         }
     }
     let status = d.get("status", "");

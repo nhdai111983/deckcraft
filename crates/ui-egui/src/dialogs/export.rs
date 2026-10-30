@@ -1,4 +1,7 @@
+use super::lang_of;
 use super::{Dialog, SlideApp, Ui, Value, check, field, json, num, vec2};
+use crate::i18n::tl;
+use crate::i18n::units;
 
 /// The export dialog's Animated GIF options (size, seconds per slide, loop, slide range, hidden
 /// slides) as `file.export` params; a slide range that doesn't fit the deck is an error message.
@@ -15,10 +18,10 @@ pub(super) fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result
     };
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        let field = ui.add_sized(vec2(120.0, 20.0), egui::Label::new("Size:"));
-        let combo = craft_ui::ComboBox::from_id_salt("gif_size").selected_text(size_label(&size)).show_ui(ui, |ui| {
+        let field = ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, "Size:")));
+        let combo = craft_ui::ComboBox::from_id_salt("gif_size").selected_text(tl(ui, size_label(&size))).show_ui(ui, |ui| {
             for k in SIZE_PRESETS.iter().map(|(k, _)| *k).chain(["custom"]) {
-                if ui.selectable_label(size == k, size_label(k)).clicked() {
+                if ui.selectable_label(size == k, tl(ui, size_label(k))).clicked() {
                     d.fields.insert("gifSize".into(), k.into());
                 }
             }
@@ -38,7 +41,7 @@ pub(super) fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result
     let width = if size == "custom" {
         let w = num(d, "gifWidth", 960.0).round();
         if !(f64::from(MIN_WIDTH)..=f64::from(MAX_WIDTH)).contains(&w) {
-            return Err(format!("Width: enter {MIN_WIDTH} to {MAX_WIDTH} pixels"));
+            return Err(lang_of(d).fill("Width: enter {min} to {max} pixels", &[("min", &MIN_WIDTH.to_string()), ("max", &MAX_WIDTH.to_string())]));
         }
         json!(w as u32)
     } else {
@@ -46,12 +49,14 @@ pub(super) fn gif_options(app: &SlideApp, ui: &mut Ui, d: &mut Dialog) -> Result
     };
     let seconds = num(d, "gifSeconds", f64::NAN);
     if deckcraft_engine::gif_export::check_seconds(seconds).is_err() {
-        return Err(format!("Seconds per slide: enter {MIN_SECONDS} to {MAX_SECONDS}"));
+        let lang = lang_of(d);
+        let (min, max) = (units::localize(lang, &MIN_SECONDS.to_string()).into_owned(), units::localize(lang, &MAX_SECONDS.to_string()).into_owned());
+        return Err(lang.fill("Seconds per slide: enter {min} to {max}", &[("min", &min), ("max", &max)]));
     }
     let mut p = json!({"width": width, "secondsPerSlide": seconds, "loop": forever, "includeHidden": hidden});
     let (from, to) = (num(d, "gifFrom", 1.0).round(), num(d, "gifTo", n as f64).round());
     if !(from >= 1.0 && from <= to && to <= n as f64) {
-        return Err(format!("Slides: choose a range from 1 to {n}"));
+        return Err(lang_of(d).fill("Slides: choose a range from 1 to {n}", &[("n", &n.to_string())]));
     }
     if from > 1.0 || to < n as f64 {
         p["slides"] = json!(((from as usize - 1)..(to as usize)).collect::<Vec<_>>());

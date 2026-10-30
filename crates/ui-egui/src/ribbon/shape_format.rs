@@ -255,7 +255,9 @@ fn smooth_corners_row(app: &mut SlideApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         let label = ui.label(crate::i18n::tr(ui.ctx(), "Smooth Corners"));
         let mut pct = state.1;
-        let resp = ui.add_enabled(usable, egui::Slider::new(&mut pct, 0.0..=100.0).suffix("%").integer()).labelled_by(label.id);
+        let resp = ui
+            .add_enabled(usable, crate::i18n::units::slider(ui, egui::Slider::new(&mut pct, 0.0..=100.0).suffix("%").integer()))
+            .labelled_by(label.id);
         let resp = if usable { resp } else { resp.on_disabled_hover_text("For rectangles and rounded rectangles") };
         if resp.changed() {
             state.1 = pct;

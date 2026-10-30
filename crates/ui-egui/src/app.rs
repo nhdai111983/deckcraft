@@ -508,6 +508,8 @@ impl SlideApp {
         self.sync_backstage();
         self.keyboard(&ctx);
         self.sync_backstage();
+        // NexusOffice: the bars keep their frameless buttons; inputs elsewhere are framed.
+        let style = crate::nexus_dialog::chrome_style(ui);
         if !self.wps {
             ribbon::title_bar(self, ui);
         }
@@ -521,6 +523,7 @@ impl SlideApp {
             }
             status::status_bar(self, ui);
         }
+        ui.set_style(style);
         let now = ui.input(|i| i.time);
         if self.tick_anim_preview(now) {
             ctx.request_repaint();

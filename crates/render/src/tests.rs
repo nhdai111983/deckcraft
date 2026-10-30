@@ -712,6 +712,9 @@ fn date_fields_show_the_date_in_their_format() {
     assert_eq!(f.field_in("datetime4", Some("en-US")).as_deref(), Some("October 9, 2026"));
     assert_eq!(f.field_in("datetimeFigureOut", Some("en-GB")).as_deref(), Some("09/10/2026"));
     assert_eq!(f.field("datetime13").as_deref(), Some("8:05:07 PM"));
+    // A Vietnamese run updates in the Vietnamese format.
+    assert_eq!(f.field_in("datetime2", Some("vi-VN")).as_deref(), Some("Thứ Sáu, 9 tháng 10 năm 2026"));
+    assert_eq!(f.field_in("datetime8", Some("vi-VN")).as_deref(), Some("09/10/2026 20:05"));
     assert_eq!(f.field("slidenum").as_deref(), Some("1"));
     // A date the app can't compute (no clock, unknown type, other-language names) keeps the saved text.
     assert_eq!(SlideFields { now: None, ..f }.field("datetime1"), None);

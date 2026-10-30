@@ -60,7 +60,8 @@ pub(super) fn background(app: &mut SlideApp, ui: &mut Ui) {
                 });
             });
             let mut tr = ((1.0 - color.alpha()) * 100.0) as f32;
-            if ui.add(egui::Slider::new(&mut tr, 0.0..=100.0).text(tl(ui, "Transparency")).suffix("%")).drag_stopped() {
+            if ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut tr, 0.0..=100.0).text(tl(ui, "Transparency")).suffix("%"))).drag_stopped()
+            {
                 run(app, "design.background", json!({"transparency": (f64::from(tr) / 100.0).clamp(0.0, 1.0)}));
             }
         }
@@ -117,7 +118,7 @@ fn picture_background_options(app: &mut SlideApp, ui: &mut Ui, pf: &deckcraft_mo
     use deckcraft_model::style::PictureMode;
     let alpha = pf.alpha.unwrap_or(1.0);
     let mut tr = ((1.0 - alpha) * 100.0) as f32;
-    if ui.add(egui::Slider::new(&mut tr, 0.0..=100.0).text(tl(ui, "Transparency")).suffix("%")).drag_stopped() {
+    if ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut tr, 0.0..=100.0).text(tl(ui, "Transparency")).suffix("%"))).drag_stopped() {
         run(app, "design.background", json!({"transparency": (f64::from(tr) / 100.0).clamp(0.0, 1.0)}));
     }
     let mut tile = matches!(pf.mode, PictureMode::Tile { .. });

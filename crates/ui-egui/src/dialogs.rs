@@ -2,11 +2,12 @@
 //! About window. The start screen is File › Home (`backstage.rs`).
 
 use deckcraft_color::SchemeSlot;
-use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
+use egui::{Color32, CornerRadius, Rect, Sense, Stroke, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::SlideApp;
-use crate::i18n::{tl, tl_in};
+use crate::i18n::units;
+use crate::i18n::{Language, tl, tl_in};
 use crate::theme::{self, Tokens};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -103,12 +104,10 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         // A title can differ from the ribbon's word for the same thing ("Đoạn văn", the group "Đoạn").
         lang.lookup(&format!("dialog.{}", d.id)).map_or_else(|| lang.tr(title(&d.id)).into_owned(), str::to_string)
     };
-    let mut window = egui::Window::new(shown)
-        .id(egui::Id::unique(("dialog", d.id.clone())))
-        .collapsible(false)
-        .resizable(false)
-        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
-        .open(&mut open);
+    // NexusOffice: the dialog's numbers and lengths read in the interface's language (`lang_of`).
+    d.fields.insert(LANG_FIELD.into(), lang.code().into());
+    // NexusOffice: the shared dialog look (sized to the content, 16 px padding).
+    let mut window = crate::nexus_dialog::window(ctx, shown, egui::Id::unique(("dialog", d.id.clone()))).open(&mut open);
     // Two columns of colour rows plus Save must fit the first frame (Theme Colors), as must Save
     // in Theme Fonts. A later resize clips the buttons (the window size sticks) and clicks miss them.
     if d.id == "themeColors" {
@@ -120,7 +119,7 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
         ui.set_min_width(match d.id.as_str() {
             "themeColors" => 700.0,
             "themeFonts" => 400.0,
-            _ => 340.0,
+            _ => crate::nexus_dialog::MIN_WIDTH,
         });
         if d.id == "themeColors" {
             ui.set_min_height(360.0);
@@ -208,34 +207,25 @@ fn embedded_save_prompt(app: &mut SlideApp, ctx: &egui::Context, d: &Dialog) -> 
     Some(false)
 }
 
+/// NexusOffice: the shared footer (Hủy, then the primary button, right-aligned; Enter is OK).
 fn buttons(ui: &mut Ui, ok_label: &str) -> (bool, bool) {
-    let mut ok = false;
-    let mut cancel = false;
-    let ok_label = crate::i18n::tr(ui.ctx(), ok_label).into_owned();
-    let ok_label = ok_label.as_str();
-    let cancel_label = crate::i18n::tr(ui.ctx(), "Cancel").into_owned();
-    ui.add_space(8.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let t = Tokens::get(ui.ctx());
-        if ui.add(egui::Button::new(egui::RichText::new(ok_label).color(t.accent_text)).fill(t.accent).min_size(vec2(72.0, 24.0))).clicked()
-            || ui.input(|i| i.key_pressed(egui::Key::Enter))
-        {
-            ok = true;
-        }
-        if ui.add(egui::Button::new(cancel_label.as_str()).min_size(vec2(72.0, 24.0))).clicked() {
-            cancel = true;
-        }
-    });
-    (ok, cancel)
+    crate::nexus_dialog::footer(ui, ok_label, true)
 }
 
 /// Draw a labelled single-line field bound to `key`, falling back to `default`, and store the
 /// edited value in the dialog.
 fn field(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: &str) {
     let mut v = d.get(key, default);
-    ui.horizontal(|ui| {
-        let l = ui.add_sized(vec2(120.0, 20.0), egui::Label::new(tl(ui, label)));
-        ui.add(egui::TextEdit::singleline(&mut v).desired_width(180.0)).labelled_by(l.id);
+    // NexusOffice: an indented label ("  Footer text:") keeps its indent in every language; labels
+    // sit left-aligned in one column, and a label too long for it goes above its field
+    // (`nexus_dialog::field_row`).
+    let name = label.trim_start();
+    let indent = label.len().saturating_sub(name.len()) > 0;
+    let text = tl(ui, name).into_owned();
+    crate::nexus_dialog::field_row(ui, &text, indent, |ui, width| {
+        let r = ui.add(egui::TextEdit::singleline(&mut v).desired_width(width).margin(vec2(6.0, 4.0)).min_size(vec2(0.0, 26.0)));
+        // Named by its label, as upstream's `labelled_by` does.
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &text));
     });
     d.fields.insert(key.into(), v);
 }
@@ -248,7 +238,25 @@ fn check(ui: &mut Ui, d: &mut Dialog, label: &str, key: &str, default: bool) -> 
 }
 
 fn num(d: &mut Dialog, key: &str, default: f64) -> f64 {
-    d.get(key, "").trim().trim_end_matches(['"', '%', ' ']).parse::<f64>().ok().filter(|v| v.is_finite()).unwrap_or(default)
+    let lang = lang_of(d);
+    units::parse_number(lang, d.get(key, "").trim().trim_end_matches(['"', '%', ' '])).unwrap_or(default)
+}
+
+/// NexusOffice: where `show` notes the interface language of the frame (numbers and lengths).
+const LANG_FIELD: &str = "nx.lang";
+
+/// NexusOffice: the interface language the dialog is drawn in (English until `show` notes it).
+fn lang_of(d: &Dialog) -> Language {
+    d.fields.get(LANG_FIELD).and_then(|c| Language::parse(c)).unwrap_or_default()
+}
+
+/// NexusOffice: typed `text` as upstream's parsers read it: as it is in English; in Vietnamese the
+/// number it holds (a comma or a point) written with a point, or "" when it holds none.
+fn std_number(lang: Language, text: &str) -> String {
+    match lang {
+        Language::En => text.to_string(),
+        _ => units::parse_measure(lang, text).map(|v| v.to_string()).unwrap_or_default(),
+    }
 }
 
 fn num_text(v: f64) -> String {
@@ -312,6 +320,7 @@ mod zoom;
 
 pub use about::{about, paint_logo, version_line};
 use body::body;
+pub use date_time::date_default_lang;
 #[cfg(test)]
 use hyperlink::{
     CurrentLink, HyperlinkSeed, common_click, hyperlink_command, hyperlink_seed_of, hyperlink_should_apply, link_covering, seed_from, seed_of_link,
@@ -380,8 +389,12 @@ fn pt_text(v: Option<&Value>, default: f64) -> String {
     }
 }
 
-fn inches_text(v: Option<&Value>) -> String {
-    crate::widgets::fmt_num(v.and_then(Value::as_f64).filter(|n| n.is_finite()).unwrap_or(0.0) / 72.0, "")
+fn inches_text(lang: Language, v: Option<&Value>) -> String {
+    let pt = v.and_then(Value::as_f64).filter(|n| n.is_finite()).unwrap_or(0.0);
+    match lang {
+        Language::En => crate::widgets::fmt_num(pt / 72.0, ""),
+        _ => units::format_length(lang, pt),
+    }
 }
 
 pub mod credits;

@@ -98,7 +98,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Date & Time",
             ["Insert", "Text"],
             None,
-            "{format?: datetime1..datetime13, update?: bool, language?: en-US|en-GB|fr-FR|ja-JP|sv-SE} — no keys opens the dialog",
+            "{format?: datetime1..datetime13, update?: bool, language?: en-US|en-GB|fr-FR|ja-JP|sv-SE|vi-VN} — no keys opens the dialog",
             has_slide,
             date_time
         ),
@@ -447,6 +447,26 @@ mod tests {
         assert_eq!(run.kind, RunKind::Text);
         assert_eq!(run.props.lang.as_deref(), Some("en-GB"));
         assert_eq!(undo(&s), before + 1);
+    }
+
+    /// NexusOffice: Vietnamese dates (vi-VN): an automatic field keeps the language, so it shows
+    /// (and updates in) the Vietnamese format.
+    #[test]
+    fn vietnamese_dates_insert_as_a_field_in_vietnamese() {
+        let mut s = session();
+        edit_title(&mut s);
+        let now = deckcraft_text::datetime::DateTime::now_local().unwrap();
+        let expect = deckcraft_text::datetime::field_text("datetime2", Some("vi-VN"), now).unwrap();
+        assert!(expect.starts_with("Thứ ") || expect.starts_with("Chủ Nhật"), "{expect}");
+        s.execute("insert.dateTime", &json!({"format": "datetime2", "language": "vi-VN"})).unwrap();
+        let title = s.doc().unwrap().current_slide().unwrap().shapes[0].text.clone().unwrap();
+        let run = title.paragraphs[0].runs.iter().find(|r| r.text == expect).cloned().unwrap();
+        assert!(matches!(run.kind, RunKind::Field { ref field } if field == "datetime2"), "{run:?}");
+        assert_eq!(run.props.lang.as_deref(), Some("vi-VN"));
+        // "vi" alone reads as vi-VN; a 12-hour format isn't offered in Vietnamese.
+        s.execute("insert.dateTime", &json!({"format": "datetime10", "update": false, "language": "vi"})).unwrap();
+        let err = s.execute("insert.dateTime", &json!({"format": "datetime12", "language": "vi-VN"})).unwrap_err();
+        assert!(err.to_string().contains("isn't available"), "{err}");
     }
 
     #[test]
