@@ -16,6 +16,11 @@ pub fn ui_shortcut(app: &mut SlideApp, key: egui::Key, m: Mods) -> bool {
         return true;
     }
     let id = match (key, m.cmd, m.shift, m.alt) {
+        // NexusOffice (QC-SLD-02): Alt+F5 asks for Presenter View, whatever the displays.
+        (F5, false, false, true) => {
+            app.start_presenter_view(app.show_start_index());
+            return true;
+        }
         (F5, _, false, _) => {
             app.start_show(app.show_start_index(), false);
             return true;
@@ -31,6 +36,11 @@ pub fn ui_shortcut(app: &mut SlideApp, key: egui::Key, m: Mods) -> bool {
         }
         (S, true, false, false) => {
             app.save();
+            return true;
+        }
+        // NexusOffice: a host with tabs opens the new presentation in a tab of its own.
+        (N, true, false, false) if app.services.new_document.is_some() => {
+            let _ = app.run("file.new", json!({}));
             return true;
         }
         (S, true, true, false) => "app.saveAsDialog",
@@ -289,7 +299,7 @@ pub fn menu_tree() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
                 ("Set Up Show…", "show.setup"),
             ],
         ),
-        ("Help", vec![("About Nexus Slides", "app.about"), ("Command Palette", "app.palette")]),
+        ("Help", vec![("About Nexus Slide", "app.about"), ("Check for Updates…", "app.checkUpdates"), ("Command Palette", "app.palette")]),
     ]
 }
 

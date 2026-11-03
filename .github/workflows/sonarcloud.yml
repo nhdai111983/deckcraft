@@ -1,0 +1,24 @@
+name: SonarCloud
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonarcloud-${{ github.ref }}
+  # A push to main is the run that publishes coverage; superseded runs there would never finish.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  sonarcloud:
+    # NexusOffices: only in upstream's own repository. On a fork this would hand every secret of
+    # the fork (`secrets: inherit`) to a workflow at storytold/...@main that the fork doesn't control.
+    if: github.repository == 'storytold/deckcraft'
+    # Tracked at @main so org-wide CI improvements propagate without PR churn.
+    uses: storytold/craft-common-actions/.github/workflows/sonarcloud.yml@main
+    secrets: inherit

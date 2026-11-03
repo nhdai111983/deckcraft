@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build and package Nexus Slides for Linux (<arch> is x86_64 or aarch64, or riscv64 when cross-compiling):
+# Build and package Nexus Slide for Linux (<arch> is x86_64 or aarch64, or riscv64 when cross-compiling):
 #
-#   $DIST/NexusSlides-<version>-linux-<arch>.AppImage  any distro with glibc >= the build host's
-#   $DIST/NexusSlides-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
-#   $DIST/NexusSlides-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
-#   $DIST/NexusSlides-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
-#   $DIST/NexusSlides-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
+#   $DIST/NexusSlide-<version>-linux-<arch>.AppImage  any distro with glibc >= the build host's
+#   $DIST/NexusSlide-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
+#   $DIST/NexusSlide-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
+#   $DIST/NexusSlide-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
+#   $DIST/NexusSlide-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
 #
 # Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"]
 #
@@ -19,9 +19,15 @@ set -euo pipefail
 HERE="$ROOT/packaging/linux"
 APP_ID=vn.sonnytech.nexus.slides
 
+verify_sha256() {
+  local expected="$1"
+  local file="$2"
+  printf '%s  %s\n' "$expected" "$file" | sha256sum -c -
+}
+
 SKIP_BUILD=0
 FORMATS="appimage deb rpm tar"
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
     --formats) FORMATS="$2"; shift 2 ;;
@@ -37,13 +43,13 @@ case "$ARCH" in
   aarch64 | arm64) ARCH=aarch64; DEB_ARCH=arm64 ;;
   *) echo "unsupported architecture $ARCH" >&2; exit 2 ;;
 esac
-export DECKCRAFT_MAINTAINER="${DECKCRAFT_MAINTAINER:-Sonnytech <nhdai111983@users.noreply.github.com>}"
-BASENAME="NexusSlides-$VERSION-linux-$ARCH"
+export DECKCRAFT_MAINTAINER="${DECKCRAFT_MAINTAINER:-SonnyTech <nhdai111983@users.noreply.github.com>}"
+BASENAME="NexusSlide-$VERSION-linux-$ARCH"
 
-echo "==> Nexus Slides $VERSION for Linux $ARCH ($FORMATS)"
+echo "==> Nexus Slide $VERSION for Linux $ARCH ($FORMATS)"
 
-if [ "$SKIP_BUILD" = 0 ]; then
-  if [ -n "${CROSS_TARGET:-}" ]; then
+if [[ "$SKIP_BUILD" = 0 ]]; then
+  if [[ -n "${CROSS_TARGET:-}" ]]; then
     (cd "$ROOT" && cargo build --release --locked -p deckcraft -p deckcraft-cli --target "$CROSS_TARGET")
   else
     (cd "$ROOT" && cargo build --release --locked -p deckcraft -p deckcraft-cli)
@@ -55,9 +61,9 @@ STAGE="$WORK/root"
 rm -rf "$WORK"
 
 # ---- stage an FHS tree (shared by every format) -------------------------------------------------
-install -Dm755 "$BIN/deckcraft" "$STAGE/usr/bin/nexus-slides"
-install -Dm755 "$BIN/deckcraft-cli" "$STAGE/usr/bin/nexus-slides-cli"
-"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/nexus-slides" "$STAGE/usr/bin/nexus-slides-cli" 2>/dev/null || true
+install -Dm755 "$BIN/deckcraft" "$STAGE/usr/bin/nexus-slide"
+install -Dm755 "$BIN/deckcraft-cli" "$STAGE/usr/bin/nexus-slide-cli"
+"${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/nexus-slide" "$STAGE/usr/bin/nexus-slide-cli" 2>/dev/null || true
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
 install -Dm644 "$HERE/$APP_ID.mime.xml" "$STAGE/usr/share/mime/packages/$APP_ID.xml"
 mkdir -p "$STAGE/usr/share/metainfo"
@@ -65,8 +71,8 @@ sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$DECKCRAFT_BUILD_DATE/g" \
   "$HERE/$APP_ID.metainfo.xml.in" >"$STAGE/usr/share/metainfo/$APP_ID.metainfo.xml"
 mkdir -p "$STAGE/usr/share/icons"
 cp -R "$ROOT/nexus/assets/hicolor" "$STAGE/usr/share/icons/"
-mkdir -p "$STAGE/usr/share/doc/nexus-slides"
-copy_docs "$STAGE/usr/share/doc/nexus-slides"
+mkdir -p "$STAGE/usr/share/doc/nexus-slide"
+copy_docs "$STAGE/usr/share/doc/nexus-slide"
 
 if command -v desktop-file-validate >/dev/null; then
   desktop-file-validate "$STAGE/usr/share/applications/$APP_ID.desktop"
@@ -75,7 +81,10 @@ if command -v appstreamcli >/dev/null; then
   appstreamcli validate --no-net --explain "$STAGE/usr/share/metainfo/$APP_ID.metainfo.xml"
 fi
 
-has() { case " $FORMATS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+has() {
+  local format="$1"
+  case " $FORMATS " in *" $format "*) return 0 ;; *) return 1 ;; esac
+}
 
 # ---- .tar.gz ------------------------------------------------------------------------------------
 if has tar; then
@@ -99,27 +108,63 @@ fi
 
 # ---- AppImage -----------------------------------------------------------------------------------
 if has appimage; then
-  APPDIR="$WORK/NexusSlides.AppDir"
+  APPIMAGETOOL_VERSION=1.9.1
+  case "$ARCH" in
+    x86_64) APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0 ;;
+    aarch64) APPIMAGETOOL_SHA256=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158 ;;
+    *) APPIMAGETOOL_SHA256='' ;;
+  esac
+  # appimagetool otherwise fetches the unpinned type2-runtime `continuous` build and embeds it.
+  APPIMAGE_RUNTIME_VERSION=20251108
+  case "$ARCH" in
+    x86_64) APPIMAGE_RUNTIME_SHA256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d ;;
+    aarch64) APPIMAGE_RUNTIME_SHA256=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444 ;;
+    *) APPIMAGE_RUNTIME_SHA256='' ;;
+  esac
+  if [[ -z "$APPIMAGE_RUNTIME_SHA256" ]]; then
+    echo "no pinned AppImage runtime for $ARCH; build the AppImage on x86_64 or aarch64" >&2
+    exit 2
+  fi
+  APPDIR="$WORK/NexusSlide.AppDir"
   cp -R "$STAGE" "$APPDIR"
-  # NexusOffices: usr/share/doc (licences, NOTICE, ATTRIBUTION.md, OFL texts) stays inside the AppImage.
-  ln -s usr/bin/nexus-slides "$APPDIR/AppRun"
+  # NexusOffice: usr/share/doc (licences, NOTICE, ATTRIBUTION.md, OFL texts) stays inside the AppImage.
+  ln -s usr/bin/nexus-slide "$APPDIR/AppRun"
   cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
   cp "$ROOT/nexus/assets/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
   ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
 
   TOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
-  if [ -z "$TOOL" ]; then
-    TOOL="$CARGO_TARGET_DIR/appimagetool-$ARCH.AppImage"
-    if [ ! -x "$TOOL" ]; then
-      curl -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
-      chmod +x "$TOOL"
+  if [[ -z "$TOOL" ]]; then
+    if [[ -z "$APPIMAGETOOL_SHA256" ]]; then
+      echo "no pinned appimagetool for $ARCH; set APPIMAGETOOL or put appimagetool on PATH" >&2
+      exit 2
     fi
+    TOOL="$CARGO_TARGET_DIR/appimagetool-$APPIMAGETOOL_VERSION-$ARCH.AppImage"
+    if [[ ! -x "$TOOL" ]]; then
+      download="$TOOL.download"
+      curl --proto '=https' -fsSL -o "$download" \
+        "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-$ARCH.AppImage"
+      verify_sha256 "$APPIMAGETOOL_SHA256" "$download"
+      chmod 755 "$download"
+      mv "$download" "$TOOL"
+    fi
+    verify_sha256 "$APPIMAGETOOL_SHA256" "$TOOL"
   fi
+  RUNTIME="$CARGO_TARGET_DIR/appimage-runtime-$APPIMAGE_RUNTIME_VERSION-$ARCH"
+  if [[ ! -f "$RUNTIME" ]]; then
+    download="$RUNTIME.download"
+    curl --proto '=https' -fsSL -o "$download" \
+      "https://github.com/AppImage/type2-runtime/releases/download/$APPIMAGE_RUNTIME_VERSION/runtime-$ARCH"
+    verify_sha256 "$APPIMAGE_RUNTIME_SHA256" "$download"
+    mv "$download" "$RUNTIME"
+  fi
+  verify_sha256 "$APPIMAGE_RUNTIME_SHA256" "$RUNTIME"
   # Absolute, because appimagetool runs in $DIST below (CARGO_TARGET_DIR or APPIMAGETOOL may be
   # relative).
   OUT="$(cd "$DIST" && pwd)/$BASENAME.AppImage"
   APPDIR="$(cd "$APPDIR" && pwd)"
   TOOL="$(cd "$(dirname "$TOOL")" && pwd)/$(basename "$TOOL")"
+  RUNTIME="$(cd "$(dirname "$RUNTIME")" && pwd)/$(basename "$RUNTIME")"
   # A .zsync left by an earlier run would hide a missing zsyncmake and describe another file.
   rm -f "$OUT.zsync"
   # Update information: AppImageUpdate, AppImageLauncher and the like read it from the file and
@@ -127,23 +172,23 @@ if has appimage; then
   # each AppImage on GitHub Releases. `latest` is the newest published release that is not a
   # pre-release. A fork's builds point at its own releases through GITHUB_REPOSITORY.
   REPO="${GITHUB_REPOSITORY:-nhdai111983/deckcraft}"
-  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|NexusSlides-*-linux-$ARCH.AppImage.zsync"
+  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|NexusSlide-*-linux-$ARCH.AppImage.zsync"
   # Extract-and-run: works without FUSE (containers, CI). The output embeds the static runtime,
   # so users don't need libfuse2 either. With zsyncmake on the host (CI installs the zsync
   # package) appimagetool also writes the .zsync, into its working directory, hence the cd.
-  (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream -u "$UPDATE_INFO" "$APPDIR" "$OUT")
+  (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream --runtime-file "$RUNTIME" -u "$UPDATE_INFO" "$APPDIR" "$OUT")
   echo "wrote $OUT"
-  if [ -s "$OUT.zsync" ]; then
+  if [[ -s "$OUT.zsync" ]]; then
     echo "wrote $OUT.zsync"
   else
     warn "zsyncmake not found, so $OUT.zsync was not written; AppImage delta updates need it"
   fi
 fi
 
-if [ -z "${CROSS_TARGET:-}" ]; then
-  "$STAGE/usr/bin/nexus-slides-cli" --version
-elif [ -n "${EMULATOR:-}" ]; then
-  "$EMULATOR" "$STAGE/usr/bin/nexus-slides-cli" --version
+if [[ -z "${CROSS_TARGET:-}" ]]; then
+  "$STAGE/usr/bin/nexus-slide-cli" --version
+elif [[ -n "${EMULATOR:-}" ]]; then
+  "$EMULATOR" "$STAGE/usr/bin/nexus-slide-cli" --version
 fi
 echo "==> done"
 ls -lh "$DIST"

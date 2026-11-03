@@ -1,4 +1,4 @@
-//! NexusOffices: the CLI is installed as `nexus-slides-cli` (the app as `nexus-slides`), so what it
+//! NexusOffice: the CLI is installed as `nexus-slide-cli` (the app as `nexus-slide`), so what it
 //! prints names those, never upstream's product, binaries or community links.
 
 use std::process::{Command, Output};
@@ -21,9 +21,9 @@ fn upstream_free(text: &str) {
 #[test]
 fn version_and_usage_name_nexus_slides_cli() {
     let v = all(&cli(&["--version"]));
-    assert!(v.starts_with("nexus-slides-cli "), "{v}");
+    assert!(v.starts_with("nexus-slide-cli "), "{v}");
     let usage = all(&cli(&[]));
-    assert!(usage.starts_with("nexus-slides-cli works on Nexus Slides presentations"), "{usage}");
+    assert!(usage.starts_with("nexus-slide-cli works on Nexus Slide presentations"), "{usage}");
     upstream_free(&usage);
 }
 
@@ -37,7 +37,7 @@ fn every_help_page_and_the_links_are_nexus() {
         upstream_free(&page);
     }
     let links = all(&cli(&["links"]));
-    assert!(links.contains("https://github.com/nhdai111983/deckcraft"), "{links}");
+    assert!(links.contains("https://github.com/sonnytech-vn/deckcraft"), "{links}");
     let app = all(&cli(&["app", "--port", "1", "slide.new"]));
-    assert!(app.contains("no Nexus Slides app on port 1") && app.contains("`nexus-slides --control 1`"), "{app}");
+    assert!(app.contains("no Nexus Slide app on port 1") && app.contains("`nexus-slide --control 1`"), "{app}");
 }

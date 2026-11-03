@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-deckcraft">
-    <comment>Nexus Slides presentation</comment>
+    <comment>Nexus Slide presentation</comment>
     <sub-class-of type="application/zip"/>
     <glob pattern="*.deckcraft"/>
     <icon name="vn.sonnytech.nexus.slides"/>

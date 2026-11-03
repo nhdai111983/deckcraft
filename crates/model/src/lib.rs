@@ -231,6 +231,8 @@ pub struct MediaClip {
     pub video: bool,
     /// Poster frame image.
     pub poster: Option<MediaId>,
+    /// Crop of the picture (left, top, right, bottom as fractions), PowerPoint's `srcRect` on the video.
+    pub crop: [f64; 4],
     pub trim_start_ms: u32,
     pub trim_end_ms: u32,
     pub fade_in_ms: u32,
@@ -439,6 +441,11 @@ impl Default for Shape {
 }
 
 impl Shape {
+    /// A stand-in shape for laying out one table cell's `body`: a table, so the cell's text takes
+    /// the master's other-text style as PowerPoint's does.
+    pub fn table_cell(body: text::TextBody) -> Shape {
+        Shape { text: Some(body), kind: ShapeKind::Table(Table::default()), ..Default::default() }
+    }
     pub fn is_placeholder(&self) -> bool {
         self.ph.is_some()
     }
@@ -1023,6 +1030,25 @@ impl Default for Presentation {
 }
 
 impl Presentation {
+    /// NexusOffice: the language the deck's text is in when a run doesn't say (`lang` of the
+    /// default text style, `p:defaultTextStyle` in PPTX), if the deck sets one.
+    pub fn default_lang(&self) -> Option<&str> {
+        self.default_text_style.levels.iter().flatten().find_map(|l| l.run.lang.as_deref()).filter(|l| !l.trim().is_empty())
+    }
+
+    /// NexusOffice: make `lang` the language of the deck's text where nothing else says one
+    /// (every level of the default text style that has none). Runs that name a language keep it.
+    pub fn set_default_lang(&mut self, lang: &str) {
+        if self.default_text_style.is_empty() {
+            self.default_text_style = defaults::default_text_style();
+        }
+        for level in self.default_text_style.levels.iter_mut().flatten() {
+            if level.run.lang.is_none() {
+                level.run.lang = Some(lang.to_string());
+            }
+        }
+    }
+
     /// A fresh id, unique across slides, shapes, layouts, masters and media in this deck. `None`
     /// once every id is in use (a hostile file can arrive that way): the deck cannot grow
     /// further, and callers must refuse the change rather than duplicate ids (#407).
@@ -1059,13 +1085,13 @@ impl Presentation {
         self.slides.iter().position(|s| s.id == id)
     }
     pub fn slide(&self, id: SlideId) -> Option<&Slide> {
-        self.slides.iter().find(|s| s.id == id).map(|s| s.as_ref())
+        self.slides.iter().find(|s| s.id == id).map(AsRef::as_ref)
     }
     pub fn slide_mut(&mut self, id: SlideId) -> Option<&mut Slide> {
         self.slides.iter_mut().find(|s| s.id == id).map(Arc::make_mut)
     }
     pub fn slide_at(&self, i: usize) -> Option<&Slide> {
-        self.slides.get(i).map(|s| s.as_ref())
+        self.slides.get(i).map(AsRef::as_ref)
     }
     /// Master and layout for a layout id.
     pub fn layout(&self, id: LayoutId) -> Option<(&Master, &Layout)> {
@@ -1079,7 +1105,7 @@ impl Presentation {
         self.masters.first().map(|m| (m.as_ref(), m.layouts.first()))
     }
     pub fn first_master(&self) -> Option<&Master> {
-        self.masters.first().map(|m| m.as_ref())
+        self.masters.first().map(AsRef::as_ref)
     }
     pub fn media(&self, id: MediaId) -> Option<&MediaItem> {
         self.media.iter().find(|m| m.id == id)

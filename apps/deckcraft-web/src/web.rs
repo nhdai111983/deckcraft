@@ -1,5 +1,7 @@
 //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
 
+mod host;
+
 use deckcraft_engine::Session;
 use deckcraft_ui_egui::{Inbox, InboxEvent, InboxFile, Services, SlideApp};
 use wasm_bindgen::JsCast as _;
@@ -11,6 +13,8 @@ const VIDEO_EXTS: &[&str] = &["mp4", "m4v", "mov", "webm"];
 const CANVAS_ID: &str = "deckcraft_canvas";
 const LOADING_ID: &str = "deckcraft_loading";
 
+/// Start the browser shell: install logging, locate the canvas, launch the eframe runner,
+/// build the sample or blank deck, and replace the loading element when launch finishes.
 pub fn start() {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
     wasm_bindgen_futures::spawn_local(async {
@@ -22,6 +26,9 @@ pub fn start() {
             log::error!("missing <canvas id=\"{CANVAS_ID}\">");
             return;
         };
+        // Framed in a same-origin page: that page sends and stores files instead of the browser.
+        let bridge = host::Bridge::new();
+        let app_bridge = bridge.clone();
         let mut options = eframe::WebOptions::default();
         if query().contains("webgl")
             && let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup
@@ -36,8 +43,15 @@ pub fn start() {
                     if let Some(rs) = &cc.wgpu_render_state {
                         log::info!("deckcraft-web {}: wgpu backend {:?}", env!("CARGO_PKG_VERSION"), rs.adapter.get_info().backend);
                     }
+                    deckcraft_ui_egui::install_ime_pass_hooks(&cc.egui_ctx);
                     let inbox: Inbox = Inbox::default();
                     let mut app = SlideApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
+                    if let Some(bridge) = &app_bridge {
+                        bridge.connect(&mut app.services, cc.egui_ctx.clone());
+                    }
+                    // NexusOffice layout in the style of WPS Office, in Vietnamese.
+                    app.wps = true;
+                    app.ui.language = deckcraft_ui_egui::i18n::Language::Vi;
                     let q = query();
                     if !q.contains("blank") {
                         if let Err(e) = deckcraft_engine::sample::open_sample(&mut app.session) {
@@ -49,16 +63,20 @@ pub fn start() {
                     if q.contains("show") {
                         app.start_show(0, false);
                     }
-                    Ok(Box::new(WebShell { app, inbox }))
+                    Ok(Box::new(WebShell { app, inbox, bridge: app_bridge }))
                 }),
             )
             .await;
+        if let Some(bridge) = &bridge {
+            match &result {
+                Ok(()) => bridge.post_ready(),
+                Err(e) => bridge.post_failed(&format!("{e:?}")),
+            }
+        }
         if let Some(el) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => el.remove(),
-                Err(e) => {
-                    el.set_inner_html(&format!("<p>Nexus Slides failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>"))
-                }
+                Err(e) => el.set_inner_html(&format!("<p>Nexus Slide failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
             }
         }
     });
@@ -73,14 +91,25 @@ fn query() -> String {
 struct WebShell {
     app: SlideApp,
     inbox: Inbox,
+    /// Set when a same-origin page frames the app ([`crate::host`]).
+    bridge: Option<host::Bridge>,
 }
 
 impl eframe::App for WebShell {
+    /// Delegate one eframe logic pass to the wrapped application.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
-        for f in dropped {
-            // Capture the document and slide now. The bytes arrive later, after the user may
-            // have switched slides.
+        if let Some(bridge) = self.bridge.clone() {
+            bridge.sync(&mut self.app, &self.inbox, ctx);
+        }
+        self.app.logic(ctx);
+    }
+
+    /// Consume browser drops with fresh input, capture the identity before the asynchronous read,
+    /// and deliver the id, name, and bytes through the inbox.
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // Browsers cannot read dropped files synchronously. Consume this pass's drops here, with
+        // fresh input, and capture the document/slide before the asynchronous read finishes.
+        for f in std::mem::take(&mut raw.dropped_files) {
             let id = self.app.begin_external_file("drop");
             let inbox = self.inbox.clone();
             let ctx = ctx.clone();
@@ -99,11 +128,7 @@ impl eframe::App for WebShell {
                 }
             });
         }
-        self.app.logic(ctx);
-    }
-
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
-        self.app.raw_input_hook(raw);
+        self.app.raw_input_hook(ctx, raw);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

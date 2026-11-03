@@ -188,7 +188,7 @@ pub fn builtin_themes() -> Vec<Theme> {
         raw_extra: None,
     };
     vec![
-        // NexusOffices: upstream names its first theme after its product; the fork's is "Nexus".
+        // NexusOffice: upstream names its first theme after its product; the fork's is "Nexus".
         t(
             "Nexus",
             scheme("Nexus", ["000000", "FFFFFF", "1E2B3C", "EDEBE7", "2E6FD8", "F26B1D", "2EA36F", "8A5CD8", "D83F6B", "E3B21C", "2E6FD8", "7A5BA6"]),

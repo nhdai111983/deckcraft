@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use deckcraft_model::{Presentation, SlideId};
-use egui::{Align2, Color32, CornerRadius, Rect, Sense, Stroke, Ui, WidgetInfo, WidgetType, pos2, vec2};
+use egui::{Align2, Color32, CornerRadius, Rect, Role, Sense, Stroke, Ui, WidgetInfo, pos2, vec2};
 use serde_json::json;
 
 use crate::SlideApp;
@@ -70,12 +70,14 @@ struct Header<'a> {
     first: Option<u32>,
 }
 
+/// Render one slide-sorter section header, handle its collapse/drag interactions, and return the
+/// occupied rectangle.
 fn section_header(app: &mut SlideApp, ui: &mut Ui, h: &Header<'_>) -> Rect {
     let t = Tokens::get(ui.ctx());
     let width = ui.available_width();
     let (r, _) = ui.allocate_exact_size(vec2(width, 32.0), Sense::hover());
-    let resp = ui.interact(r, ui.id().with(("sorter-section", h.uid, h.index)), Sense::click_and_drag());
-    resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, h.name));
+    let resp = ui.interact(r, ui.scope_id().with(("sorter-section", h.uid, h.index)), Sense::click_and_drag());
+    resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, h.name));
     let open = h.first.is_none_or(|id| !app.sorter.collapsed.contains(&(h.uid, id)));
     let dragging = app.sorter.drag.is_some_and(|(from, _)| from == h.index);
     let bg = if dragging {
@@ -88,15 +90,16 @@ fn section_header(app: &mut SlideApp, ui: &mut Ui, h: &Header<'_>) -> Rect {
     let painter = ui.painter_at(r);
     painter.rect_filled(r, CornerRadius::same(4), bg);
     let chev = Rect::from_center_size(pos2(r.min.x + 20.0, r.center().y), vec2(24.0, 24.0));
-    let cresp = ui.interact(chev, ui.id().with(("sorter-fold", h.uid, h.index)), Sense::click());
-    let fold = format!("{} {}", if open { "Collapse" } else { "Expand" }, h.name);
-    cresp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &fold));
+    let cresp = ui.interact(chev, ui.scope_id().with(("sorter-fold", h.uid, h.index)), Sense::click());
+    let fold = crate::i18n::current(ui.ctx()).fill(if open { "Collapse {name}" } else { "Expand {name}" }, &[("name", h.name)]);
+    cresp.widget_info(|| WidgetInfo::labeled(Role::Button, true, &fold));
     icons::paint(&painter, chev.shrink(4.0), if open { Icon::ChevronDown } else { Icon::ChevronRight }, t.text_dim, h.first.is_none());
     let renaming = app.sorter.renaming.clone().filter(|(uid, index, _)| *uid == h.uid && *index == h.index).map(|(_, _, text)| text);
     let name_rect = Rect::from_min_max(pos2(r.min.x + 40.0, r.min.y + 4.0), pos2(r.max.x - 56.0, r.max.y - 4.0));
     if let Some(mut buf) = renaming {
-        let edit_id = ui.id().with(("sorter-rename", h.uid, h.index));
-        let out = ui.put(name_rect, egui::TextEdit::singleline(&mut buf).id(edit_id).font(theme::bold(13.0)).margin(vec2(4.0, 2.0)));
+        let edit_id = ui.scope_id().with(("sorter-rename", h.uid, h.index));
+        let out =
+            ui.put(name_rect, egui::TextEdit::singleline(&mut buf).id(edit_id).hint_text("Name").font(theme::bold(13.0)).margin(vec2(4.0, 2.0)));
         let already = app.sorter.rename_started;
         if !already {
             out.request_focus();
@@ -144,31 +147,31 @@ fn section_header(app: &mut SlideApp, ui: &mut Ui, h: &Header<'_>) -> Rect {
     let index = h.index;
     let name = h.name.to_string();
     resp.context_menu(|ui| {
-        if ui.button("Rename Section…").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Rename Section…")).clicked() {
             let mut d = crate::dialogs::Dialog::new("renameSection");
             d.params = json!({"index": index, "name": name});
             app.dialog = Some(d);
             ui.close();
         }
-        if ui.button("Add Section").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Add Section")).clicked() {
             if let Some(at) = app.session.active().map(|st| st.selection.slide) {
                 let _ = app.run("section.add", json!({"at": at}));
             }
             ui.close();
         }
-        if ui.button("Remove Section").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Remove Section")).clicked() {
             let _ = app.run("section.remove", json!({"index": index}));
             ui.close();
         }
-        if ui.button("Remove Section & Slides").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Remove Section & Slides")).clicked() {
             let _ = app.run("section.remove", json!({"index": index, "slides": true}));
             ui.close();
         }
-        if ui.button("Move Section Up").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Move Section Up")).clicked() {
             let _ = app.run("section.move", json!({"index": index, "to": index.saturating_sub(1)}));
             ui.close();
         }
-        if ui.button("Move Section Down").clicked() {
+        if ui.button(crate::i18n::tl(ui, "Move Section Down")).clicked() {
             let _ = app.run("section.move", json!({"index": index, "to": index + 1}));
             ui.close();
         }
@@ -198,18 +201,22 @@ fn place_slides(app: &mut SlideApp, ui: &mut Ui, g: &Grid<'_>, budget: &mut u32,
             for c in 0..cols {
                 let Some(&i) = g.indices.get(row * cols + c) else { break };
                 let (cell, resp) = ui.allocate_exact_size(vec2(g.tw + 36.0, g.th + 36.0), Sense::click_and_drag());
-                let label = format!("Slide {}", i + 1);
-                resp.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+                let label = crate::i18n::current(ui.ctx()).fill("Slide {n}", &[("n", &(i + 1).to_string())]);
+                resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
                 let img = crate::textures::device_pixel_rect(Rect::from_min_size(cell.min + vec2(18.0, 8.0), vec2(g.tw, g.th)), ppp);
                 rects.push((i, cell));
                 let p = ui.painter();
-                match app.textures.thumb(ui.ctx(), g.doc, i, (img.width() * ppp).round() as u32, budget) {
+                // Only cells in view (plus a little margin) ask for a thumbnail, so a deck bigger
+                // than the thumbnail cache does not evict its own thumbnails forever (#969).
+                let near = ui.clip_rect().expand2(vec2(0.0, 2.0 * cell.height())).intersects(cell);
+                let tex = if near { app.textures.thumb(ui.ctx(), g.doc, i, (img.width() * ppp).round() as u32, budget) } else { None };
+                match tex {
                     Some(tex) => {
                         p.image(tex.id(), img, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                     }
                     None => {
                         p.rect_filled(img, CornerRadius::ZERO, Color32::WHITE);
-                        need_more = true;
+                        need_more |= near;
                     }
                 }
                 let id = g.doc.slides.get(i).map(|s| s.id);
@@ -225,8 +232,10 @@ fn place_slides(app: &mut SlideApp, ui: &mut Ui, g: &Grid<'_>, budget: &mut u32,
                     p.text(pos2(img.max.x, img.max.y + 12.0), Align2::RIGHT_CENTER, format!("★ {}", tr.kind), theme::font(10.5), t.text_faint);
                 }
                 if resp.clicked() {
-                    let add = ui.input(|inp| inp.modifiers.command);
-                    if add {
+                    let (shift, add) = ui.input(|inp| (inp.modifiers.shift, inp.modifiers.command));
+                    if shift {
+                        let _ = app.run("slide.selectRange", json!({"to": i, "add": add}));
+                    } else if add {
                         if let Some(id) = id {
                             let _ = app.run("slide.selectSlides", json!({"ids": [id.0], "add": true}));
                         }
@@ -272,7 +281,7 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             ui.add_space(24.0);
-            if ui.add(egui::Button::new("Add Section").stroke(Stroke::new(1.0, t.border))).clicked() {
+            if ui.add(egui::Button::new(crate::i18n::tl(ui, "Add Section")).stroke(Stroke::new(1.0, t.border))).clicked() {
                 let _ = app.run("section.add", json!({"at": cur}));
             }
         });
@@ -396,12 +405,13 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(notes_rect));
     // A draft belongs to this document and to the notes it started from (#413): another document,
     // a reorder or an undo that changes them drops it.
-    let id = egui::Id::new(("notespage", st.uid, idx));
-    let edit_id = egui::Id::new(("notespage-edit", idx));
+    let uid = st.uid;
+    let edit_id = egui::Id::unique(("notespage-edit", idx));
     let focused = child.ctx().memory(|m| m.has_focus(edit_id));
     let notes_of = |app: &SlideApp| app.session.active().and_then(|st| st.doc.slides.get(idx)).map(|s| s.notes.clone()).unwrap_or_default();
     let notes = notes_of(app);
-    let stored: Option<(deckcraft_model::text::TextBody, crate::notes::Draft)> = child.data_mut(|d| d.get_temp(id));
+    // NexusOffice: the draft lives on the app, so a host closing the window sees it (has_drafts).
+    let stored = app.page_notes.take().filter(|(u, i, _, _)| *u == uid && *i == idx).map(|(_, _, base, d)| (base, d));
     let mut draft = stored.filter(|(base, _)| *base == notes).map(|(_, d)| d);
     // Save an edited draft once the field has lost focus, before anything reloads it.
     if !focused && let Some(d) = draft.as_mut().filter(|d| d.edited) {
@@ -411,9 +421,10 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
     let notes = notes_of(app);
     let mut draft = draft.filter(|d| focused || d.body == notes).unwrap_or_else(|| crate::notes::Draft::new(&notes));
     let look = crate::notes::Look { size: 14.0, color: Some(Color32::from_gray(30)) };
+    let ui_ctx = ui.ctx().clone();
     let width = notes_rect.width();
     let r = crate::notes::editor(&mut child, &mut draft, &look, |e| {
-        e.id(edit_id).hint_text("Click to add text").desired_width(width).desired_rows(12).frame(egui::Frame::NONE)
+        e.id(edit_id).hint_text(crate::i18n::tr(&ui_ctx, "Click to add text")).desired_width(width).desired_rows(12).frame(egui::Frame::NONE)
     })
     .response
     .response;
@@ -422,7 +433,7 @@ pub fn notes_page(app: &mut SlideApp, ui: &mut Ui) {
         let _ = app.run("slide.notes", json!({"body": draft.body, "index": idx}));
     }
     let base = notes_of(app);
-    child.data_mut(|d| d.insert_temp(id, (base, draft)));
+    app.page_notes = Some((uid, idx, base, draft));
     let nav = ui.input(|i| (i.key_pressed(egui::Key::PageDown), i.key_pressed(egui::Key::PageUp)));
     if nav.0 {
         let _ = app.run("slide.next", json!({}));
@@ -448,7 +459,7 @@ pub fn outline_pane(app: &mut SlideApp, ui: &mut Ui) {
                 let origin = ui.cursor().top();
                 let margin = 300.0;
                 for (i, s) in doc.slides.iter().enumerate() {
-                    let hid = egui::Id::new(("ol-height", s.id.0));
+                    let hid = egui::Id::unique(("ol-height", s.id.0));
                     let known: Option<f32> = ui.data(|d| d.get_temp(hid));
                     let h = known.unwrap_or_else(|| outline_estimate(s));
                     let y = ui.cursor().top() - origin;
@@ -466,7 +477,6 @@ pub fn outline_pane(app: &mut SlideApp, ui: &mut Ui) {
 }
 
 #[cfg(test)]
-#[path = "sorter_tests.rs"]
 mod ui_tests;
 
 /// A slide's outline block height before it has been laid out: title row plus its text lines.
@@ -489,10 +499,16 @@ fn outline_slide(app: &mut SlideApp, ui: &mut Ui, t: &Tokens, i: usize, s: &deck
         ui.label(egui::RichText::new(format!("{}", i + 1)).color(t.text_dim));
         let (r, _) = ui.allocate_exact_size(vec2(14.0, 10.0), Sense::hover());
         ui.painter().rect_stroke(r, CornerRadius::same(1), Stroke::new(1.0, if i == cur { t.accent } else { t.text_dim }), egui::StrokeKind::Inside);
-        let id = egui::Id::new(("ol-title", s.id.0));
+        let id = egui::Id::unique(("ol-title", s.id.0));
         let cur_title = s.title();
         let mut v: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_else(|| cur_title.clone()));
-        let resp = ui.add(egui::TextEdit::singleline(&mut v).font(theme::bold(14.0)).frame(egui::Frame::NONE).desired_width(f32::INFINITY));
+        let resp = ui.add(
+            egui::TextEdit::singleline(&mut v)
+                .hint_text(crate::i18n::tr(ui.ctx(), "Slide title"))
+                .font(theme::bold(14.0))
+                .frame(egui::Frame::NONE)
+                .desired_width(f32::INFINITY),
+        );
         if resp.gained_focus() {
             let _ = app.run("slide.go", json!({"index": i}));
         }
@@ -513,12 +529,13 @@ fn outline_slide(app: &mut SlideApp, ui: &mut Ui, t: &Tokens, i: usize, s: &deck
         if tb.is_empty() {
             continue;
         }
-        let id = egui::Id::new(("ol-body", s.id.0, sh.id.0));
+        let id = egui::Id::unique(("ol-body", s.id.0, sh.id.0));
         let cur_text: String = tb.paragraphs.iter().map(|p| format!("{}{}", "\t".repeat(p.level as usize), p.text())).collect::<Vec<_>>().join("\n");
         let mut v: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_else(|| cur_text.clone()));
         ui.horizontal(|ui| {
             ui.add_space(36.0);
-            let resp = ui.add(egui::TextEdit::multiline(&mut v).frame(egui::Frame::NONE).desired_width(f32::INFINITY).desired_rows(1));
+            let resp = ui
+                .add(egui::TextEdit::multiline(&mut v).hint_text("Slide text").frame(egui::Frame::NONE).desired_width(f32::INFINITY).desired_rows(1));
             if resp.gained_focus() {
                 let _ = app.run("slide.go", json!({"index": i}));
             }

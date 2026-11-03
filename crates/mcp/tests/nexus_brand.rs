@@ -1,5 +1,5 @@
-//! NexusOffices: what the MCP server tells an agent names Nexus Slides and its installed binaries
-//! (`nexus-slides`, `nexus-slides-cli`); the machine name `serverInfo.name` stays `deckcraft`.
+//! NexusOffice: what the MCP server tells an agent names Nexus Slide and its installed binaries
+//! (`nexus-slide`, `nexus-slide-cli`); the machine name `serverInfo.name` stays `deckcraft`.
 
 use deckcraft_mcp::{Headless, Server, tool_definitions};
 use serde_json::{Value, json};
@@ -15,7 +15,7 @@ fn upstream_free(text: &str) {
 fn tool_definitions_name_nexus_binaries() {
     let tools = Value::Array(tool_definitions()).to_string();
     upstream_free(&tools);
-    assert!(tools.contains("nexus-slides-cli mcp --connect"), "the app-only hint names the installed CLI");
+    assert!(tools.contains("nexus-slide-cli mcp --connect"), "the app-only hint names the installed CLI");
 }
 
 #[test]
@@ -25,9 +25,9 @@ fn server_info_is_nexus_slides() {
     let reply: Value = serde_json::from_str(&server.handle_line(&line).unwrap()).unwrap();
     let info = &reply["result"]["serverInfo"];
     assert_eq!(info["name"], "deckcraft", "machine name unchanged");
-    assert_eq!(info["title"], "Nexus Slides");
-    assert_eq!(info["websiteUrl"], "https://github.com/nhdai111983/deckcraft");
+    assert_eq!(info["title"], "Nexus Slide");
+    assert_eq!(info["websiteUrl"], "https://github.com/sonnytech-vn/deckcraft");
     let instructions = reply["result"]["instructions"].as_str().unwrap();
-    assert!(instructions.starts_with("Nexus Slides"), "{instructions}");
+    assert!(instructions.starts_with("Nexus Slide"), "{instructions}");
     upstream_free(&reply.to_string());
 }

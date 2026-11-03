@@ -5,14 +5,14 @@
   <id>vn.sonnytech.nexus.slides</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT OR Apache-2.0</project_license>
-  <name>Nexus Slides</name>
+  <name>Nexus Slide</name>
   <summary>Create and present slide decks</summary>
   <developer id="vn.sonnytech">
-    <name>Sonnytech</name>
+    <name>SonnyTech</name>
   </developer>
   <description>
     <p>
-      Nexus Slides builds presentations and slide shows: themes, layouts, shapes, pictures,
+      Nexus Slide builds presentations and slide shows: themes, layouts, shapes, pictures,
       tables, charts, transitions and animations. It opens and saves PowerPoint (.pptx) files
       and presents them full screen with a presenter view.
     </p>
@@ -20,16 +20,16 @@
       Every action is also a command that the command line and AI agents (through MCP) can drive.
     </p>
     <p>
-      Nexus Slides is part of NexusOffices by Sonnytech, based on the open-source DeckCraft by the
+      Nexus Slide is part of NexusOffice by SonnyTech, based on the open-source DeckCraft by the
       ArtCraft team (MIT/Apache-2.0).
     </p>
   </description>
   <launchable type="desktop-id">vn.sonnytech.nexus.slides.desktop</launchable>
   <icon type="stock">vn.sonnytech.nexus.slides</icon>
   <!-- Only url types known to appstream 0.15 (Ubuntu 22.04, where CI validates): no vcs-browser. -->
-  <url type="homepage">https://github.com/nhdai111983/deckcraft</url>
-  <url type="bugtracker">https://github.com/nhdai111983/deckcraft/issues</url>
-  <url type="help">https://github.com/nhdai111983/deckcraft</url>
+  <url type="homepage">https://github.com/sonnytech-vn/deckcraft</url>
+  <url type="bugtracker">https://github.com/sonnytech-vn/deckcraft/issues</url>
+  <url type="help">https://github.com/sonnytech-vn/deckcraft</url>
   <categories>
     <category>Office</category>
     <category>Presentation</category>
@@ -52,7 +52,7 @@
     <control>pointing</control>
   </supports>
   <provides>
-    <binary>nexus-slides</binary>
+    <binary>nexus-slide</binary>
     <mediatype>application/x-deckcraft</mediatype>
   </provides>
   <content_rating type="oars-1.1"/>

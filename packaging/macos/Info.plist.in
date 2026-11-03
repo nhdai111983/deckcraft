@@ -7,11 +7,11 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>Nexus Slides</string>
+  <string>Nexus Slide</string>
   <key>CFBundleName</key>
-  <string>Nexus Slides</string>
+  <string>Nexus Slide</string>
   <key>CFBundleExecutable</key>
-  <string>NexusSlides</string>
+  <string>NexusSlide</string>
   <key>CFBundleIdentifier</key>
   <string>vn.sonnytech.nexus.slides</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -29,7 +29,7 @@
   <key>DeckCraftBuildCommit</key>
   <string>@BUILD_SHA@</string>
   <key>CFBundleIconFile</key>
-  <string>NexusSlides</string>
+  <string>NexusSlide</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
   <!-- Must match MACOSX_DEPLOYMENT_TARGET in package.sh. Big Sur is the first release on
@@ -43,7 +43,79 @@
   <key>NSRequiresAquaSystemAppearance</key>
   <false/>
   <key>NSHumanReadableCopyright</key>
-  <string>Nexus Slides © 2026 Sonnytech. Based on DeckCraft by the ArtCraft team. MIT OR Apache-2.0.</string>
+  <string>Nexus Slide © 2026 SonnyTech. Based on DeckCraft by the ArtCraft team. MIT OR Apache-2.0.</string>
+
+  <!-- The documents Nexus Slide opens, so Finder's Open With and "Change All" can offer it (the
+       Apple events arrive through apps/deckcraft/src/apple_events.rs). PowerPoint stays the
+       preferred app for its formats unless the user picks Nexus Slide. The same set as the Windows
+       installer (deckcraft.wxs) and the Linux desktop file; a test in apps/deckcraft keeps
+       them equal. NexusOffice: .deckcraft is upstream's own format, and upstream's app may be installed
+       too, so Nexus Slide is only an Alternate handler for it (its own UTI below), never Owner. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Nexus Slide Presentation</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>NexusSlide</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>vn.sonnytech.nexus.slides.presentation</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PowerPoint Presentation</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.presentationml.presentation</string>
+      </array>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>pptx</string></array>
+      <key>CFBundleTypeMIMETypes</key>
+      <array><string>application/vnd.openxmlformats-officedocument.presentationml.presentation</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PowerPoint Template</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.presentationml.template</string>
+      </array>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>potx</string></array>
+      <key>CFBundleTypeMIMETypes</key>
+      <array><string>application/vnd.openxmlformats-officedocument.presentationml.template</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PowerPoint Slide Show</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>org.openxmlformats.presentationml.slideshow</string>
+      </array>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>ppsx</string></array>
+      <key>CFBundleTypeMIMETypes</key>
+      <array><string>application/vnd.openxmlformats-officedocument.presentationml.slideshow</string></array>
+    </dict>
+  </array>
 
   <!-- The app's own format (.deckcraft, unchanged from upstream): a zip of a JSON manifest plus media. -->
   <key>UTExportedTypeDeclarations</key>
@@ -52,14 +124,14 @@
       <key>UTTypeIdentifier</key>
       <string>vn.sonnytech.nexus.slides.presentation</string>
       <key>UTTypeDescription</key>
-      <string>Nexus Slides Presentation</string>
+      <string>Nexus Slide Presentation</string>
       <key>UTTypeConformsTo</key>
       <array>
         <string>public.data</string>
         <string>public.presentation</string>
       </array>
       <key>UTTypeIconFile</key>
-      <string>NexusSlides</string>
+      <string>NexusSlide</string>
       <key>UTTypeTagSpecification</key>
       <dict>
         <key>public.filename-extension</key>
@@ -87,6 +159,40 @@
       <dict>
         <key>public.filename-extension</key>
         <array><string>pptx</string></array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.openxmlformats.presentationml.template</string>
+      <key>UTTypeDescription</key>
+      <string>Open XML Presentation Template</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.presentation</string>
+        <string>public.zip-archive</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>potx</string></array>
+      </dict>
+    </dict>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>org.openxmlformats.presentationml.slideshow</string>
+      <key>UTTypeDescription</key>
+      <string>Open XML Slide Show</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.presentation</string>
+        <string>public.zip-archive</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>ppsx</string></array>
       </dict>
     </dict>
   </array>
