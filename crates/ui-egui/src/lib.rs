@@ -6,6 +6,15 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+/// DeckCraft as craft-update knows it, with its 128 px icon and accent colour: the update
+/// prompt shows both, and an AppImage's menu entry gets the icon.
+#[cfg(not(target_arch = "wasm32"))]
+pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
+    icon_png: Some(include_bytes!("../../../assets/app-icon/hicolor/128x128/apps/ai.storyteller.deckcraft.png")),
+    accent: Some([0xf0, 0x7a, 0x1e]),
+    ..craft_update::suite::DECKCRAFT
+};
+
 pub mod backstage;
 pub mod canvas;
 pub mod capture;
@@ -29,6 +38,7 @@ pub mod nexus_wordart;
 mod nexus_wordart_tests;
 pub mod nexus_wps;
 pub mod opening;
+pub mod presenter;
 pub mod ribbon;
 pub mod settings;
 pub mod show;
@@ -75,7 +85,7 @@ pub use panels::notes;
 pub use panels::selpane;
 pub use panels::thumbs;
 pub use ribbon::qat;
-pub use services::{DownloadFn, Inbox, InboxEvent, InboxFile, OpenAsyncFn, PickFn, ReadFn, Services, WriteFn};
+pub use services::{DownloadFn, HostSaveFn, Inbox, InboxEvent, InboxFile, OpenAsyncFn, PickFn, ReadFn, Services, WriteFn};
 use state::{FilePlace, FilePurpose, ImeDescriptorKey, ImeDestination, ImeTerminalStamp};
 pub use state::{RECENT_MAX, UiState, ViewMode, ZOOM_RANGE};
 
@@ -122,11 +132,17 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("view.grayscale", "Grayscale", None, "{on?: bool}"),
     ("view.newWindow", "New Window", None, "{on?: bool, slide?: index, delta?: int}"),
     ("show.start", "Slide Show", Some("F5"), "{from?: index, custom?: name, presenter?: bool}"),
-    ("show.presenter", "Presenter View", None, "{on?: bool}"),
+    (
+        "show.presenter",
+        "Presenter View",
+        None,
+        "{on?: bool} → {on, window} (presenter view, with notes, a clock and the next slide, appears in its own separate window beside the show window when the show starts; window is false in the browser build, which draws it inside the page)",
+    ),
+    ("show.keepCursor", "Keep Mouse Cursor Visible", None, "{on?: bool}"),
     ("show.end", "End Show", None, "{}"),
     ("animation.preview", "Preview Animations", None, "{on?: bool, from?: effect index}"),
     ("app.home", "Home", None, "{on?}"),
-    ("app.backstage", "File", Some("Alt+F"), "{page?: home|new|open|info|saveAs|print|export|account, on?: bool}"),
+    ("app.backstage", "File", Some("Alt+F"), "{page?: home|new|open|info|saveAs|print|export|about, on?: bool}"),
     ("app.closePresentation", "Close", Some("Cmd+W"), "{}"),
     (
         "app.print",
@@ -292,6 +308,7 @@ pub struct SlideApp {
     /// creating or closing a presentation leaves it.
     pub backstage: Option<backstage::Backstage>,
     pending_urls: Vec<String>,
+    print_previews: app::files::PrintPreviews,
     #[cfg(not(target_arch = "wasm32"))]
     updates_rt: updates_ui::Runtime,
     /// Text for the system clipboard from a Copy or Cut command, handed over on the next frame.
@@ -309,8 +326,8 @@ pub struct SlideApp {
     pub(crate) notes_buf: (u64, usize, notes::Draft),
     /// Faces borrowed from the font database for text the interface fonts can't draw (#101).
     pub ui_fonts: uifonts::UiFonts,
-    /// Thumbnail pane drag (slide index, current drop index).
-    pub(crate) thumb_drag: Option<(usize, usize)>,
+    /// Slide drag in the thumbnail pane or the Slide Sorter: the dragged slides and the drop gap.
+    pub(crate) thumb_drag: Option<thumbs::SlideDrag>,
     /// Selection pane: folded groups, renaming, drag and drop.
     pub selpane: selpane::State,
     /// Arrange ▸ Align: Align to Slide (`true`) or Align Selected Objects, ticked for that selection.
@@ -360,6 +377,9 @@ pub struct SlideApp {
     pub(crate) page_notes: Option<(u64, usize, deckcraft_model::text::TextBody, notes::Draft)>,
     /// The Alt Text field's draft: (document uid, shape, the text it started from, the draft).
     pub(crate) alt_draft: Option<(u64, deckcraft_model::ShapeId, String, String)>,
+    /// The empty presentation host mode starts with ([`SlideApp::start_for_host`]), until the
+    /// first file the page sends takes its place.
+    host_start: Option<u64>,
     /// Owner/generation/cause bookkeeping for the canvas text IME producer.
     ime_tracker: egui::ime_context::ImeContextTracker,
     /// Canvas IME geometry for this pass: the caret while editing, or the selected shape.
@@ -487,6 +507,10 @@ mod ime_tests;
 #[cfg(test)]
 mod last_color_tests;
 #[cfg(test)]
+mod presenter_tests;
+#[cfg(test)]
+mod reflection_pane_tests;
+#[cfg(test)]
 mod replacefonts_tests;
 #[cfg(test)]
 mod reuse_picker_tests;
@@ -507,6 +531,9 @@ mod datetime_tests;
 
 #[cfg(test)]
 mod inbox_tests;
+
+#[cfg(test)]
+mod host_save_tests;
 
 #[cfg(test)]
 mod tests;

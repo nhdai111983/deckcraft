@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------------------------
 
 [[allow]]
-path = "{apps/deckcraft-cli/src/main.rs,apps/deckcraft-web/src/main.rs,apps/deckcraft/src/apple_events.rs,apps/deckcraft/src/display.rs,apps/deckcraft/src/graphics.rs,apps/deckcraft/src/logging.rs,apps/deckcraft/src/main.rs,crates/anim/src/lib.rs,crates/bitstream/src/lib.rs,crates/color/src/lib.rs,crates/engine/src/cmd/file.rs,crates/engine/src/cmd/format.rs,crates/engine/src/cmd/format/painter.rs,crates/engine/src/cmd/richclip.rs,crates/engine/src/cmd/smartart.rs,crates/engine/src/cmd/text.rs,crates/engine/src/cmd/text/layout.rs,crates/engine/src/icons.rs,crates/engine/src/lib.rs,crates/engine/src/nexus.rs,crates/engine/src/sounds.rs,crates/engine/src/spell.rs,crates/engine/src/tests.rs,crates/engine/src/tools.rs,crates/fonts/build.rs,crates/fonts/src/fontdb.rs,crates/fonts/src/lib.rs,crates/fonts/src/tests.rs,crates/format/src/lib.rs,crates/geom/src/lib.rs,crates/geom/src/warp.rs,crates/mcp/src/backend.rs,crates/mcp/src/lib.rs,crates/media/src/lib.rs,crates/media/src/probe.rs,crates/metafile/src/lib.rs,crates/model/src/lib.rs,crates/pdf/src/lib.rs,crates/pptx/src/cfb.rs,crates/pptx/src/dgm.rs,crates/pptx/src/lib.rs,crates/pptx/src/maps.rs,crates/pptx/src/read.rs,crates/pptx/src/read/chartex.rs,crates/pptx/src/read/shapes.rs,crates/pptx/src/tables.rs,crates/pptx/src/write.rs,crates/render/src/camera.rs,crates/render/src/chartex.rs,crates/render/src/lib.rs,crates/render/src/renderer.rs,crates/render/src/tests.rs,crates/render/src/text_draw.rs,crates/text/src/tests.rs,crates/ui-egui/examples/icon_gallery.rs,crates/ui-egui/src/app/clipboard.rs,crates/ui-egui/src/app/files.rs,crates/ui-egui/src/backstage.rs,crates/ui-egui/src/backstage/files.rs,crates/ui-egui/src/backstage/info.rs,crates/ui-egui/src/dialogs/body.rs,crates/ui-egui/src/dialogs/updates_ui.rs,crates/ui-egui/src/icons.rs,crates/ui-egui/src/lib.rs,crates/ui-egui/src/nexus.rs,crates/ui-egui/src/ribbon.rs,crates/ui-egui/src/ribbon/home.rs,crates/ui-egui/src/theme.rs,crates/ui-egui/src/uifonts.rs,xtask/src/layers.rs}"
+path = "{apps/deckcraft-cli/src/main.rs,apps/deckcraft-web/src/main.rs,apps/deckcraft/src/apple_events.rs,apps/deckcraft/src/display.rs,apps/deckcraft/src/graphics.rs,apps/deckcraft/src/logging.rs,apps/deckcraft/src/main.rs,crates/anim/src/lib.rs,crates/bitstream/src/lib.rs,crates/color/src/lib.rs,crates/engine/src/cmd/file.rs,crates/engine/src/cmd/format.rs,crates/engine/src/cmd/format/painter.rs,crates/engine/src/cmd/richclip.rs,crates/engine/src/cmd/smartart.rs,crates/engine/src/cmd/text.rs,crates/engine/src/cmd/text/layout.rs,crates/engine/src/icons.rs,crates/engine/src/lib.rs,crates/engine/src/nexus.rs,crates/engine/src/sounds.rs,crates/engine/src/spell.rs,crates/engine/src/tests.rs,crates/engine/src/tools.rs,crates/fonts/build.rs,crates/fonts/src/fontdb.rs,crates/fonts/src/lib.rs,crates/fonts/src/tests.rs,crates/format/src/lib.rs,crates/geom/src/lib.rs,crates/geom/src/warp.rs,crates/mcp/src/backend.rs,crates/mcp/src/lib.rs,crates/media/src/lib.rs,crates/media/src/probe.rs,crates/metafile/src/lib.rs,crates/model/src/lib.rs,crates/pdf/src/lib.rs,crates/pptx/src/cfb.rs,crates/pptx/src/dgm.rs,crates/pptx/src/lib.rs,crates/pptx/src/maps.rs,crates/pptx/src/read.rs,crates/pptx/src/read/chartex.rs,crates/pptx/src/read/shapes.rs,crates/pptx/src/tables.rs,crates/pptx/src/write.rs,crates/render/src/camera.rs,crates/render/src/chartex.rs,crates/render/src/lib.rs,crates/render/src/renderer.rs,crates/render/src/tests.rs,crates/render/src/text_draw.rs,crates/text/src/tests.rs,crates/ui-egui/examples/icon_gallery.rs,crates/ui-egui/src/app/clipboard.rs,crates/ui-egui/src/app/files.rs,crates/ui-egui/src/backstage.rs,crates/ui-egui/src/backstage/files.rs,crates/ui-egui/src/backstage/info.rs,crates/ui-egui/src/dialogs/body.rs,crates/ui-egui/src/dialogs/updates_ui.rs,crates/ui-egui/src/icons.rs,crates/ui-egui/src/lib.rs,crates/ui-egui/src/nexus.rs,crates/ui-egui/src/ribbon.rs,crates/ui-egui/src/ribbon/home.rs,crates/ui-egui/src/theme.rs,crates/ui-egui/src/uifonts.rs,xtask/src/layers.rs,apps/deckcraft-web/src/host.rs,apps/deckcraft-web/src/web.rs,crates/pptx/src/read/timing.rs}"
 pattern = '^\s*//.*'
 reason = "Chú thích Rust (//, ///, //!) trong đúng các file này: không biên dịch vào binary, người dùng không thấy"
 
@@ -56,7 +56,7 @@ pattern = '(set_html\("<b>DeckCraft</b>", "DeckCraft"\)|assert_eq!\(text, "DeckC
 reason = "Dữ liệu test clipboard trong module #[cfg(test)]"
 
 [[allow]]
-path = "{AGENTS.md,CLAUDE.md,ROADMAP.md,crates/pdf/README.md,packaging/macos/dmg/README.md}"
+path = "{AGENTS.md,CLAUDE.md,ROADMAP.md,crates/pdf/README.md,packaging/macos/dmg/README.md,packaging/web/README.md}"
 pattern = '.*'
 reason = "Tài liệu dev của upstream, không đóng gói, không phải giao diện (README.md đã viết lại cho Nexus Slide và được quét)"
 
@@ -177,3 +177,13 @@ reason = "Test (#[cfg(test)]) khẳng định câu Check for Updates… của Ne
 path = ".github/workflows/{nexus-ci.yml,nexus-release.yml}"
 pattern = 'github\.com/storytold/craft-i18n'
 reason = "Bản dịch giao diện (cả tiếng Việt) upstream chuyển ra storytold/craft-i18n (đầu vào build CRAFT_I18N_DIR, ghim ở craft-i18n.rev); workflow lấy về lúc build, không phát hành URL. Giống mục của wordcraft"
+
+[[allow]]
+path = "crates/ui-egui/src/tests.rs"
+pattern = '(https://github\.com/storytold/deckcraft/raw/main/assets/app-icon/hicolor/256x256/apps/ai\.storyteller\.deckcraft\.png|DeckCraft icon)'
+reason = "Đồng bộ 2026-11-05: dữ liệu test dán ảnh từ trình duyệt (#[cfg(test)], URL không bao giờ được tải), không phát hành"
+
+[[allow]]
+path = "{packaging/linux/flatpak/ai.storyteller.deckcraft.yml,packaging/linux/flatpak/ai.storyteller.deckcraft.bundle.yml}"
+pattern = '--filesystem=xdg-data/ArtCraft/versions:ro'
+reason = "Đồng bộ 2026-11-05: quyền đọc thư mục bộ ArtCraft trong manifest Flatpak của upstream; Flatpak Nexus chưa phát hành (NỢ trong BRANDING_PATCH.md)"
