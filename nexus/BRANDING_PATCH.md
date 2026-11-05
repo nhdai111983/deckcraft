@@ -113,7 +113,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `crates/ui-egui/src/dialogs/photo_album.rs` | Theme album `Nexus` | Có |
 | `crates/ui-egui/src/dialogs/find.rs` | "Nexus Slide can't find" | Có |
 | `crates/ui-egui/src/backstage/files.rs` | Home: tên + logo Nexus, bỏ link Discord ArtCraft; ô mẫu dùng theme `Nexus` (upstream tách `backstage.rs` → `backstage/*`) | Có |
-| `crates/ui-egui/src/backstage/info.rs` | Account: tên Nexus, bỏ link Discord, thêm câu ghi công, "About Nexus Slide"; định dạng "Nexus Slide Presentation (*.deckcraft)" | Có |
+| `crates/ui-egui/src/backstage/info.rs` | About (upstream thay trang Account bằng About, #1697, đồng bộ 2026-11-05): tên Nexus, bỏ link Discord, câu ghi công, phiên bản dịch, "Credits" (ghi công) và ô Ngôn ngữ giao diện của Nexus; nút Lưu ở Lưu thành khi có hộp thoại của host hoặc trang cha (`host_save`); định dạng "Nexus Slide Presentation (*.deckcraft)" | Có |
 | `crates/ui-egui/src/backstage/print.rs` | Câu in qua PDF nêu Nexus Slide | Có |
 | `crates/ui-egui/src/menus.rs` | Help › About Nexus Slide | Có |
 | `crates/ui-egui/src/ribbon/title_bar.rs` | Tiêu đề thanh tiêu đề khi chưa mở bài = `APP_NAME` (upstream tách `ribbon.rs`) | Có |
@@ -128,6 +128,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `apps/deckcraft-cli/tests/it/cli.rs` | Assert trợ giúp theo tên `nexus-slide-cli` | Đi cùng `help.rs` |
 | `apps/deckcraft-web/index.html` | `<title>Nexus Slide</title>`, favicon Nexus, "Loading Nexus Slide…" | Có |
 | `apps/deckcraft-web/src/web.rs` | Lỗi khởi động bản web | Có |
+| `apps/deckcraft-web/src/presenter.rs` | Đồng bộ 2026-11-05 (cửa sổ Người thuyết trình bản web, mới ở upstream): tiêu đề "Presenter View — Nexus Slide" | Có |
 | `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer SonnyTech, **UpgradeCode + GUID component mới**, cài `nexus-slide.exe`/`nexus-slide-cli.exe` vào `Program Files\Nexus Slide`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slide.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork); cài `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` cạnh exe (4 component mới, GUID tự sinh); vòng sửa 1: thư mục `licenses\` + ComponentGroup `DeckcraftFontLicences` (`<Files Include="$(var.BinDir)\licenses\*">`) trong feature Main, có điều kiện `FontLicences` (mặc định `no`) | Một phần (biến WiX) |
 | `packaging/windows/package.ps1` | `NexusSlide-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slide(.exe)`/`nexus-slide-cli.exe` như MSI; chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào thư mục stage (MSI cài từ đó) và zip portable (Apache-2.0 §4(d)); vòng sửa 1: dựng `licenses\` = OFL craft-fonts (`OFL-<family>.txt`) + `assets\fonts\OFL-*.txt` (tên duy nhất không phân biệt hoa thường; ném lỗi khi `CRAFT_FONTS_REQUIRED=1` mà không có OFL), truyền `-d FontLicences=yes|no` cho WiX, zip portable lấy OFL từ `licenses\`; 2026-10: giữ kiểm tra icon nhúng (#1114) của upstream (namespace PowerShell `NexusSlide`), **không** gọi `check-install-policy.ps1`/WixUI của upstream (hợp đồng cài đặt ArtCraft, xem `deckcraft.wxs`) | Một phần |
 | `packaging/windows/sign.ps1` | Mô tả chữ ký `/d Nexus Slide`, `/du` repo fork (thư mục tạm ngẫu nhiên của upstream giữ nguyên) | Một phần |
@@ -225,6 +226,18 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 | `crates/model/src/trendline.rs` | Sửa tạm lỗi `clippy::manual_range_contains` (clippy 1.97) có sẵn ở upstream, để `clippy -D warnings` sạch (xem `nexus/UPSTREAM_PRS.md`); bỏ khi upstream sửa | Không (không phải thương hiệu) |
 | `crates/engine/src/cmd/text/layout.rs` (hiệu năng, nhánh `nx/perf-canvas`; upstream tách `cmd/text.rs`) | Khung chữ đang sửa (`text_frame`, `caret_line`) được dàn trang một lần cho mỗi phiên bản bản trình chiếu (`FRAME_MEMO`, giữ `Arc` của bản trình chiếu) thay vì 3–4 lần mỗi khung hình khi đang gõ/nhấp nháy con trỏ; test `frame_memo_tests` | Không — đáng gửi upstream |
 | `crates/render/src/extent.rs` (`changed_area`, `Changed`), `crates/render/src/lib.rs` (re-export), `crates/ui-egui/src/textures.rs` (`patch_region`, `region_renders`, test `patch_tests`) (hiệu năng, nhánh `nx/perf-canvas`) | Gõ chữ/sửa vài hình chỉ vẽ lại phần canvas các hình đó chiếm trước và sau khi sửa (hộp + viền + hiệu ứng + chữ tràn), dán lên texture bằng `set_partial`; sửa ghi chú không vẽ lại gì; nhóm, bảng, chữ uốn (warp), trường, hiệu ứng chữ, đổi nền/bố cục hay vùng > nửa canvas vẫn vẽ cả slide | Không — đáng gửi upstream |
+
+## Đồng bộ upstream 2026-11-05
+
+- 473 commit upstream. egui/winit giữ rev `6d518fc7`/`a517b384`.
+- **Cầu `postMessage` cho trang cha:** upstream có `apps/deckcraft-web/src/host.rs` (`?host=parent`, cùng giao thức `deckcraft:ready/open/save`, thêm `saveAs`, `?author=`); bỏ bản Nexus `apps/deckcraft-web/src/web/host.rs`. Trang nhúng (NexusOffices web/ERP) phải mở iframe với `?host=parent` (như gridcraft).
+- Upstream thay trang Account bằng About (#1697): patch Nexus chuyển sang `about` (tên, ghi công, Ngôn ngữ giao diện); "User Information" bỏ như upstream.
+- Updater: `UPDATE_APP` + hộp kết quả kiểm tra của upstream; Nexus vẫn không kiểm tra (`request_check` chỉ báo bộ cài NexusOffices, `result_open` không bao giờ bật).
+- Format Shape › Kích thước (`size_tab`) và ô hiệu ứng có sẵn (`effect_presets.rs`, file upstream mới bị sửa) dịch qua `tl`/`tr`; 24 dòng `vi.rs` mới.
+- CLI: thông báo mới (`--cmd-file`, "files confined: read roots") dùng `nexus-slide-cli`; upstream bỏ lỗi "can't write to stdout" (trạng thái thoát theo công việc).
+- Phông chữ thiếu: bỏ qua tên bắt đầu bằng `.` (phông ẩn macOS) như upstream, giữ cách gộp NFC/NFD của Nexus.
+- Model mới của upstream: `Gradient::flip`, trường DrawingML của `Reflection` (`nexus_wordart.rs` dùng `..Default::default()`); `line_at` thành chỉ mục dòng (phản chiếu chữ của Nexus dùng `line_at_scan`).
+- Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 168 (branding 91, other 77) → 168 (branding 92, other 76).
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:
