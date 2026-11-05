@@ -237,7 +237,8 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 - CLI: thông báo mới (`--cmd-file`, "files confined: read roots") dùng `nexus-slide-cli`; upstream bỏ lỗi "can't write to stdout" (trạng thái thoát theo công việc).
 - Phông chữ thiếu: bỏ qua tên bắt đầu bằng `.` (phông ẩn macOS) như upstream, giữ cách gộp NFC/NFD của Nexus.
 - Model mới của upstream: `Gradient::flip`, trường DrawingML của `Reflection` (`nexus_wordart.rs` dùng `..Default::default()`); `line_at` thành chỉ mục dòng (phản chiếu chữ của Nexus dùng `line_at_scan`).
-- Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 168 (branding 91, other 77) → 168 (branding 92, other 76).
+- Test upstream mới theo Nexus Slide: About không có Discord (`backstage/tests.rs`), Người thuyết trình từ xa cần màn hình thứ hai (`show/tests.rs`, `displays = Some(2)`), lỗi CLI bắt đầu bằng `nexus-slide-cli:` (`apps/deckcraft-cli/tests/it/cli.rs`).
+- Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 168 (branding 91, other 77) → 169 (branding 92, other 77).
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:
