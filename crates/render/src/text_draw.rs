@@ -202,7 +202,7 @@ fn text_reflection(ctx: &mut RenderContext, l: &deckcraft_text::TextLayout, tr: 
                 draw_glyph(ctx, run, *gid, at, ps.opacity);
                 continue;
             };
-            let li = line_at(l, run.para, *y);
+            let li = line_at_scan(l, run.para, *y);
             if !grads.iter().any(|(i, _)| *i == li) {
                 let scheme = deckcraft_color::ColorScheme { name: String::new(), colors: [Rgba::BLACK; 12] };
                 let stops = g.stops.iter().map(|s| (s.pos, s.color.resolve(&scheme, None))).collect();

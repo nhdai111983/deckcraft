@@ -6,7 +6,7 @@
 //! downloads `storytold/deckcraft` assets). So the start-up check is never turned on and Help › Check for Updates… only says where
 //! updates come from: the app makes no network request of its own.
 
-use craft_update::updater::{Action, Status, Updater};
+use craft_update::updater::{Action, Updater};
 use craft_update::{CheckResultDialog, CheckResultResponse};
 
 use crate::SlideApp;
@@ -76,6 +76,7 @@ pub(crate) fn show(app: &mut SlideApp, ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use craft_update::updater::Status;
 
     /// NexusOffice: neither the start-up hook nor Help › Check for Updates… starts a check.
     #[test]

@@ -260,6 +260,7 @@ impl WordArtStyle {
                     shape: GradientShape::Linear { angle, scaled: false },
                     rotate_with_shape: true,
                     tile: [0.0; 4],
+                    flip: None,
                 }),
             }),
             outline: Some(match self.outline {
@@ -268,7 +269,14 @@ impl WordArtStyle {
             }),
             shadow: self.shadow.as_ref().map(shadow),
             glow: self.glow.map(|(c, a, r)| Glow { color: color(c, a), radius: r }),
-            reflection: self.reflection.then_some(Reflection { blur: 0.5, start_alpha: 0.5, end_alpha: 0.0, end_pos: 0.6, dist: 2.0 }),
+            reflection: self.reflection.then_some(Reflection {
+                blur: 0.5,
+                start_alpha: 0.5,
+                end_alpha: 0.0,
+                end_pos: 0.6,
+                dist: 2.0,
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
