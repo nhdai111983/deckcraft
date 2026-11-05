@@ -105,6 +105,11 @@ pattern = "^# NexusOffice: upstream's check-install-policy\\.ps1 checks its own 
 reason = "Chú thích PowerShell giải thích vì sao không gọi check-install-policy.ps1 của upstream"
 
 [[allow]]
+path = ".github/workflows/{nexus-ci.yml,nexus-release.yml}"
+pattern = 'github\.com/storytold/craft-i18n'
+reason = "Bản dịch giao diện (cả tiếng Việt) upstream chuyển ra storytold/craft-i18n (đầu vào build CRAFT_I18N_DIR, ghim ở craft-i18n.rev); workflow lấy về lúc build, không phát hành URL"
+
+[[allow]]
 path = ".github/workflows/{nexus-ci.yml,nexus-sync.yml}"
 pattern = 'github\.com/storytold/\$UPSTREAM_REPO'
 reason = "Workflow NexusOffice (template trong NexusOffices/templates/workflows) phải lấy upstream để đếm patch và đồng bộ; không phát hành, người dùng không thấy"
