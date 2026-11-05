@@ -1163,6 +1163,8 @@ fn remote_presenter_uses_the_audience_state_and_closes_with_the_show() {
     let services = crate::Services { presenter: Some(Box::new(Mock(bridge.clone()))), ..Default::default() };
     let mut app = SlideApp::new(session, services);
     app.ui.presenter_view = true;
+    // NexusOffice: Presenter View opens with the show only when there is a second display.
+    app.displays = Some(2);
     let mut h = egui_kittest::Harness::builder().with_size(vec2(1000.0, 700.0)).build_ui_state(
         |ui, app: &mut SlideApp| {
             app.logic(ui.ctx());

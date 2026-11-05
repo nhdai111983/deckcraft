@@ -163,7 +163,7 @@ fn inline_commands_keep_their_existing_syntax_and_errors() {
     let titles = inspected_titles(&out);
     assert_eq!(titles.len(), 3);
     assert_eq!(titles[2], "Inline = #");
-    assert!(stderr(&cli(&["run", "--cmd", "slide.new={"])).starts_with("deckcraft-cli: slide.new: bad JSON:"));
+    assert!(stderr(&cli(&["run", "--cmd", "slide.new={"])).starts_with("nexus-slide-cli: slide.new: bad JSON:"));
     assert!(stderr(&cli(&["run", "--cmd", "no.such.command"])).contains("unknown command `no.such.command`"));
 }
 
