@@ -211,7 +211,7 @@ fn new_tiles_keep_the_right_margin_in_a_narrow_window() {
     );
     h.state_mut().run("app.backstage", json!({"page": "new"})).unwrap();
     h.run_steps(3);
-    let tiles = ["DeckCraft", "Harbor", "Ember", "Meadow", "Nocturne", "Paper", "Briefing"];
+    let tiles = [deckcraft_engine::nexus::THEME_NAME, "Harbor", "Ember", "Meadow", "Nocturne", "Paper", "Briefing"];
     for label in tiles {
         let r = h.get_by_label(label).rect();
         assert!(r.right() <= 1000.0 - 36.0, "{label} ends at {}, inside the 36pt right margin", r.right());
