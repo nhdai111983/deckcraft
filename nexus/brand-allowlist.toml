@@ -172,3 +172,8 @@ reason = "Câu ghi công bắt buộc trong README (chỉ chữ, không logo/lin
 path = "crates/ui-egui/src/dialogs/updates_ui.rs"
 pattern = 'assert!\(!text\.contains\("DeckCraft"\) && !text\.contains\("http"\), "\{text\}"\);'
 reason = "Test (#[cfg(test)]) khẳng định câu Check for Updates… của Nexus không nêu tên upstream"
+
+[[allow]]
+path = ".github/workflows/{nexus-ci.yml,nexus-release.yml}"
+pattern = 'github\.com/storytold/craft-i18n'
+reason = "Bản dịch giao diện (cả tiếng Việt) upstream chuyển ra storytold/craft-i18n (đầu vào build CRAFT_I18N_DIR, ghim ở craft-i18n.rev); workflow lấy về lúc build, không phát hành URL. Giống mục của wordcraft"
