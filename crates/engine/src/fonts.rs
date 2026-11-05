@@ -26,14 +26,16 @@ pub fn install_embedded_fonts(p: &Presentation) {
 
 /// The font families the slides' text is drawn in (theme fonts resolved, bullet fonts included)
 /// that aren't installed or bundled, in list order (see [`sorted_unique_names`]): names that differ
-/// only in case or in NFC/NFD encoding are one font, shown as first met.
+/// only in case or in NFC/NFD encoding are one font, shown as first met. Names that start with a
+/// dot are macOS hidden system fonts (`.SF NS`); they never appear in a font list and can't be
+/// installed, so they aren't reported.
 ///
 /// Whether a name is installed is judged per exact spelling (`has_family` ignores ASCII case
 /// only), before spellings are merged: an installed `Đồ Hoạ` (NFC) does not hide a later
 /// `Đô Hoạ` in NFD, which still draws in a stand-in.
 pub fn missing_fonts(p: &Presentation) -> Vec<String> {
     let db = FontDb::global();
-    merge_missing(spellings(p), |family| db.has_family(family))
+    merge_missing(spellings(p).into_iter().filter(|f| !f.starts_with('.')), |family| db.has_family(family))
 }
 
 /// The names `has` doesn't know, in list order. Each distinct exact spelling is looked up (in
