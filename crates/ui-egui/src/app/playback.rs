@@ -45,6 +45,7 @@ impl SlideApp {
     fn start_show_as(&mut self, from: usize, reading: bool, presenter: bool) {
         self.anim_preview = None;
         self.media.stop_owned(media::Owner::Editor);
+        let presenter = self.ui.presenter_view && !reading && self.second_display();
         if let Some(d) = self.session.active() {
             self.show_instance = self.show_instance.wrapping_add(1).max(1);
             let mut show = show::Show::new(&d.doc, from, reading, presenter);
@@ -52,6 +53,14 @@ impl SlideApp {
             show.keep_cursor = self.ui.show_keep_cursor;
             self.show = Some(show);
         }
+    }
+
+    /// Whether a second display can take Presenter View. Like PowerPoint, one display shows only
+    /// the slides: the presenter window would open on the same screen, and whichever of the two
+    /// windows ends up behind the other stalls the show (the compositor stops pacing a hidden
+    /// window). Hosts that can't count displays keep Presenter View.
+    fn second_display(&mut self) -> bool {
+        self.services.displays.as_mut().and_then(|f| f()).is_none_or(|n| n >= 2)
     }
 
     /// Play custom show `name` from its first slide. Set Up Slide Show is left as it was.
