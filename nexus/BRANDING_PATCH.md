@@ -128,6 +128,7 @@ theme/tiêu đề trong bài trình chiếu), nên **không dùng**. Thay vào �
 | `apps/deckcraft-cli/tests/it/cli.rs` | Assert trợ giúp theo tên `nexus-slide-cli` | Đi cùng `help.rs` |
 | `apps/deckcraft-web/index.html` | `<title>Nexus Slide</title>`, favicon Nexus, "Loading Nexus Slide…" | Có |
 | `apps/deckcraft-web/src/web.rs` | Lỗi khởi động bản web | Có |
+| `apps/deckcraft-web/src/host.rs` | Đồng bộ 2026-11-09 (cầu host chuyển sang `craft-web-host`): thông báo `deckcraft:failed` cho tệp ≥ 2 GiB (trang nhúng có thể hiện ra) và cảnh báo console nói "Nexus Slide" | Có |
 | `apps/deckcraft-web/src/presenter.rs` | Đồng bộ 2026-11-05 (cửa sổ Người thuyết trình bản web, mới ở upstream): tiêu đề "Presenter View — Nexus Slide" | Có |
 | `packaging/windows/deckcraft.wxs` | MSI: Name/Manufacturer SonnyTech, **UpgradeCode + GUID component mới**, cài `nexus-slide.exe`/`nexus-slide-cli.exe` vào `Program Files\Nexus Slide`, ProgId `Sonnytech.NexusSlides.Presentation` (ghi bằng RegistryValue), **`.deckcraft` chỉ "Open with"** (`.deckcraft\OpenWithProgids`, không ghi giá trị mặc định/Content Type của `.deckcraft` — DeckCraft gốc sở hữu đuôi này), `Applications\nexus-slide.exe`, App Paths; bỏ URL ARP getartcraft/Discord (About → repo fork); cài `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` cạnh exe (4 component mới, GUID tự sinh); vòng sửa 1: thư mục `licenses\` + ComponentGroup `DeckcraftFontLicences` (`<Files Include="$(var.BinDir)\licenses\*">`) trong feature Main, có điều kiện `FontLicences` (mặc định `no`) | Một phần (biến WiX) |
 | `packaging/windows/package.ps1` | `NexusSlide-*.msi/.zip`, icon Nexus; zip portable chứa `nexus-slide(.exe)`/`nexus-slide-cli.exe` như MSI; chép `LICENSE-MIT`/`LICENSE-APACHE`/`NOTICE`/`ATTRIBUTION.md` vào thư mục stage (MSI cài từ đó) và zip portable (Apache-2.0 §4(d)); vòng sửa 1: dựng `licenses\` = OFL craft-fonts (`OFL-<family>.txt`) + `assets\fonts\OFL-*.txt` (tên duy nhất không phân biệt hoa thường; ném lỗi khi `CRAFT_FONTS_REQUIRED=1` mà không có OFL), truyền `-d FontLicences=yes|no` cho WiX, zip portable lấy OFL từ `licenses\`; 2026-10: giữ kiểm tra icon nhúng (#1114) của upstream (namespace PowerShell `NexusSlide`), **không** gọi `check-install-policy.ps1`/WixUI của upstream (hợp đồng cài đặt ArtCraft, xem `deckcraft.wxs`) | Một phần |
@@ -223,7 +224,6 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 | File | Lý do | Thay được bằng white-label? |
 |---|---|---|
 | `.github/workflows/sonarcloud.yml` | Upstream (2026-10) thêm SonarCloud chạy cả trên PR với `secrets: inherit` gọi workflow `storytold/craft-common-actions/...@main` — trên fork sẽ trao mọi secret của fork (vd. `NEXUS_TOOLS_TOKEN`) cho code fork không kiểm soát. Thêm `if: github.repository == 'storytold/deckcraft'` | Không (an toàn bí mật) |
-| `crates/model/src/trendline.rs` | Sửa tạm lỗi `clippy::manual_range_contains` (clippy 1.97) có sẵn ở upstream, để `clippy -D warnings` sạch (xem `nexus/UPSTREAM_PRS.md`); bỏ khi upstream sửa | Không (không phải thương hiệu) |
 | `crates/engine/src/cmd/text/layout.rs` (hiệu năng, nhánh `nx/perf-canvas`; upstream tách `cmd/text.rs`) | Khung chữ đang sửa (`text_frame`, `caret_line`) được dàn trang một lần cho mỗi phiên bản bản trình chiếu (`FRAME_MEMO`, giữ `Arc` của bản trình chiếu) thay vì 3–4 lần mỗi khung hình khi đang gõ/nhấp nháy con trỏ; test `frame_memo_tests` | Không — đáng gửi upstream |
 | `crates/render/src/extent.rs` (`changed_area`, `Changed`), `crates/render/src/lib.rs` (re-export), `crates/ui-egui/src/textures.rs` (`patch_region`, `region_renders`, test `patch_tests`) (hiệu năng, nhánh `nx/perf-canvas`) | Gõ chữ/sửa vài hình chỉ vẽ lại phần canvas các hình đó chiếm trước và sau khi sửa (hộp + viền + hiệu ứng + chữ tràn), dán lên texture bằng `set_partial`; sửa ghi chú không vẽ lại gì; nhóm, bảng, chữ uốn (warp), trường, hiệu ứng chữ, đổi nền/bố cục hay vùng > nửa canvas vẫn vẽ cả slide | Không — đáng gửi upstream |
 
@@ -239,6 +239,15 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 - Model mới của upstream: `Gradient::flip`, trường DrawingML của `Reflection` (`nexus_wordart.rs` dùng `..Default::default()`); `line_at` thành chỉ mục dòng (phản chiếu chữ của Nexus dùng `line_at_scan`).
 - Test upstream mới theo Nexus Slide: About không có Discord (`backstage/tests.rs`), Người thuyết trình từ xa cần màn hình thứ hai (`show/tests.rs`, `displays = Some(2)`), lỗi CLI bắt đầu bằng `nexus-slide-cli:` (`apps/deckcraft-cli/tests/it/cli.rs`).
 - Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 168 (branding 91, other 77) → 169 (branding 92, other 77).
+
+## Đồng bộ upstream 2026-11-09
+
+- 33 commit upstream (`0623b430`). egui/winit giữ rev `6d518fc7`/`a517b384`; craft-libs lên `1b34eba4` (craft-media/pdf/update/ui, krilla), thêm `craft-web-api`/`craft-web-host` ở `fd5e2fef` (chỉ bản web).
+- Xung đột: `apps/deckcraft/src/main.rs` (APP_ID và bật WPS/tiếng Việt của Nexus + `display_count` của upstream cho Presenter View), `crates/ui-egui/src/services.rs` (móc host của Nexus + `displays`), `crates/ui-egui/src/dialogs/updates_ui.rs` (Nexus vẫn không kiểm tra; giữ `start_pending_update` của upstream, không có gì để cài vì không bao giờ kiểm tra).
+- Bản web: cầu host dùng `craft-web-host` (cùng tiền tố `deckcraft:`; `deckcraft:ready` có `version` = phiên bản hợp đồng `"1"` và `appVersion` = phiên bản app; thêm chế độ `data-host="page"`); `window.deckcraft` (`craft-web-api`) luôn có trên trang, gọi kênh điều khiển trong cùng trang, không ra mạng. `host.rs` thành file upstream bị sửa (thông báo lỗi nói Nexus Slide).
+- Ribbon: ô thả xuống đặt tên theo mục đích cho trợ năng (#1956): tên tra qua `i18n::tr` (Phông chữ, Cỡ chữ, Bắt đầu; 3 dòng `vi.rs` mới); thanh công cụ Nexus truyền "Font"/"Font Size" thay khoá nội bộ.
+- `crates/model/src/trendline.rs`: upstream đã sửa lỗi clippy (#1561), file bằng hệt upstream, bỏ dòng patch tạm.
+- Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 169 (branding 92, other 77) → 170 (branding 92, other 78).
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:
