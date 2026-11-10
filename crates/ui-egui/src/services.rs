@@ -88,4 +88,6 @@ pub struct Services {
     /// `false` declines: it opens here, replacing this window's untouched new presentation (the
     /// host declines only when that is all this window holds).
     pub open_document: Option<Box<dyn Fn(&str) -> bool>>,
+    /// How many displays are connected, when the host can tell: Presenter View needs a second.
+    pub displays: Option<Box<dyn FnMut() -> Option<usize>>>,
 }

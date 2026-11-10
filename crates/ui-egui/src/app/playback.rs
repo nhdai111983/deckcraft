@@ -32,7 +32,7 @@ impl SlideApp {
     pub fn start_show(&mut self, from: usize, reading: bool) {
         // NexusOffice (QC-SLD-02): "Use Presenter View" applies when there is a second display, as
         // in PowerPoint; on one display (or when the host can't tell) the show is just full screen.
-        let presenter = self.ui.presenter_view && !reading && self.displays.is_some_and(|n| n >= 2);
+        let presenter = self.ui.presenter_view && !reading && self.second_display();
         self.start_show_as(from, reading, presenter);
     }
 
@@ -51,6 +51,23 @@ impl SlideApp {
             show.instance = self.show_instance;
             show.keep_cursor = self.ui.show_keep_cursor;
             self.show = Some(show);
+        }
+    }
+
+    /// Whether a second display can take Presenter View. Like PowerPoint, one display shows only
+    /// the slides: the presenter window would open on the same screen, and whichever of the two
+    /// windows ends up behind the other stalls the show (the compositor stops pacing a hidden
+    /// window). Hosts that can't count displays keep Presenter View.
+    ///
+    /// NexusOffice: the count the NexusOffice host gives ([`SlideApp::displays`]) wins; with neither
+    /// it nor a display counter in [`crate::Services`] the computer is taken to have one display.
+    fn second_display(&mut self) -> bool {
+        if let Some(n) = self.displays {
+            return n >= 2;
+        }
+        match self.services.displays.as_mut() {
+            Some(count) => count().is_none_or(|n| n >= 2),
+            None => false,
         }
     }
 

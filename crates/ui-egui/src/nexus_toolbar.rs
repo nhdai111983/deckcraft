@@ -803,7 +803,7 @@ fn draw(app: &mut SlideApp, ui: &mut Ui, c: Cluster, st: &Value) {
             let font = st.get("font").and_then(Value::as_str).unwrap_or("").to_string();
             let size = st.get("size").and_then(Value::as_f64);
             let fams = ribbon::font_families(app);
-            let r = dropdown(ui, "nexus_font", &font, 140.0, en, |ui| {
+            dropdown(ui, "Font", &font, 140.0, en, |ui| {
                 for f in &fams {
                     if ui.button(f.as_str()).clicked() {
                         let _ = app.run("format.font", json!({"family": f}));
@@ -811,10 +811,9 @@ fn draw(app: &mut SlideApp, ui: &mut Ui, c: Cluster, st: &Value) {
                     }
                 }
             });
-            named(r, "Font", None);
             ui.add_space(3.0);
             let size_text = size.map(|s| widgets::fmt_num(s, "")).unwrap_or_default();
-            let r = dropdown(ui, "nexus_size", &size_text, 48.0, en, |ui| {
+            dropdown(ui, "Font Size", &size_text, 48.0, en, |ui| {
                 for s in deckcraft_engine::cmd::format::SIZES.iter().chain([72.0, 80.0, 88.0, 96.0].iter()) {
                     if ui.button(widgets::fmt_num(*s, "")).clicked() {
                         let _ = app.run("format.size", json!({"size": s}));
@@ -822,7 +821,6 @@ fn draw(app: &mut SlideApp, ui: &mut Ui, c: Cluster, st: &Value) {
                     }
                 }
             });
-            named(r, "Font Size", None);
         }
         Cluster::Format => {
             tool(app, ui, Icon::Bold, "Bold", "format.bold", json!({}), Some(b("bold")));

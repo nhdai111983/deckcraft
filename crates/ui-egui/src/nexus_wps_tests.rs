@@ -1676,3 +1676,24 @@ fn f5_opens_presenter_view_only_with_a_second_display_or_alt_f5() {
     assert_eq!(presenter_after(Some(2), egui::Modifiers::NONE), Some(true));
     assert_eq!(presenter_after(Some(1), egui::Modifiers::ALT), Some(true), "Alt+F5 asks for it");
 }
+
+/// Upstream's display counter (`Services::displays`, winit on Linux) and the NexusOffice host's
+/// count (`SlideApp::displays`) together: the host's count wins, a counter that can't tell keeps
+/// Presenter View as upstream does, and with neither the computer has one display.
+#[test]
+fn presenter_view_follows_the_host_count_then_the_counter() {
+    let presenter = |host: Option<usize>, counter: Option<Option<usize>>| {
+        let services = Services { displays: counter.map(|n| Box::new(move || n) as Box<dyn FnMut() -> Option<usize>>), ..Default::default() };
+        let mut app = SlideApp::new(Session::with_new(), services);
+        app.displays = host;
+        app.ui.presenter_view = true;
+        app.start_show(0, false);
+        app.show.as_ref().map(|s| s.presenter)
+    };
+    assert_eq!(presenter(Some(1), Some(Some(2))), Some(false), "the host's count wins");
+    assert_eq!(presenter(Some(2), Some(Some(1))), Some(true), "the host's count wins");
+    assert_eq!(presenter(None, Some(Some(2))), Some(true));
+    assert_eq!(presenter(None, Some(Some(1))), Some(false));
+    assert_eq!(presenter(None, Some(None)), Some(true), "a counter that can't tell keeps it");
+    assert_eq!(presenter(None, None), Some(false), "no count at all: one display");
+}

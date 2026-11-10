@@ -319,3 +319,19 @@ fn preferences_pick_an_accent_and_cancel_restores_it() {
     assert_eq!(h.state().ui.accent, None, "Cancel restores the app colour");
     assert_eq!(theme::accent(&h.ctx), None);
 }
+
+/// Upstream #1956 names the ribbon drop-downs by purpose: in the Vietnamese interface that name is
+/// Vietnamese, the shown value stays as it is, and the tool row's font boxes are combo boxes too.
+#[test]
+fn dropdowns_are_named_in_the_interface_language() {
+    let mut h = Harness::builder().with_size(egui::vec2(400.0, 200.0)).build_ui(|ui| {
+        crate::theme::install_fonts(ui.ctx());
+        crate::i18n::set_current(ui.ctx(), crate::i18n::Language::Vi);
+        crate::widgets::dropdown(ui, "Font Size", "18", 60.0, true, |_| {});
+        crate::widgets::dropdown(ui, "Start", "", 112.0, false, |_| {});
+    });
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Cỡ chữ").value().as_deref(), Some("18"));
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Bắt đầu").is_some());
+    assert!(h.query_by_label("Font Size").is_none() && h.query_by_label("Start").is_none(), "no English name");
+}
