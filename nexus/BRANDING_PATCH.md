@@ -226,6 +226,8 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 | `.github/workflows/sonarcloud.yml` | Upstream (2026-10) thêm SonarCloud chạy cả trên PR với `secrets: inherit` gọi workflow `storytold/craft-common-actions/...@main` — trên fork sẽ trao mọi secret của fork (vd. `NEXUS_TOOLS_TOKEN`) cho code fork không kiểm soát. Thêm `if: github.repository == 'storytold/deckcraft'` | Không (an toàn bí mật) |
 | `crates/engine/src/cmd/text/layout.rs` (hiệu năng, nhánh `nx/perf-canvas`; upstream tách `cmd/text.rs`) | Khung chữ đang sửa (`text_frame`, `caret_line`) được dàn trang một lần cho mỗi phiên bản bản trình chiếu (`FRAME_MEMO`, giữ `Arc` của bản trình chiếu) thay vì 3–4 lần mỗi khung hình khi đang gõ/nhấp nháy con trỏ; test `frame_memo_tests` | Không — đáng gửi upstream |
 | `crates/render/src/extent.rs` (`changed_area`, `Changed`), `crates/render/src/lib.rs` (re-export), `crates/ui-egui/src/textures.rs` (`patch_region`, `region_renders`, test `patch_tests`) (hiệu năng, nhánh `nx/perf-canvas`) | Gõ chữ/sửa vài hình chỉ vẽ lại phần canvas các hình đó chiếm trước và sau khi sửa (hộp + viền + hiệu ứng + chữ tràn), dán lên texture bằng `set_partial`; sửa ghi chú không vẽ lại gì; nhóm, bảng, chữ uốn (warp), trường, hiệu ứng chữ, đổi nền/bố cục hay vùng > nửa canvas vẫn vẽ cả slide | Không — đáng gửi upstream |
+| `crates/engine/src/fonts.rs`, `xtask/src/layers.rs` | Phông thiếu/đã dùng: tên khác hoa thường hay NFC/NFD là một phông (`deckcraft_collate::fold_key`, `sorted_unique_names`); crate `collate` (độc lập) trong bảng tầng. Ghi lại ở đồng bộ 2026-11-12 (cả hai đều xung đột) | Không — đi cùng `crates/collate` |
+| `crates/engine/src/soak_tests.rs` (đồng bộ 2026-11-12) | `undo_stack_stays_bounded_and_drains` bỏ giới hạn byte của lịch sử: hình mới của Nexus có một đoạn trống (QC-SLD-08), ngân sách undo mới của upstream (#1768) tính ~4 KB mỗi đoạn | Không — đi cùng QC-SLD-08 |
 
 ## Đồng bộ upstream 2026-11-05
 
@@ -249,6 +251,14 @@ deck upstream giữ tên theme, PDF Creator/Producer, tên table style "Nexus �
 - Presenter View (#1156): upstream đếm màn hình qua `Services::displays` (winit) và kiểm trong đường khởi chạy chung, đè lên Alt+F5 của Nexus. `app/playback.rs`: một quy tắc trong `second_display` — số màn hình host NexusOffice báo (`SlideApp::displays`) thắng, bộ đếm không biết thì giữ Presenter View như upstream, không có cả hai thì một màn hình (QC-SLD-02); test `presenter_view_follows_the_host_count_then_the_counter`.
 - `crates/model/src/trendline.rs`: upstream đã sửa lỗi clippy (#1561), file bằng hệt upstream, bỏ dòng patch tạm.
 - Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 169 (branding 92, other 77) → 170 (branding 92, other 78).
+
+## Đồng bộ upstream 2026-11-12
+
+- 34 commit upstream (`2127bd1b`, v0.18.1). egui/winit giữ rev `6d518fc7`/`a517b384`. craft-libs tách hai rev: `craft-media` + `craft-audio` (mới, giải mã Opus) ở `75895c03`; `craft-pdf`/`craft-update`/`craft-ui`/krilla ở `6e03f65b`; bản web vẫn `craft-web-api`/`craft-web-host` ở `fd5e2fef`. Upstream bỏ các crate `isobmff`/`matroska`/`ogg`/`opus` (container và Opus nay từ craft-libs).
+- Xung đột: `crates/engine/src/cmd/insert/album.rs` (seed giới hạn của upstream, theme dự phòng `nexus::THEME_NAME`), `crates/engine/src/fonts.rs` (giữ `missing_fonts`/`used_fonts` NFC/NFD của Nexus; chống lặp phông nhúng của upstream tự gộp), `xtask/src/layers.rs` (giữ crate `collate` của Nexus, bỏ `matroska`/`ogg`/`opus` như upstream).
+- `crates/engine/src/soak_tests.rs` (file upstream mới bị sửa): ngân sách undo của upstream nay tính một đoạn văn theo kích thước thật (~4 KB, #1768); hình mới của Nexus có một đoạn trống (QC-SLD-08), nên `undo_stack_stays_bounded_and_drains` (550 hình trên một slide) chạm 256 MB sau 110 bước. Test chỉ kiểm số bước nên bỏ giới hạn byte trong test.
+- Updater: craft-update `6e03f65b` (kiểm link tải, chờ app thoát); Flatpak upstream thêm quyền `--talk-name=org.freedesktop.Flatpak`. Nexus vẫn không kiểm tra cập nhật (`check_at_start` không bao giờ bật).
+- Số patch (`nexus-tools patch-count` so với `upstream/main` mới): 170 (branding 93, other 77) → 171 (branding 93, other 78: `crates/engine/src/soak_tests.rs`).
 
 ## Rà soát gọi mạng (guard §5)
 `rg -n -i "artcraft|storytold|storyteller|discord|telemetry|update|crash|sentry|posthog|https?://" --type rust`:
