@@ -164,6 +164,11 @@ fn soak_long() {
 #[test]
 fn undo_stack_stays_bounded_and_drains() {
     let mut s = Session::with_new();
+    // NexusOffice: a new shape holds one empty paragraph (QC-SLD-08), and upstream's undo budget
+    // now charges a paragraph its inline size (about 4 KB, #1768): 550 shapes on one slide pass
+    // the 256 MB byte budget after about 110 steps. This test is about the step count, so the
+    // byte budget is lifted; the budget has tests of its own (`tests.rs`).
+    s.doc_mut().unwrap().history.byte_limit = usize::MAX;
     let limit = s.doc().unwrap().history.limit;
     for i in 0..limit + 50 {
         s.execute("shape.insert", &json!({"preset": "rect", "rect": [i % 500, 10, 20, 20]})).unwrap();
