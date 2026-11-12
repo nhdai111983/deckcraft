@@ -15,8 +15,13 @@ use deckcraft_model::{Presentation, Shape, ShapeKind};
 /// font to load and are left for the round trip.
 pub fn install_embedded_fonts(p: &Presentation) {
     let db = FontDb::global();
+    // Faces can name one media item many times; each is copied and enumerated once.
+    let mut seen = HashSet::new();
     for font in &p.embedded_fonts {
         for id in font.faces().into_iter().flatten() {
+            if !seen.insert(id) {
+                continue;
+            }
             let Some(item) = p.media(id) else { continue };
             let Some(sfnt) = deckcraft_fonts::embedded_sfnt(&item.data) else { continue };
             db.add_font(sfnt.to_vec());
