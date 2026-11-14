@@ -1701,4 +1701,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Choose a slide to show it, or press G to return.", "Chọn một trang chiếu để hiện, hoặc nhấn G để quay lại."),
     ("Click the preview to zoom.", "Bấm vào bản xem trước để phóng to."),
     ("Slide background fill", "Tô nền trang chiếu"),
+    // NexusOffice sync 2026-11-14: labels the catalogue above doesn't cover yet.
+    ("Inserted {n} slides", "Đã chèn {n} trang chiếu"),
+    ("Rescan Installed Fonts", "Quét lại phông chữ đã cài"),
+    ("Click a colour in the picture to make it transparent", "Bấm vào một màu trong ảnh để làm màu đó trong suốt"),
 ];
