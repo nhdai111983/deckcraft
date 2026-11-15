@@ -64,7 +64,7 @@ fn drawn(h: &H) -> Vec<String> {
 #[test]
 fn the_gallery_opens_and_a_tile_inserts_that_style() {
     let mut h = harness(Language::Vi, |_| {});
-    open(&mut h, "Insert", "WordArt");
+    open(&mut h, "Insert", "Chữ nghệ thuật");
     for (i, s) in STYLES.iter().enumerate() {
         assert!(h.query_by_label(s.name.1).is_some(), "tile {i} {:?}", s.name.1);
         assert!(h.query_by_label(s.name.0).is_none(), "English name {:?}", s.name.0);
@@ -93,9 +93,9 @@ fn the_gallery_opens_and_a_tile_inserts_that_style() {
 #[test]
 fn the_gallery_has_no_english_in_vietnamese() {
     let mut h = harness(Language::Vi, |_| {});
-    open(&mut h, "Insert", "WordArt");
+    open(&mut h, "Insert", "Chữ nghệ thuật");
     let before = drawn(&h);
-    assert!(before.iter().any(|t| t == "Kiểu WordArt"), "{before:?}");
+    assert!(before.iter().any(|t| t == "Kiểu chữ nghệ thuật"), "{before:?}");
     h.get_by_label(STYLES[3].name.1).hover();
     h.run_steps(30);
     let texts = drawn(&h);
@@ -105,12 +105,12 @@ fn the_gallery_has_no_english_in_vietnamese() {
         assert_ne!(s.name.0, s.name.1);
     }
     for t in &texts {
-        assert!(!["WordArt Styles", "Your text here"].contains(&t.as_str()), "{t:?}");
+        assert!(!["Decorative Text Styles", "Your text here"].contains(&t.as_str()), "{t:?}");
         assert!(!t.starts_with("WordArt style"), "{t:?}");
     }
     // The English interface keeps English names.
     let mut en = harness(Language::En, |_| {});
-    open(&mut en, "Insert", "WordArt");
+    open(&mut en, "Insert", "Decorative Text");
     assert!(en.query_by_label(STYLES[0].name.0).is_some());
     en.get_by_label(STYLES[0].name.0).click();
     en.run_steps(6);
@@ -129,7 +129,7 @@ fn arrow_keys_move_between_tiles_and_enter_picks() {
     assert_eq!(step(0, 0, true, false, false, false), None);
     assert_eq!(step(99, 12, true, false, false, false), None);
     let mut h = harness(Language::Vi, |_| {});
-    open(&mut h, "Insert", "WordArt");
+    open(&mut h, "Insert", "Chữ nghệ thuật");
     h.ctx.memory_mut(|m| m.request_focus(tile_id(Mode::Insert, 0)));
     h.run_steps(2);
     for key in [egui::Key::ArrowRight, egui::Key::ArrowDown] {
@@ -153,7 +153,7 @@ fn shape_format_restyles_with_the_same_tiles() {
         a.run("edit.select", json!({"ids": [id.0]})).unwrap();
     });
     assert!(crate::ribbon::contextual(h.state()).contains(&"Shape Format"));
-    open(&mut h, "Shape Format", "Kiểu WordArt");
+    open(&mut h, "Shape Format", "Kiểu chữ nghệ thuật");
     let pick = &STYLES[8];
     h.get_by_label(pick.name.1).click();
     h.run_steps(6);
