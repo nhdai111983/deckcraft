@@ -184,8 +184,8 @@ pub(super) fn shape_format(app: &mut SlideApp, ui: &mut Ui) {
         });
     });
     group(ui, |ui| {
-        // NexusOffice: restyle WordArt with the Insert › WordArt gallery's tiles.
-        let r = big_button(ui, Icon::WordArt, "WordArt\nStyles", enabled(app, "format.wordArtStyle"));
+        // NexusOffice: restyle decorative text with the Insert › Decorative Text gallery's tiles.
+        let r = big_button(ui, Icon::WordArt, "Decorative Text\nStyles", enabled(app, "format.wordArtStyle"));
         egui::Popup::menu(&r).show(|ui| crate::nexus_wordart::menu(app, ui, crate::nexus_wordart::Mode::Restyle));
         rows(ui, |ui| {
             let (main, arrow) = small_button_ex(ui, Icon::TextFill, "Text Fill", sel, false, true);
