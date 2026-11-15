@@ -265,7 +265,7 @@ pub fn fit_tabs(widths: &[(f32, bool)], room: f32, more_w: f32) -> Vec<bool> {
 fn tab_row(ui: &mut Ui, app: &mut SlideApp, t: &Tokens, tabs: &[&'static str], height: f32) {
     let lang = app.ui.language;
     let contextual = crate::ribbon::contextual(app);
-    let labels: Vec<String> = tabs.iter().map(|tab| lang.tr(tab).into_owned()).collect();
+    let labels: Vec<String> = tabs.iter().map(|tab| lang.tr(crate::ribbon::tab_label(tab)).into_owned()).collect();
     let widths: Vec<(f32, bool)> = tabs
         .iter()
         .zip(&labels)

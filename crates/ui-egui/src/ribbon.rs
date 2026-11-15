@@ -121,7 +121,7 @@ pub(crate) fn contextual(app: &SlideApp) -> Vec<&'static str> {
 // This is an existing saved/control-channel key, not the displayed label.
 const DIAGRAM_TAB_ID: &str = "SmartArt Design";
 
-fn tab_label(id: &str) -> &str {
+pub(crate) fn tab_label(id: &str) -> &str {
     if id == DIAGRAM_TAB_ID { "Diagram Design" } else { id }
 }
 
