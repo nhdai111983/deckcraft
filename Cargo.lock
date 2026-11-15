@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "deckcraft-collate"
-version = "0.18.1"
+version = "0.19.0"
 dependencies = [
  "icu_collator",
  "icu_locale_core",
