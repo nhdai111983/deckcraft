@@ -311,8 +311,8 @@ pub fn style_of(shape: &Shape) -> Option<&'static WordArtStyle> {
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![cmd!(
         "format.wordArtStyle",
-        "WordArt Styles",
-        ["Shape Format", "WordArt Styles"],
+        "Decorative Text Styles",
+        ["Shape Format", "Decorative Text Styles"],
         None,
         "{style: amber|indigoEdge|roseLine|skyNeon|brand|sunset|lagoon|dusk|obsidian|retro|violetGlow|sticker|0..} — the look of the selected text or of all text in the selected shapes",
         has_text_or_shapes,

@@ -81,9 +81,14 @@ pub struct Menu {
 }
 
 /// The menu a ribbon tab shows as: the contextual Layout tab (tables) is the Table Layout menu,
-/// so it doesn't read like the slide's layout.
+/// so it doesn't read like the slide's layout. The diagram tab keeps its saved id "SmartArt
+/// Design" but is named, and its commands placed, as "Diagram Design" (upstream, 2026-11-15).
 pub fn menu_name(tab: &str) -> &str {
-    if tab == "Layout" { "Table Layout" } else { tab }
+    match tab {
+        "Layout" => "Table Layout",
+        "SmartArt Design" => "Diagram Design",
+        _ => tab,
+    }
 }
 
 /// Where a registry location goes in the menus: `(menu, group, submenu)`. Locations that name a

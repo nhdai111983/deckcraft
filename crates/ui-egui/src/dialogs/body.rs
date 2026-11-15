@@ -1372,7 +1372,7 @@ fn dlg_smartart(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     // NexusOffice: the sample items in the interface's language.
     let sample = ["Plan", "Build", "Launch"].map(|l| tl(ui, l).into_owned()).join("\n");
     let mut v = d.get("text", &sample);
-    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "SmartArt items")).desired_rows(5).desired_width(320.0));
+    ui.add(egui::TextEdit::multiline(&mut v).hint_text(tl(ui, "Diagram items")).desired_rows(5).desired_width(320.0));
     d.fields.insert("text".into(), v.clone());
     let (ok, cancel) = buttons(ui, "Insert");
     if ok {

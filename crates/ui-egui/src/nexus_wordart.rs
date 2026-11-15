@@ -69,7 +69,7 @@ pub fn menu(app: &mut SlideApp, ui: &mut Ui, mode: Mode) {
 pub fn gallery(app: &mut SlideApp, ui: &mut Ui, mode: Mode) -> Option<&'static str> {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
-    crate::nexus_dialog::section(ui, "WordArt Styles");
+    crate::nexus_dialog::section(ui, "Decorative Text Styles");
     let current = match mode {
         Mode::Restyle => app.session.active().and_then(|d| d.selected_shapes().first().and_then(|s| wa::style_of(s))).map(|s| s.id),
         Mode::Insert => None,
