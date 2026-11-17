@@ -155,7 +155,7 @@ pub fn draw_layout_with(ctx: &mut RenderContext, l: &deckcraft_text::TextLayout,
             };
             let li = lines_of.line_at(run.para, *y);
             if !grads.iter().any(|(i, _)| *i == li) {
-                let scheme = deckcraft_color::ColorScheme { name: String::new(), colors: [Rgba::BLACK; 12] };
+                let scheme = deckcraft_color::ColorScheme::new(String::new(), [Rgba::BLACK; 12]);
                 let stops = g.stops.iter().map(|s| (s.pos, s.color.resolve(&scheme, None))).collect();
                 let bounds = l.lines.get(li).and_then(line_bounds).unwrap_or(tr);
                 grads.push((li, paint::gradient(&g.shape, stops, bounds, run.alpha * ps.opacity)));
@@ -204,7 +204,7 @@ fn text_reflection(ctx: &mut RenderContext, l: &deckcraft_text::TextLayout, tr: 
             };
             let li = line_at_scan(l, run.para, *y);
             if !grads.iter().any(|(i, _)| *i == li) {
-                let scheme = deckcraft_color::ColorScheme { name: String::new(), colors: [Rgba::BLACK; 12] };
+                let scheme = deckcraft_color::ColorScheme::new("", [Rgba::BLACK; 12]);
                 let stops = g.stops.iter().map(|s| (s.pos, s.color.resolve(&scheme, None))).collect();
                 let bounds = l.lines.get(li).and_then(line_bounds).unwrap_or(tr);
                 grads.push((li, paint::gradient(&g.shape, stops, bounds, run.alpha * ps.opacity)));
