@@ -178,7 +178,8 @@ fn open_other(name: &str, bytes: &[u8]) -> Result<(Presentation, Vec<String>, Ve
     if deckcraft_ppt::sniff(bytes) {
         let (mut p, lost) = deckcraft_ppt::import_checked(bytes).map_err(|e| match e {
             deckcraft_ppt::PptError::Encrypted => {
-                EngineError::Other(format!("{name} is password-protected. DeckCraft can't open password-protected presentations yet."))
+                let app = crate::nexus::APP_NAME;
+                EngineError::Other(format!("{name} is password-protected. {app} can't open password-protected presentations yet."))
             }
             other => EngineError::Other(format!("{name}: {other}")),
         })?;
