@@ -8,7 +8,7 @@ version = "0.19.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
-repository = "https://github.com/storytold/deckcraft"
+repository = "https://github.com/sonnytech-vn/deckcraft"
 
 [workspace.dependencies]
 # OPC part-name primitives and package reader/writer.
@@ -26,6 +26,7 @@ craft-mcp-server = { git = "https://github.com/storytold/craft-libs", rev = "bc1
 # internal
 deckcraft-geom = { path = "crates/geom" }
 deckcraft-color = { path = "crates/color" }
+deckcraft-collate = { path = "crates/collate" }
 deckcraft-model = { path = "crates/model" }
 deckcraft-fonts = { path = "crates/fonts" }
 deckcraft-text = { path = "crates/text" }
@@ -33,6 +34,11 @@ deckcraft-render = { path = "crates/render" }
 deckcraft-pdf = { path = "crates/pdf" }
 deckcraft-pptx = { path = "crates/pptx" }
 deckcraft-ppt = { path = "crates/ppt" }
+# Test-only oracles for deckcraft-collate (never shipped): the Unicode data behind its tables, and
+# the ICU4X collation compared with ours in crates/collate/tests/collate_icu.rs.
+icu_normalizer = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_collator = { version = "=2.3.1", default-features = false, features = ["compiled_data"] }
+icu_locale_core = { version = "=2.3.0", default-features = false }
 deckcraft-format = { path = "crates/format" }
 deckcraft-anim = { path = "crates/anim" }
 deckcraft-engine = { path = "crates/engine" }
