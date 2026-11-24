@@ -729,6 +729,9 @@ fn dlg_rename_section(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ok || cancel
 }
 
+/// Export…: the format (PDF, PNG or JPEG of the current slide or of every slide, PowerPoint,
+/// outline, animated GIF, RTF) and its options; Export hands them to [`SlideApp::export_as`].
+/// Returns true when the dialog should close.
 fn dlg_export(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.label(tl(ui, "Export the presentation as:"));
     let fmt = d.get("fmt", "pdf");
@@ -737,6 +740,7 @@ fn dlg_export(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         ("PNG images (current slide)", "png"),
         ("PNG images (all slides)", "pngAll"),
         ("JPEG image (current slide)", "jpeg"),
+        ("JPEG images (all slides)", "jpegAll"),
         ("PowerPoint Presentation (.pptx)", "pptx"),
         ("Outline (.txt)", "outline"),
         ("Animated GIF (.gif)", "gif"),
@@ -1464,8 +1468,15 @@ fn dlg_preferences(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     // on release, and at once from the keyboard.
     let pending = d.fields.get("uiScale").and_then(|v| v.parse::<f32>().ok());
     let mut scale = pending.unwrap_or(app.ui.ui_scale);
-    let r = ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut scale, 0.75..=1.75)));
-    // No visible label here (the row is laid out to fit); the accessible name only.
+    // Có nhãn hiện, như dòng Đơn vị đo bên dưới: bản egui 0.37 (#1350) bỏ chữ của chính thanh
+    // trượt và chỉ giữ tên trợ năng, nên chỗ này còn trơ một số "1,00". Nhãn đi qua `tl` và
+    // thanh trượt vẫn qua `i18n::units::slider` để số hiện theo quy ước dấu phẩy thập phân.
+    let r = ui
+        .horizontal(|ui| {
+            ui.label(tl(ui, "Interface size:"));
+            ui.add(crate::i18n::units::slider(ui, egui::Slider::new(&mut scale, 0.75..=1.75)))
+        })
+        .inner;
     let enabled = r.enabled();
     r.widget_info(|| egui::WidgetInfo::slider(enabled, f64::from(scale), "Interface size"));
     if r.is_pointer_button_down_on() {
