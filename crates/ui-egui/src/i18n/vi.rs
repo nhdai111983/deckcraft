@@ -1318,6 +1318,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("PNG images (current slide)", "Ảnh PNG (trang chiếu hiện tại)"),
     ("PNG images (all slides)", "Ảnh PNG (tất cả trang chiếu)"),
     ("JPEG image (current slide)", "Ảnh JPEG (trang chiếu hiện tại)"),
+    ("JPEG images (all slides)", "Ảnh JPEG (tất cả trang chiếu)"),
     ("PowerPoint Presentation (.pptx)", "Bản trình chiếu PowerPoint (.pptx)"),
     ("Outline (.txt)", "Dàn ý (.txt)"),
     ("Animated GIF (.gif)", "Ảnh động GIF (.gif)"),
@@ -1645,6 +1646,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Hide All", "Ẩn tất cả"),
     // Upstream 2026-10 (integration 2026-10-30): Preferences' units, Header & Footer's date format,
     // the Animation pane's Play From.
+    ("Interface size:", "Cỡ giao diện:"),
     ("Measurement units:", "Đơn vị đo:"),
     ("Inches", "Inch"),
     ("Centimeters", "Centimét"),

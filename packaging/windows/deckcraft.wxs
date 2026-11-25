@@ -84,8 +84,11 @@
         <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\DefaultIcon" Value="&quot;[#DeckcraftExe]&quot;,0" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Sonnytech.NexusSlides.Presentation\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
 
-        <!-- "Open with" for .deckcraft and the PowerPoint formats, without becoming the default
-             (only a named value under OpenWithProgids; uninstall removes just that value). -->
+        <!-- "Open with" for .deckcraft and the PowerPoint formats, including the legacy
+             .ppt/.pot/.pps that import only, without becoming the default (only a named value
+             under OpenWithProgids; uninstall removes just that value). HKLM, like the ProgID and
+             App Paths keys above: the package is Scope="perMachine", so HKMU resolves there
+             anyway, and writing it out keeps every key in this file on one root. -->
         <RegistryValue Root="HKLM" Key="Software\Classes\.deckcraft\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe" Name="FriendlyAppName" Value="Nexus Slide" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\shell\open\command" Value="&quot;[#DeckcraftExe]&quot; &quot;%1&quot;" Type="string" />
@@ -93,9 +96,15 @@
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".pptx" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".potx" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".ppsx" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".ppt" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".pot" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\nexus-slide.exe\SupportedTypes" Name=".pps" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.pptx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.potx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
         <RegistryValue Root="HKLM" Key="Software\Classes\.ppsx\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.ppt\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.pot\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.pps\OpenWithProgids" Name="Sonnytech.NexusSlides.Presentation" Value="" Type="string" />
 
         <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\nexus-slide.exe" Value="[#DeckcraftExe]" Type="string" />
       </Component>

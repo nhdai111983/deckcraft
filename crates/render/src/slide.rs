@@ -37,8 +37,9 @@ pub fn needs_filters(pres: &Presentation, slide: &Slide) -> bool {
     any
 }
 
-/// Does the shape's text have a shadow or glow (on a run, in its list style, or in the master's
-/// text styles it inherits)? Such text is blurred, which needs filters.
+/// Does the shape's text have a shadow or glow (on a run, in its paragraph's `defRPr`, in its list
+/// style, or in the master's or presentation's text styles it inherits)? Such text is blurred,
+/// which needs filters.
 fn text_has_effects(rctx: &Ctx, s: &Shape) -> bool {
     use deckcraft_model::text::{ListStyle, RunProps};
     let fx = |r: &RunProps| {
@@ -48,11 +49,12 @@ fn text_has_effects(rctx: &Ctx, s: &Shape) -> bool {
     };
     let styled = |l: &ListStyle| l.levels.iter().flatten().any(|lv| fx(&lv.run));
     let Some(t) = &s.text else { return false };
-    t.paragraphs.iter().any(|p| p.runs.iter().any(|r| fx(&r.props)) || fx(&p.end_props))
+    t.paragraphs.iter().any(|p| p.runs.iter().any(|r| fx(&r.props)) || fx(&p.end_props) || fx(&p.def_props))
         || styled(&t.list_style)
         || styled(&rctx.master.title_style)
         || styled(&rctx.master.body_style)
         || styled(&rctx.master.other_style)
+        || styled(&rctx.pres.default_text_style)
 }
 
 /// Render slide `index` at `opts.scale` pixels per point. A panic inside the renderer becomes a

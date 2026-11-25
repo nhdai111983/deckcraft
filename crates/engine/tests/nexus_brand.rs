@@ -187,7 +187,10 @@ fn own_table_styles_are_named_nexus() {
     s.execute("file.saveAs", &json!({"path": path.to_str().unwrap()})).unwrap();
     let parts = zip_parts(&path);
     let styles = part(&parts, "ppt/tableStyles.xml");
-    assert!(styles.contains("\"Nexus Light Style 1 - Accent 2\""), "{styles}");
+    // Từ đợt đồng bộ 24/11, craft-pptx dựng tên style bảng từ cùng một hook với tên ứng dụng
+    // (`PptxDefaults::application()`), nên tiền tố là tên sản phẩm đầy đủ: upstream ghi
+    // "DeckCraft Light Style 1 - Accent 2", fork ghi "Nexus Slide …" (trước đây là "Nexus …").
+    assert!(styles.contains("\"Nexus Slide Light Style 1 - Accent 2\""), "{styles}");
     no_upstream_name(&parts);
 }
 
